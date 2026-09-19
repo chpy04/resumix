@@ -12,11 +12,11 @@ import type { FeedbackKind } from './feedback/issue.ts';
 import type {
   ApplicationDetail,
   ApplicationFile,
+  ApplicationPdfResult,
   ApplicationStatus,
   ApplicationSummary,
   Bullet,
   Experience,
-  MarkAppliedResult,
   Project,
   RenderResult,
   ResumeDetail,
@@ -377,12 +377,20 @@ export function listApplications(includeArchived = false): Promise<ApplicationSu
   );
 }
 
-/** `POST /api/applications` — everything but the company can come later. */
+/**
+ * `POST /api/applications` — everything but the company can come later.
+ *
+ * `createResumeFrom` clones that resume under the company's name and links
+ * the copy, which is how a new application arrives with something to tailor.
+ * `resumeId` links an existing resume instead; passing neither leaves it
+ * without one.
+ */
 export function createApplication(input: {
   company: string;
   roleTitle?: string;
   postingUrl?: string;
   resumeId?: string | null;
+  createResumeFrom?: string | null;
 }): Promise<ApplicationDetail> {
   return requestJson<ApplicationDetail>('/api/applications', {
     method: 'POST',
@@ -418,13 +426,21 @@ export function updateApplication(
 }
 
 /**
- * `POST /api/applications/:id/apply` — renders the linked resume, stores the
- * snapshot, and pins the application to it. Check `.ok`: a LaTeX compile
- * failure is a normal `200 { ok: false, ... }` that changes nothing, never a
- * thrown `ApiError` (`docs/API.md`).
+ * `POST /api/applications/:id/pdf` — "save this resume to the application":
+ * renders the linked resume and pins the snapshot, leaving the status alone.
+ * Check `.ok`; a LaTeX failure is a normal `200 { ok: false, ... }`.
  */
-export function markApplicationApplied(id: string): Promise<MarkAppliedResult> {
-  return requestJson<MarkAppliedResult>(`/api/applications/${id}/apply`, { method: 'POST' });
+export function saveResumeToApplication(id: string): Promise<ApplicationPdfResult> {
+  return requestJson<ApplicationPdfResult>(`/api/applications/${id}/pdf`, { method: 'POST' });
+}
+
+/**
+ * `POST /api/applications/:id/apply` — marks it sent, which is what moves it
+ * into the Applied table. Takes the snapshot first if nothing has been saved
+ * to the application yet. Same `.ok` contract as above.
+ */
+export function markApplicationApplied(id: string): Promise<ApplicationPdfResult> {
+  return requestJson<ApplicationPdfResult>(`/api/applications/${id}/apply`, { method: 'POST' });
 }
 
 /** `GET /api/applications/:id/pdf` — the bytes that were actually sent, not

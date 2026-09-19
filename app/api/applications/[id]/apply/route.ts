@@ -1,27 +1,21 @@
-import { buildResumeFilename } from '@/lib/filename';
+import { snapshotResumeForApplication } from '@/lib/application-pdf';
 import { type RouteContext, withApiErrors } from '@/lib/http';
-import { compileTex, latexUnavailableResult, LatexServiceError } from '@/lib/latex';
 import { getApplicationRow, recordApplied } from '@/lib/queries/applications';
 import { NotFoundError } from '@/lib/queries/errors';
-import { renderResumeById } from '@/lib/queries/render';
 import { requireUserId } from '@/lib/session';
-import { saveResumePdfSnapshot } from '@/lib/storage';
 
 /**
- * Marks an application as sent.
+ * Marks an application as sent — which is also what moves it off the pipeline
+ * board and into the Applied table, where most applications quietly stay.
  *
- * With a resume linked, this is the moment the live resume becomes a fixed
- * record: it renders and compiles it, stores a `resume_pdf` snapshot, and
- * pins the application to those bytes — while leaving `resumeId` alone, so
- * the application still knows which resume it came from (D-031).
- *
- * With no resume linked it just stamps the status, which is how an
- * application sent from somewhere else gets logged.
+ * If the linked resume has not been saved to this application yet, this takes
+ * that snapshot first, so "apply" never leaves a sent application with no
+ * record of what went out. If it already has one — you saved from the editor
+ * and then came back — that snapshot stands; this does not silently re-render.
  *
  * A LaTeX compile failure changes nothing and comes back as
- * `200 { ok: false, errors, warnings, log }`, exactly as it does for
- * `POST /api/resumes/:id/pdf` — a broken template is a normal state of the
- * editor, not a server fault.
+ * `200 { ok: false, errors, warnings, log }`, the same answer
+ * `POST /api/resumes/:id/pdf` gives.
  */
 export async function POST(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {
@@ -31,41 +25,19 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
     const row = await getApplicationRow(userId, id);
     if (!row) throw new NotFoundError(`application ${id} not found`);
 
-    if (!row.resumeId) {
+    if (!row.resumeId || row.resumePdfId) {
       return Response.json({ ok: true, application: await recordApplied(userId, id, null) });
     }
 
-    const { tex, warnings } = await renderResumeById(userId, row.resumeId);
-
-    let compiled;
-    try {
-      compiled = await compileTex(tex);
-    } catch (err) {
-      if (err instanceof LatexServiceError) {
-        return Response.json(latexUnavailableResult(err, warnings));
-      }
-      throw err;
-    }
-
-    if (!compiled.ok || !compiled.pdfBase64) {
-      return Response.json({
-        ok: false,
-        pages: compiled.pages,
-        errors: compiled.errors,
-        warnings,
-        log: compiled.log,
-      });
-    }
-
-    // Named for the company applied to, which is what this PDF is *for* —
-    // the resume it was rendered from may be called anything.
-    const filename = buildResumeFilename(row.company);
-    const snapshot = await saveResumePdfSnapshot(row.resumeId, {
-      filename,
-      bytes: Buffer.from(compiled.pdfBase64, 'base64'),
-      tex,
+    const snapshot = await snapshotResumeForApplication(userId, {
+      resumeId: row.resumeId,
+      company: row.company,
     });
+    if (!snapshot.ok) return Response.json(snapshot);
 
-    return Response.json({ ok: true, application: await recordApplied(userId, id, snapshot.id) });
+    return Response.json({
+      ok: true,
+      application: await recordApplied(userId, id, snapshot.resumePdfId),
+    });
   });
 }

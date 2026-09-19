@@ -328,6 +328,12 @@ test("an application cannot be pointed at another user's resume", { skip }, asyn
       () => createApplication(alice.id, { company: 'Alice Co', resumeId: bobResume.id }),
       BadRequestError,
     );
+    // ...and cloning it is the same answer: a new application may only start
+    // from a resume you already own.
+    await assert.rejects(
+      () => createApplication(alice.id, { company: 'Alice Co', createResumeFrom: bobResume.id }),
+      BadRequestError,
+    );
     await assert.rejects(
       () => updateApplication(alice.id, aliceApplication.id, { resumeId: bobResume.id }),
       BadRequestError,

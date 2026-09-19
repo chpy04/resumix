@@ -181,12 +181,20 @@ const optionalUrl = z
   .trim()
   .refine((value) => value === '' || isHttpUrl(value), { message: 'must be an http(s) URL' });
 
-export const createApplicationSchema = z.object({
-  company: nonEmpty,
-  roleTitle: z.string().trim().optional(),
-  postingUrl: optionalUrl.optional(),
-  resumeId: uuid.nullable().optional(),
-});
+export const createApplicationSchema = z
+  .object({
+    company: nonEmpty,
+    roleTitle: z.string().trim().optional(),
+    postingUrl: optionalUrl.optional(),
+    /** Link a resume that already exists. */
+    resumeId: uuid.nullable().optional(),
+    /** Clone this resume under the company's name and link that instead —
+     *  the normal path, since a new application comes with its own resume. */
+    createResumeFrom: uuid.nullable().optional(),
+  })
+  .refine((body) => !(body.resumeId && body.createResumeFrom), {
+    message: 'pass either resumeId or createResumeFrom, not both',
+  });
 
 export const patchApplicationSchema = z
   .object({

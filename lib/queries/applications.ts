@@ -10,7 +10,7 @@
  * two nullable references instead — the live resume it is being tailored
  * from, and the immutable snapshot that was actually sent (D-031).
  */
-import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { nextAppliedAt } from '../applications/status.ts';
 import { db } from '../db/index.ts';
 import { application, resume, resumePdf } from '../db/schema.ts';
@@ -22,6 +22,7 @@ import type {
 } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
+import { createResume } from './resumes.ts';
 
 type ApplicationRow = typeof application.$inferSelect;
 
@@ -148,11 +149,31 @@ async function assertOwnedResume(userId: string, resumeId: string): Promise<void
   if (!row) throw new BadRequestError(`unknown resume id: ${resumeId}`);
 }
 
+/**
+ * Logs an application, and — normally — gives it a resume of its own.
+ *
+ * `createResumeFrom` clones that resume under the company's name, which is
+ * the front door: you see a posting, you log it, and you immediately have
+ * something to tailor without touching the resume you started from.
+ * `resumeId` instead links a resume that already exists. Passing neither
+ * leaves the application without one, for logging something sent elsewhere.
+ */
 export async function createApplication(
   userId: string,
-  input: { company: string; roleTitle?: string; postingUrl?: string; resumeId?: string | null },
+  input: {
+    company: string;
+    roleTitle?: string;
+    postingUrl?: string;
+    resumeId?: string | null;
+    createResumeFrom?: string | null;
+  },
 ): Promise<ApplicationDetail> {
   if (input.resumeId) await assertOwnedResume(userId, input.resumeId);
+
+  // `createResume` re-checks ownership of the source and 400s on a stranger's.
+  const created = input.createResumeFrom
+    ? await createResume(userId, input.company, input.createResumeFrom)
+    : null;
 
   const [row] = await db
     .insert(application)
@@ -161,7 +182,7 @@ export async function createApplication(
       company: input.company,
       roleTitle: input.roleTitle ?? '',
       postingUrl: input.postingUrl ?? '',
-      resumeId: input.resumeId ?? null,
+      resumeId: created?.id ?? input.resumeId ?? null,
     })
     .returning();
   if (!row) throw new Error('failed to create application');
@@ -203,6 +224,29 @@ export async function updateApplication(
 }
 
 /**
+ * Points an application at a PDF snapshot without touching its status.
+ *
+ * This is "save this resume to the application": you edit the resume from
+ * inside the application, save, and the application now holds those bytes.
+ * Doing it before it is sent is normal — marking it applied is a separate,
+ * later decision.
+ */
+export async function pinResumePdf(
+  userId: string,
+  id: string,
+  resumePdfId: string,
+): Promise<ApplicationDetail> {
+  const [row] = await db
+    .update(application)
+    .set({ resumePdfId })
+    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .returning();
+  if (!row) throw new NotFoundError(`application ${id} not found`);
+
+  return detailFor(row);
+}
+
+/**
  * Marks an application as sent, pinning it to the snapshot that went out.
  *
  * `resumePdfId` is null when there is no resume linked — you can log an
@@ -232,28 +276,4 @@ export async function recordApplied(
   if (!row) throw new NotFoundError(`application ${id} not found`);
 
   return detailFor(row);
-}
-
-/**
- * How many of this user's applications were sent with a snapshot of this
- * resume. `deleteResume` asks before deleting: `resume_pdf` cascades from
- * `resume`, and an application's snapshot is the only record of what was
- * actually sent, so the delete gives way to it (D-031).
- */
-export async function countApplicationsSentWithResume(
-  userId: string,
-  resumeId: string,
-): Promise<number> {
-  const rows = await db
-    .select({ id: application.id })
-    .from(application)
-    .innerJoin(resumePdf, eq(application.resumePdfId, resumePdf.id))
-    .where(
-      and(
-        eq(application.userId, userId),
-        eq(resumePdf.resumeId, resumeId),
-        isNotNull(application.resumePdfId),
-      ),
-    );
-  return rows.length;
 }

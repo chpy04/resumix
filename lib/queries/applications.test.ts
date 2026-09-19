@@ -14,6 +14,7 @@ const skip = !process.env.DATABASE_URL;
 let BadRequestError: typeof import('./errors.ts').BadRequestError;
 let NotFoundError: typeof import('./errors.ts').NotFoundError;
 let createApplication: typeof import('./applications.ts').createApplication;
+let pinResumePdf: typeof import('./applications.ts').pinResumePdf;
 let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
 let listApplications: typeof import('./applications.ts').listApplications;
 let recordApplied: typeof import('./applications.ts').recordApplied;
@@ -23,16 +24,25 @@ let getApplicationFileBlob: typeof import('./application-files.ts').getApplicati
 let listApplicationFiles: typeof import('./application-files.ts').listApplicationFiles;
 let updateApplicationFile: typeof import('./application-files.ts').updateApplicationFile;
 let deleteResume: typeof import('./resumes.ts').deleteResume;
+let getResumeDetail: typeof import('./resumes.ts').getResumeDetail;
+let getSelections: typeof import('./selections.ts').getSelections;
 let saveResumePdfSnapshot: typeof import('../storage.ts').saveResumePdfSnapshot;
 let fixtures: typeof import('./test-fixtures.ts');
 
 if (!skip) {
   ({ BadRequestError, NotFoundError } = await import('./errors.ts'));
-  ({ createApplication, getApplicationDetail, listApplications, recordApplied, updateApplication } =
-    await import('./applications.ts'));
+  ({
+    createApplication,
+    getApplicationDetail,
+    listApplications,
+    pinResumePdf,
+    recordApplied,
+    updateApplication,
+  } = await import('./applications.ts'));
   ({ addApplicationFile, getApplicationFileBlob, listApplicationFiles, updateApplicationFile } =
     await import('./application-files.ts'));
-  ({ deleteResume } = await import('./resumes.ts'));
+  ({ deleteResume, getResumeDetail } = await import('./resumes.ts'));
+  ({ getSelections } = await import('./selections.ts'));
   ({ saveResumePdfSnapshot } = await import('../storage.ts'));
   fixtures = await import('./test-fixtures.ts');
 }
@@ -55,6 +65,36 @@ test('a new application starts as an empty draft', { skip }, async () => {
     await fixtures.deleteApplicationRow(created.id);
   }
 });
+
+test(
+  'a new application clones a resume of its own, named after the company',
+  { skip },
+  async () => {
+    const userId = await fixtures.seedUserId();
+    const tag = fixtures.testTag();
+    const source = await fixtures.insertTestResume(userId, tag);
+    const company = `T-App Clone Co ${tag}`;
+
+    const created = await createApplication(userId, { company, createResumeFrom: source.id });
+    try {
+      assert.ok(created.resumeId, 'the application must be linked to the resume it created');
+      assert.notEqual(created.resumeId, source.id, 'it must be a copy, not the source itself');
+
+      const detail = await getResumeDetail(userId, created.resumeId!);
+      assert.equal(detail?.resume.name, company);
+      // Cloned, not blank: the selections come from the resume it started from.
+      const sourceSelections = await getSelections(source.id);
+      assert.deepEqual(
+        (await getSelections(created.resumeId!)).experiences,
+        sourceSelections.experiences,
+      );
+    } finally {
+      await fixtures.deleteApplicationRow(created.id);
+      if (created.resumeId) await fixtures.deleteResumeRow(created.resumeId);
+      await fixtures.deleteResumeRow(source.id);
+    }
+  },
+);
 
 test('creating against a resume id that does not exist is a 400', { skip }, async () => {
   const userId = await fixtures.seedUserId();
@@ -164,6 +204,33 @@ test('a resume an application was sent with cannot be deleted', { skip }, async 
     await assert.rejects(() => deleteResume(userId, resumeRow.id), BadRequestError);
   } finally {
     await fixtures.deleteApplicationRow(application.id);
+    await fixtures.deleteResumeRow(resumeRow.id);
+  }
+});
+
+test('saving a resume to an application pins it without declaring it sent', { skip }, async () => {
+  const userId = await fixtures.seedUserId();
+  const tag = fixtures.testTag();
+  const resumeRow = await fixtures.insertTestResume(userId, tag);
+  const created = await createApplication(userId, {
+    company: `T-App ${tag}`,
+    resumeId: resumeRow.id,
+  });
+
+  try {
+    const saved = await saveResumePdfSnapshot(resumeRow.id, {
+      filename: `T_App_${tag}_draft.pdf`,
+      bytes: Buffer.from('%PDF-1.4 draft'),
+      tex: '\\documentclass{article}\\begin{document}draft\\end{document}',
+    });
+
+    const pinned = await pinResumePdf(userId, created.id, saved.id);
+    assert.equal(pinned.sentPdf?.filename, `T_App_${tag}_draft.pdf`);
+    // Still a draft: saving a PDF and declaring it sent are separate acts.
+    assert.equal(pinned.status, 'draft');
+    assert.equal(pinned.appliedAt, null);
+  } finally {
+    await fixtures.deleteApplicationRow(created.id);
     await fixtures.deleteResumeRow(resumeRow.id);
   }
 });

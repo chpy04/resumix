@@ -176,8 +176,10 @@ export interface ApplicationDetail extends ApplicationSummary {
   files: ApplicationFile[];
 }
 
-/** `POST /api/applications/:id/apply`. A LaTeX failure is `ok: false` and
- *  changes nothing, exactly like `POST /api/resumes/:id/pdf` (docs/API.md). */
-export type MarkAppliedResult =
+/** What both `POST /api/applications/:id/pdf` (save the resume to the
+ *  application) and `POST /api/applications/:id/apply` return. A LaTeX
+ *  failure is `ok: false` and changes nothing, exactly like
+ *  `POST /api/resumes/:id/pdf` (docs/API.md). */
+export type ApplicationPdfResult =
   | { ok: true; application: ApplicationDetail }
   | { ok: false; pages: number | null; errors: string[]; warnings: string[]; log: string };
