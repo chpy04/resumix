@@ -95,6 +95,7 @@ test('a bug report carries the description, the current URL, and the screenshot'
 
 test('a feature request from the editor records that page, not the home page', async ({ page }) => {
   await login(page);
+  await page.goto('/resumes');
   await page.getByText('Default').first().click();
   await expect(page).toHaveURL(/\/resume\//);
   const editorUrl = page.url();
@@ -186,9 +187,9 @@ test('the form is a popover: it dismisses on a click anywhere else', async ({ pa
   await expect(dialog).toBeVisible();
   // Nothing is covered — the page under the popover is still clickable, which
   // is the point of not using a modal overlay.
-  await expect(page.getByRole('heading', { name: 'Resumix' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Applications' })).toBeVisible();
 
-  await page.getByRole('heading', { name: 'Resumix' }).click();
+  await page.getByRole('heading', { name: 'Applications' }).click();
   await expect(dialog).toBeHidden();
 
   // And the button itself toggles rather than closing-then-reopening.

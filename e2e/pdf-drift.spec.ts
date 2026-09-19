@@ -43,7 +43,7 @@ test('the home page download always gives the last-saved snapshot, not live cont
   expect(firstText).toContain(oldMarker);
 
   // Home page: the card's download button should now be enabled.
-  await page.goto('/');
+  await page.goto('/resumes');
   const card = page.locator(`[data-testid="resume-card-${resumeId}"]`);
   const downloadButton = card.locator('[data-testid="resume-download-button"]');
   await expect(downloadButton).toBeEnabled();
@@ -55,7 +55,7 @@ test('the home page download always gives the last-saved snapshot, not live cont
   await waitForSaved(page);
 
   // Downloading from the home page must still give the OLD snapshot.
-  await page.goto('/');
+  await page.goto('/resumes');
   const downloadPromise = page.waitForEvent('download', { timeout: 30_000 });
   await page
     .locator(`[data-testid="resume-card-${resumeId}"]`)

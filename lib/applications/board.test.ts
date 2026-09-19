@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupByStatus, sortByRecency } from './board.ts';
+import { appliedApplications, groupByStatus, sortByRecency } from './board.ts';
 import type { ApplicationStatus, ApplicationSummary } from '../types.ts';
 
 function application(
@@ -24,11 +24,29 @@ function application(
   };
 }
 
-test('groupByStatus returns one column per status, in board order', () => {
+test('the board shows every status except applied, in pipeline order', () => {
   const columns = groupByStatus([application('a', 'offered')]);
   assert.deepEqual(
     columns.map((column) => column.status),
-    ['draft', 'applied', 'interviewing', 'offered', 'rejected'],
+    ['draft', 'interviewing', 'offered', 'rejected'],
+  );
+});
+
+test('an applied application is off the board entirely', () => {
+  const columns = groupByStatus([application('sent', 'applied'), application('a', 'draft')]);
+  const ids = columns.flatMap((column) => column.applications.map((a) => a.id));
+  assert.deepEqual(ids, ['a']);
+});
+
+test('appliedApplications collects exactly those, most recent first', () => {
+  const rows = appliedApplications([
+    application('older', 'applied', { appliedAt: '2026-01-01T00:00:00.000Z' }),
+    application('draft', 'draft'),
+    application('newer', 'applied', { appliedAt: '2026-06-01T00:00:00.000Z' }),
+  ]);
+  assert.deepEqual(
+    rows.map((a) => a.id),
+    ['newer', 'older'],
   );
 });
 

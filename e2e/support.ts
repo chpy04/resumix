@@ -35,12 +35,13 @@ export async function login(page: Page): Promise<void> {
 }
 
 /**
- * Drives the real "new resume" flow from the home page: click the pinned
- * new-resume cell, type a company name into the modal, submit, and wait for
- * the editor to load. Returns the created resume's id (parsed from the URL).
+ * Drives the real "new resume" flow from the resume library (`/resumes` —
+ * the home page is the applications board): click the pinned new-resume cell,
+ * type a company name into the modal, submit, and wait for the editor to
+ * load. Returns the created resume's id (parsed from the URL).
  */
 export async function createResumeViaUi(page: Page, companyName: string): Promise<string> {
-  await page.goto('/');
+  await page.goto('/resumes');
   await page
     .getByText(/new resume/i)
     .first()
@@ -161,6 +162,29 @@ export function findExperienceBullet(
   const bullet = experience.bullets[bulletIndex];
   if (!bullet) throw new Error(`experience "${company}" has no bullet at index ${bulletIndex}`);
   return { experienceId: experience.id, bulletId: bullet.id, content: bullet.content };
+}
+
+/** The seeded Default resume's id, the usual starting point for a new
+ *  application's resume. */
+export async function getDefaultResumeId(page: Page): Promise<string> {
+  const resumes = await apiRequest<{ id: string; isDefault: boolean }[]>(page, '/api/resumes');
+  const found = resumes.find((resume) => resume.isDefault);
+  if (!found) throw new Error('no default resume found');
+  return found.id;
+}
+
+/** Logs an application through the real API, cloning `createResumeFrom` into
+ *  a resume of its own exactly as the new-application dialog does. Used for
+ *  setup where the creation flow itself is not what is under test. */
+export async function createApplicationViaApi(
+  page: Page,
+  input: { company: string; roleTitle?: string; createResumeFrom?: string },
+): Promise<string> {
+  const created = await apiRequest<{ id: string }>(page, '/api/applications', {
+    method: 'POST',
+    body: input,
+  });
+  return created.id;
 }
 
 export function findExperienceId(detail: ResumeDetailLike, company: string): string {

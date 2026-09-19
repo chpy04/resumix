@@ -24,7 +24,7 @@ test('fuzzy search filters the resume grid while keeping the new-resume and Defa
   await createResumeViaApi(page, nameB);
   await createResumeViaApi(page, unrelatedName);
 
-  await page.goto('/');
+  await page.goto('/resumes');
   await expect(page.getByText(nameA)).toBeVisible();
   await expect(page.getByText(nameB)).toBeVisible();
   await expect(page.getByText(unrelatedName)).toBeVisible();

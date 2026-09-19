@@ -88,15 +88,16 @@ export default function ResumeGrid() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Resumix</h1>
+          <h1 className="text-2xl font-semibold text-ink">Resumes</h1>
           <p className="mt-1 text-sm text-ink-dim">
-            Pick a resume to keep editing, or start a new one for a company.
+            The library behind your applications. Editing anything here changes every resume that
+            selected it.
           </p>
           <Link
-            href="/applications"
+            href="/"
             className="mt-2 inline-block text-sm text-accent transition-opacity hover:opacity-80"
           >
-            Applications →
+            ← Applications
           </Link>
         </div>
         <SearchBox ref={searchRef} value={query} onChange={setQuery} />

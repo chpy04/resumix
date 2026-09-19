@@ -5,6 +5,12 @@ const require = createRequire(import.meta.url);
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['postgres'],
+  // The board moved to `/` when applications became the front door. Kept as a
+  // redirect rather than a second page so there is one URL for it, and any
+  // link already written down still lands somewhere.
+  async redirects() {
+    return [{ source: '/applications', destination: '/', permanent: false }];
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,

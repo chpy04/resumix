@@ -5,6 +5,8 @@ import type { ApplicationDetail } from '@/lib/types';
 
 interface SentResumePanelProps {
   application: ApplicationDetail;
+  /** The linked resume's name, for display. Null when none is linked. */
+  resumeName: string | null;
   onMarkApplied: () => void;
   onDownload: () => void;
   applying: boolean;
@@ -25,31 +27,52 @@ function formatDate(iso: string): string {
 }
 
 /**
- * The two resume links, and the button that turns one into the other.
+ * The resume side of an application: the live resume you tailor, the frozen
+ * PDF saved against it, and the button that declares it sent.
  *
- * Before it is sent, an application points at a live resume you keep editing.
- * Marking it applied renders that resume, snapshots the PDF, and pins the
- * application to those bytes — while keeping the link to the resume itself,
- * so "what did they get?" and "what has that resume become since?" stay two
- * separate, answerable questions (D-031).
+ * The two are separate on purpose. Editing the resume changes nothing here
+ * until you save it back from the editor; marking it applied then moves the
+ * application off the pipeline board and into the Applied table (D-031).
  */
 export default function SentResumePanel({
   application,
+  resumeName,
   onMarkApplied,
   onDownload,
   applying,
   downloading,
   error,
 }: SentResumePanelProps) {
-  const { sentPdf, resumeId } = application;
+  const { sentPdf, resumeId, status, appliedAt } = application;
+  const editHref = `/resume/${resumeId}?application=${application.id}`;
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
-      <h2 className="text-sm font-semibold text-ink">What you sent</h2>
+      <h2 className="text-sm font-semibold text-ink">Resume</h2>
+
+      {resumeId ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 truncate text-sm text-ink" title={resumeName ?? undefined}>
+            {resumeName ?? 'Linked resume'}
+          </span>
+          <Link
+            href={editHref}
+            data-testid="application-edit-resume"
+            className="rounded-md border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
+          >
+            Tailor it →
+          </Link>
+        </div>
+      ) : (
+        <p className="text-sm text-ink-dim">
+          No resume linked. Pick one on the left, or mark this applied as it is — an application
+          logged after the fact doesn&apos;t need one.
+        </p>
+      )}
 
       {sentPdf ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 truncate text-sm text-ink" title={sentPdf.filename}>
+          <span className="min-w-0 truncate text-sm text-ink-dim" title={sentPdf.filename}>
             {sentPdf.filename}
           </span>
           <span className="text-xs text-ink-dim">saved {formatDate(sentPdf.createdAt)}</span>
@@ -64,40 +87,34 @@ export default function SentResumePanel({
           </button>
         </div>
       ) : (
-        <p className="text-sm text-ink-dim">
-          Nothing sent yet. Marking this applied saves a PDF of the linked resume and keeps those
-          exact bytes here, whatever you do to the resume afterwards.
-        </p>
-      )}
-
-      {resumeId ? (
-        <Link
-          href={`/resume/${resumeId}`}
-          className="w-fit text-xs text-accent transition-opacity hover:opacity-80"
-        >
-          Open the resume this came from →
-        </Link>
-      ) : (
         <p className="text-xs text-ink-dim">
-          No resume linked. You can still mark this applied — it just won&apos;t have a PDF.
+          No PDF saved to this application yet. Tailoring the resume and saving from the editor pins
+          one here, and it stays those exact bytes however the resume changes afterwards.
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          data-testid="application-mark-applied"
-          onClick={onMarkApplied}
-          disabled={applying}
-          title={
-            resumeId
-              ? 'Renders the linked resume, stores the PDF, and pins this application to it'
-              : 'Marks this applied; no resume is linked, so no PDF is stored'
-          }
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {applying ? 'Saving PDF…' : sentPdf ? 'Re-send: save a new PDF' : 'Mark as applied'}
-        </button>
+        {status === 'applied' ? (
+          <p className="text-xs text-ink-dim">
+            Applied {appliedAt ? formatDate(appliedAt) : ''} — in the Applied table now. Change the
+            status on the left if they reply.
+          </p>
+        ) : (
+          <button
+            type="button"
+            data-testid="application-mark-applied"
+            onClick={onMarkApplied}
+            disabled={applying}
+            title={
+              resumeId
+                ? 'Saves the resume PDF if you have not already, and moves this to the Applied table'
+                : 'Moves this to the Applied table; no resume is linked, so no PDF is stored'
+            }
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {applying ? 'Marking applied…' : 'Mark as applied'}
+          </button>
+        )}
         {error ? <span className="text-xs text-danger">{error}</span> : null}
       </div>
     </section>

@@ -1,48 +1,64 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import type { ResumeSummary } from '@/lib/types';
 
 export interface NewApplicationInput {
   company: string;
   roleTitle: string;
   postingUrl: string;
+  /** The resume to clone for this application, or null to start without one. */
+  startFromResumeId: string | null;
 }
 
 interface NewApplicationDialogProps {
   open: boolean;
   submitting: boolean;
   error: string | null;
+  /** Offered as starting points; the user's Default is preselected. */
+  resumes: ResumeSummary[];
   onSubmit: (input: NewApplicationInput) => void;
   onClose: () => void;
 }
 
 /**
- * Logs a new application. Only the company is required — an application is
- * created the moment you see a posting, and everything else (the resume, the
- * cover letter, the notes) gets filled in on the detail page afterwards.
+ * Logs a new application, and gives it a resume to tailor.
+ *
+ * Only the company is required, and it does double duty: it names the
+ * application and the resume cloned for it. Starting from an existing resume
+ * rather than a blank one is the point — last month's tailored resume is
+ * usually a better starting point than Default, so it is a dropdown.
  */
 export default function NewApplicationDialog({
   open,
   submitting,
   error,
+  resumes,
   onSubmit,
   onClose,
 }: NewApplicationDialogProps) {
   const [company, setCompany] = useState('');
   const [roleTitle, setRoleTitle] = useState('');
   const [postingUrl, setPostingUrl] = useState('');
+  const [startFrom, setStartFrom] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const defaultResumeId = useMemo(
+    () => resumes.find((resume) => resume.isDefault)?.id ?? resumes[0]?.id ?? '',
+    [resumes],
+  );
 
   useEffect(() => {
     if (open) {
       setCompany('');
       setRoleTitle('');
       setPostingUrl('');
+      setStartFrom(defaultResumeId);
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
     return undefined;
-  }, [open]);
+  }, [open, defaultResumeId]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -68,6 +84,7 @@ export default function NewApplicationDialog({
       company: trimmed,
       roleTitle: roleTitle.trim(),
       postingUrl: postingUrl.trim(),
+      startFromResumeId: startFrom === '' ? null : startFrom,
     });
   }
 
@@ -89,7 +106,7 @@ export default function NewApplicationDialog({
           New application
         </h2>
         <p className="mt-1 text-sm text-ink-dim">
-          Log it now; link a resume and fill in the rest as you go.
+          This also creates a resume named after the company, copied from the one you pick.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
@@ -121,6 +138,25 @@ export default function NewApplicationDialog({
             disabled={submitting}
             className="w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
           />
+
+          <label className="flex flex-col gap-1 text-xs text-ink-dim">
+            Start its resume from
+            <select
+              value={startFrom}
+              aria-label="Start its resume from"
+              disabled={submitting}
+              onChange={(event) => setStartFrom(event.target.value)}
+              className="w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
+            >
+              {resumes.map((resume) => (
+                <option key={resume.id} value={resume.id}>
+                  {resume.name}
+                  {resume.isDefault ? ' (Default)' : ''}
+                </option>
+              ))}
+              <option value="">Don&apos;t create a resume</option>
+            </select>
+          </label>
 
           {error ? <p className="text-sm text-danger">{error}</p> : null}
 

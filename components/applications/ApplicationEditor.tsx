@@ -236,6 +236,7 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
         <div className="flex flex-col gap-6">
           <SentResumePanel
             application={detail}
+            resumeName={resumes.find((resume) => resume.id === detail.resumeId)?.name ?? null}
             onMarkApplied={() => void handleMarkApplied()}
             onDownload={() => void handleDownload()}
             applying={applying}

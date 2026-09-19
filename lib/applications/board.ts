@@ -5,13 +5,27 @@
  * Pure so it can be tested without a browser or a database — the board
  * component only renders what this returns.
  */
-import { APPLICATION_STATUSES } from './status.ts';
 import type { ApplicationStatus, ApplicationSummary } from '../types.ts';
 
 export interface BoardColumn {
   status: ApplicationStatus;
   applications: ApplicationSummary[];
 }
+
+/**
+ * The kanban's columns — every status except `applied`.
+ *
+ * Most applications are sent and then never touched again, so an `applied`
+ * column would be an ever-growing pile that buries the four states that
+ * actually need a decision. Those live in their own searchable table instead;
+ * `applied` is the only status the board does not show.
+ */
+export const PIPELINE_STATUSES = [
+  'draft',
+  'interviewing',
+  'offered',
+  'rejected',
+] as const satisfies readonly ApplicationStatus[];
 
 /**
  * "Most recent first", where recency means the day it was sent, falling back
@@ -31,12 +45,21 @@ export function sortByRecency(applications: readonly ApplicationSummary[]): Appl
   });
 }
 
-/** Every status gets a column, including the empty ones: an empty
+/** Every pipeline status gets a column, including the empty ones: an empty
  *  "Interviewing" is information, and a column that appears and disappears as
  *  rows move is harder to aim at than one that is always there. */
 export function groupByStatus(applications: readonly ApplicationSummary[]): BoardColumn[] {
-  return APPLICATION_STATUSES.map((status) => ({
+  return PIPELINE_STATUSES.map((status) => ({
     status,
     applications: sortByRecency(applications.filter((a) => a.status === status)),
   }));
+}
+
+/** The other half of the board: everything sent and waiting, most recent
+ *  first. Rendered as a table rather than cards because the useful thing to
+ *  do with it is search it. */
+export function appliedApplications(
+  applications: readonly ApplicationSummary[],
+): ApplicationSummary[] {
+  return sortByRecency(applications.filter((a) => a.status === 'applied'));
 }

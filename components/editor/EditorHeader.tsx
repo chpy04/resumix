@@ -17,14 +17,21 @@ interface EditorHeaderProps {
   onDownload: () => void;
   downloading: boolean;
   downloadError: string | null;
+  /** Set when this editor was opened from an application. It changes where
+   *  "back" goes and what the primary action means — the same resume edited
+   *  from the library is a general edit, edited from an application it is
+   *  that application's resume. */
+  applicationId?: string;
 }
 
 /**
  * Top bar: back link, the resume's own name (editable — global rename via
  * `PATCH /api/resumes/:id`, debounced text autosave), the Content/Template
- * tabs (state lifted here so T9 can add real Template-tab content without
- * touching this file), the combined save-status indicator, and the
- * save-as-PDF-snapshot action.
+ * tabs, the combined save-status indicator, and the primary save action.
+ *
+ * In application mode the back link returns to the application and the
+ * primary action writes the PDF to it; otherwise both point at the resume
+ * library, as they always have.
  */
 export default function EditorHeader({
   resumeName,
@@ -36,18 +43,23 @@ export default function EditorHeader({
   onDownload,
   downloading,
   downloadError,
+  applicationId,
 }: EditorHeaderProps) {
   const [localName, setLocalName] = useState(resumeName);
+
+  const fromApplication = applicationId !== undefined;
+  const backHref = fromApplication ? `/applications/${applicationId}` : '/resumes';
+  const backLabel = fromApplication ? '← Application' : '← Resumes';
 
   return (
     <header className="flex flex-col gap-3 border-b border-line bg-surface px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <Link
-            href="/"
+            href={backHref}
             className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
           >
-            ← Resumes
+            {backLabel}
           </Link>
           <input
             value={localName}
@@ -67,10 +79,14 @@ export default function EditorHeader({
             type="button"
             onClick={onDownload}
             disabled={downloading}
-            title="Renders the current template + selections, saves a snapshot, and downloads it"
+            title={
+              fromApplication
+                ? 'Renders this resume, saves the PDF to the application, and goes back to it'
+                : 'Renders the current template + selections, saves a snapshot, and downloads it'
+            }
             className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {downloading ? 'Saving PDF…' : 'Save PDF'}
+            {downloading ? 'Saving PDF…' : fromApplication ? 'Save to application' : 'Save PDF'}
           </button>
         </div>
       </div>

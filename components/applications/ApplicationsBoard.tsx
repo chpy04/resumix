@@ -4,29 +4,42 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ApplicationCard from '@/components/applications/ApplicationCard';
+import AppliedTable from '@/components/applications/AppliedTable';
 import NewApplicationDialog, {
   type NewApplicationInput,
 } from '@/components/applications/NewApplicationDialog';
 import SearchBox from '@/components/SearchBox';
 import { useSearchShortcut } from '@/components/useSearchShortcut';
-import { ApiError, createApplication, listApplications } from '@/lib/api-client';
-import { groupByStatus } from '@/lib/applications/board';
+import {
+  ApiError,
+  createApplication,
+  listApplications,
+  listResumes,
+  updateApplication,
+} from '@/lib/api-client';
+import { appliedApplications, groupByStatus } from '@/lib/applications/board';
 import { statusLabel } from '@/lib/applications/status';
 import { fuzzyFilter } from '@/lib/fuzzy';
-import type { ApplicationSummary } from '@/lib/types';
+import type { ApplicationStatus, ApplicationSummary, ResumeSummary } from '@/lib/types';
 
 type LoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; applications: ApplicationSummary[] };
 
+type Tab = 'pipeline' | 'applied';
+
 /** Stable identity for the not-yet-loaded case, so the memos below don't
  *  recompute on every render against a fresh `[]` literal. */
 const NO_APPLICATIONS: readonly ApplicationSummary[] = [];
 
 /**
- * Every application, in a column per status: what is still alive, what has
- * gone quiet, and — through each card's PDF button — what was actually sent.
+ * The app's front door: every application, split in two.
+ *
+ * The **pipeline** is a column per status that still needs something from
+ * you. **Applied** is everything sent and waiting, as a searchable table —
+ * it is where most applications end up and stay, and mixing that pile into
+ * the board would bury the handful that are actually live.
  *
  * The grouping and ordering are `lib/applications/board.ts`, which is pure
  * and tested; this fetches, searches and creates.
@@ -34,6 +47,8 @@ const NO_APPLICATIONS: readonly ApplicationSummary[] = [];
 export default function ApplicationsBoard() {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [resumes, setResumes] = useState<ResumeSummary[]>([]);
+  const [tab, setTab] = useState<Tab>('pipeline');
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -59,6 +74,24 @@ export default function ApplicationsBoard() {
     void load(showArchived);
   }, [load, showArchived]);
 
+  // The resume list is only needed by the new-application dialog, which
+  // starts every application from an existing resume.
+  useEffect(() => {
+    let cancelled = false;
+    void listResumes().then(
+      (loaded) => {
+        if (!cancelled) setResumes(loaded);
+      },
+      () => {
+        // A failure here costs the "start from" dropdown its options, not the
+        // board; the dialog falls back to creating no resume.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const applications = state.status === 'ready' ? state.applications : NO_APPLICATIONS;
 
   const visible = useMemo(() => {
@@ -72,12 +105,22 @@ export default function ApplicationsBoard() {
   }, [applications, query]);
 
   const columns = useMemo(() => groupByStatus(visible), [visible]);
+  const applied = useMemo(() => appliedApplications(visible), [visible]);
+  const appliedTotal = useMemo(
+    () => applications.filter((application) => application.status === 'applied').length,
+    [applications],
+  );
 
   async function handleCreate(input: NewApplicationInput): Promise<void> {
     setCreating(true);
     setCreateError(null);
     try {
-      const created = await createApplication(input);
+      const created = await createApplication({
+        company: input.company,
+        roleTitle: input.roleTitle,
+        postingUrl: input.postingUrl,
+        createResumeFrom: input.startFromResumeId,
+      });
       router.push(`/applications/${created.id}`);
     } catch (error) {
       setCreateError(error instanceof ApiError ? error.message : 'Could not add the application.');
@@ -85,19 +128,46 @@ export default function ApplicationsBoard() {
     }
   }
 
+  function handleStatusChange(id: string, status: ApplicationStatus): void {
+    setState((current) =>
+      current.status !== 'ready'
+        ? current
+        : {
+            ...current,
+            applications: current.applications.map((application) =>
+              application.id === id ? { ...application, status } : application,
+            ),
+          },
+    );
+    void updateApplication(id, { status }).then(
+      (updated) =>
+        setState((current) =>
+          current.status !== 'ready'
+            ? current
+            : {
+                ...current,
+                applications: current.applications.map((application) =>
+                  application.id === id ? updated : application,
+                ),
+              },
+        ),
+      () => void load(showArchived),
+    );
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
-      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink">Applications</h1>
           <p className="mt-1 text-sm text-ink-dim">
             Every job you have applied to, and where each one stands.
           </p>
           <Link
-            href="/"
+            href="/resumes"
             className="mt-2 inline-block text-sm text-accent transition-opacity hover:opacity-80"
           >
-            ← Resumes
+            Resumes →
           </Link>
         </div>
 
@@ -119,15 +189,26 @@ export default function ApplicationsBoard() {
         </div>
       </header>
 
-      <label className="mb-4 flex w-fit items-center gap-2 text-xs text-ink-dim">
-        <input
-          type="checkbox"
-          checked={showArchived}
-          onChange={(event) => setShowArchived(event.target.checked)}
-          className="h-3.5 w-3.5 accent-accent"
-        />
-        Show archived
-      </label>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
+        <nav className="flex gap-1" role="tablist" aria-label="Application views">
+          <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>
+            Pipeline
+          </TabButton>
+          <TabButton active={tab === 'applied'} onClick={() => setTab('applied')}>
+            Applied ({appliedTotal})
+          </TabButton>
+        </nav>
+
+        <label className="flex items-center gap-2 pb-1.5 text-xs text-ink-dim">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+            className="h-3.5 w-3.5 accent-accent"
+          />
+          Show archived
+        </label>
+      </div>
 
       {state.status === 'loading' ? <BoardSkeleton /> : null}
 
@@ -147,24 +228,28 @@ export default function ApplicationsBoard() {
 
       {state.status === 'ready' ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {columns.map((column) => (
-              <section key={column.status} className="flex flex-col gap-2">
-                <h2 className="flex items-center justify-between border-b border-line pb-1.5 text-xs font-semibold tracking-wide text-ink-dim uppercase">
-                  {statusLabel(column.status)}
-                  <span className="text-ink-dim/70">{column.applications.length}</span>
-                </h2>
-                {column.applications.map((application) => (
-                  <ApplicationCard key={application.id} application={application} />
-                ))}
-              </section>
-            ))}
-          </div>
+          {tab === 'pipeline' ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {columns.map((column) => (
+                <section key={column.status} className="flex flex-col gap-2">
+                  <h2 className="flex items-center justify-between border-b border-line pb-1.5 text-xs font-semibold tracking-wide text-ink-dim uppercase">
+                    {statusLabel(column.status)}
+                    <span className="text-ink-dim/70">{column.applications.length}</span>
+                  </h2>
+                  {column.applications.map((application) => (
+                    <ApplicationCard key={application.id} application={application} />
+                  ))}
+                </section>
+              ))}
+            </div>
+          ) : (
+            <AppliedTable applications={applied} onStatusChange={handleStatusChange} />
+          )}
 
           {applications.length === 0 ? (
             <p className="mt-10 text-sm text-ink-dim">
-              No applications yet. Add one as soon as you see a posting — you can link a resume and
-              write the cover letter from inside it.
+              No applications yet. Add one as soon as you see a posting — it starts from a resume
+              you already have, and you tailor the copy from inside it.
             </p>
           ) : null}
 
@@ -178,6 +263,7 @@ export default function ApplicationsBoard() {
         open={dialogOpen}
         submitting={creating}
         error={createError}
+        resumes={resumes}
         onSubmit={(input) => void handleCreate(input)}
         onClose={() => {
           if (creating) return;
@@ -189,10 +275,34 @@ export default function ApplicationsBoard() {
   );
 }
 
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`rounded-t-md border-b-2 px-3 py-1.5 text-sm transition-colors ${
+        active ? 'border-accent text-ink' : 'border-transparent text-ink-dim hover:text-ink'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function BoardSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" aria-hidden="true">
-      {Array.from({ length: 5 }).map((_, index) => (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, index) => (
         <div key={index} className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
       ))}
     </div>
