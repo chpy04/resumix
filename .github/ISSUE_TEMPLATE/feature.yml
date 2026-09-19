@@ -1,0 +1,23 @@
+name: Feature
+description: A new capability, or a change to how an existing one works
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard or impossible today. Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: How you will know this is done. Observable behaviour, not implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Optional. Anything deliberately in or out of bounds.

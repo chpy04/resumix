@@ -1,0 +1,94 @@
+# Keeps the Projects v2 board in step with git. Only the transitions that are
+# unambiguously inferable from an event live here -- a PR being opened means
+# "ready for review", a PR being merged means "done". The transitions that
+# depend on judgement (-> Planning) or on a human's approval (-> In Progress)
+# are deliberately absent: see the task lifecycle in CLAUDE.md.
+#
+# Needs a `BOARD_TOKEN` secret -- a fine-grained PAT with read/write on Projects.
+# The default GITHUB_TOKEN cannot touch a user-owned Projects v2 board at all.
+# Without the secret every job no-ops rather than failing the checks run, so a
+# fork or a token rotation degrades to "the board stops moving", not "CI is red".
+name: board
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, ready_for_review, reopened, closed]
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: board-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the board token is configured
+        id: gate
+        run: |
+          if [ -n "${{ secrets.BOARD_TOKEN }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::BOARD_TOKEN is not set; skipping board sync"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A freshly filed issue -- including one the in-app feedback widget files
+      # through POST /api/feedback -- lands in Backlog, so nothing arrives
+      # without a column.
+      - name: Issue opened -> Backlog
+        if: steps.gate.outputs.ready == 'true' && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN }}
+        run: scripts/board.sh move "${{ github.event.issue.number }}" Backlog
+
+      # A draft PR is explicitly not "ready for review", so it leaves the card
+      # in In Progress until it is marked ready.
+      - name: PR ready -> In Review
+        if: >-
+          steps.gate.outputs.ready == 'true'
+          && github.event_name == 'pull_request_target'
+          && github.event.action != 'closed'
+          && github.event.pull_request.draft == false
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN }}
+        run: |
+          for issue in $(scripts/board.sh pr-issues "${{ github.event.pull_request.number }}"); do
+            scripts/board.sh move "$issue" "In Review"
+          done
+
+      # Merged closes the issue (via `Closes #n`) and finishes the card.
+      # A PR closed *without* merging leaves its issue open, so the card goes
+      # back to In Progress rather than to Done.
+      - name: PR closed -> Done or In Progress
+        if: >-
+          steps.gate.outputs.ready == 'true'
+          && github.event_name == 'pull_request_target'
+          && github.event.action == 'closed'
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN }}
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          status="In Progress"
+          [ "$MERGED" = "true" ] && status="Done"
+          for issue in $(scripts/board.sh pr-issues "${{ github.event.pull_request.number }}"); do
+            scripts/board.sh move "$issue" "$status"
+          done
+
+      # Changes requested sends the work back without a human touching the board.
+      # An approval deliberately does *not* move anything: the merge does.
+      - name: Changes requested -> In Progress
+        if: >-
+          steps.gate.outputs.ready == 'true'
+          && github.event_name == 'pull_request_review'
+          && github.event.review.state == 'changes_requested'
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_TOKEN }}
+        run: |
+          for issue in $(scripts/board.sh pr-issues "${{ github.event.pull_request.number }}"); do
+            scripts/board.sh move "$issue" "In Progress"
+          done
