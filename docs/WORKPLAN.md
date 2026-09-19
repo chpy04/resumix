@@ -18,9 +18,9 @@ its report rather than edit the contract unilaterally.
 | id | task | owns | branch | status |
 |---|---|---|---|---|
 | T1 | Drizzle schema + SQL migrations + `npm run db:migrate` | `lib/db/**`, `drizzle/**` | `feat/t1-db-schema` | ✅ merged |
-| T2 | LaTeX compile service (Dockerfile + server) + `lib/latex.ts` client | `services/latex/**`, `lib/latex.ts` | `feat/t2-latex-service` | in flight |
+| T2 | LaTeX compile service (Dockerfile + server) + `lib/latex.ts` client | `services/latex/**`, `lib/latex.ts` | `feat/t2-latex-service` | ✅ merged |
 | T3 | Render engine + default template, unit-tested | `lib/render/**` | `feat/t3-render-engine` | in flight |
-| T4 | Auth: password → token, middleware, login screen | `lib/auth.ts`, `middleware.ts`, `app/login/**` | `feat/t4-auth` | in flight |
+| T4 | Auth: password → token, middleware, login screen | `lib/auth.ts`, `middleware.ts`, `app/login/**` | `feat/t4-auth` | ✅ merged |
 
 ## Wave 2 — depends on wave 1
 | id | task | owns | branch |
