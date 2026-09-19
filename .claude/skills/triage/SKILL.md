@@ -1,6 +1,7 @@
 ---
 name: triage
 description: Plan one issue, or re-plan one whose plan got feedback. Invoked by hand as `/triage <issue-number>` for work running without a human in the loop; it takes exactly one issue number and never scans the issue list. On an unplanned issue it sizes it and writes a plan of proportional depth into the issue body; on an issue already in status:planning it collects the feedback left since that plan and answers it. Never writes code, and never invokes another skill.
+disable-model-invocation: true
 ---
 
 # Triage an issue
@@ -8,15 +9,23 @@ description: Plan one issue, or re-plan one whose plan got feedback. Invoked by 
 You have been pointed at **one** issue. Size it, plan it at a depth that
 matches its size, and give it the right status. Then stop.
 
-The whole lifecycle is in `CLAUDE.md`; this skill is the first of its three
-phases. `/implement` and `/review-pr` are the other two. **Never invoke
-them** — a human decides when a phase begins, and that is the point of having
-three separate skills.
+This is the first of the three **unattended** phases; `/implement` and
+`/review-pr` are the other two. **Never invoke them** — a human decides when
+a phase begins, and that is the point of having three separate skills. This
+one exists to make an agent stop where a human would otherwise have
+interrupted it.
 
-This is the **unattended** path. When a human is in the session with you, none
-of this applies — follow the walk in `CLAUDE.md` directly, take approval in
-conversation, and do not invoke this skill. It exists to make an agent stop
-where a human would otherwise have interrupted it.
+Everything this skill leans on that is not written here — the seven
+`status:*` labels, the `planning → ready` human gate, `scripts/status.sh`,
+the worktree and branch convention, the PR conventions — is in
+`.claude/rules/github.md`. Read it first.
+
+You are here because something typed `/triage <n>`. That is the only way in: this
+skill is `disable-model-invocation: true` and never fires on its own, on a
+task that merely resembles its description, or at another skill's request.
+**An ordinary session with a human in it does none of this** — it follows
+`CLAUDE.md` and takes approval in conversation. If that is your situation,
+you should not be reading this.
 
 ## Hard limits
 
@@ -31,8 +40,8 @@ where a human would otherwise have interrupted it.
   A new request that arrives mid-task is scope creep onto _this_ issue, and
   the plan gets updated rather than split.
 - **Never set `status:ready` on Track B or C.** `planning → ready` is a human
-  approval gate (`CLAUDE.md`). Track A self-approves because there was no
-  architectural decision to approve; B and C stop and wait.
+  approval gate (`.claude/rules/github.md`). Track A self-approves because
+  there was no architectural decision to approve; B and C stop and wait.
 
 ## 1. Read the issue, then read enough to plan it
 

@@ -3,8 +3,8 @@
 Deliberately thin. It carries what must be in context for _every_ change;
 everything directory-specific lives in `.claude/rules/`, which loads only
 when you touch matching files. Read `docs/STATE.md` first, then
-`docs/ARCHITECTURE.md`. What is being _worked on_ is not in `docs/` at all —
-it is on the GitHub issue (see "Task lifecycle" below).
+`docs/ARCHITECTURE.md`. Both describe what exists; what is being _worked on_
+is not in `docs/` at all.
 
 ## What this is
 
@@ -103,8 +103,7 @@ error messages name the rule file.
 `docs/SCHEMA.md`, `docs/API.md`, `docs/TEMPLATE_TOKENS.md` are authoritative.
 Code must match them; a disagreement is a bug in one of them to be fixed
 deliberately, not papered over. Update the contract in the same commit as
-the code. If an issue's approved plan declares a contract frozen, propose
-the change in a comment on that issue — don't edit.
+the code.
 
 ## How to work here
 
@@ -124,146 +123,56 @@ the change in a comment on that issue — don't edit.
   no test framework, no assertion library, no state manager, and the LaTeX
   sidecar has zero runtime deps. That is deliberate.
 - **`docs/` describes the present tense.** It says what exists, never what
-  is planned or in flight — that lives on the issue. A merged change updates
-  `docs/STATE.md` only where it changed what is true, not to record that it
-  happened; the issue and the PR are the record of that.
+  is planned or in flight. A change updates `docs/STATE.md` only where it
+  changed what is true, not to record that it happened — git is the record
+  of that.
 
-## Task lifecycle
+## Two ways to work here
 
-**Every piece of work a person asks for is one GitHub issue.** A feature, a
-bug, a refactor, a docs pass — if a human requested it, it gets an issue
-before it gets a branch. The issue's `status:*` label is the _only_ record of
-task state. Nothing in `docs/` tracks progress; if you find yourself typing
-"in progress" into a markdown file, you are in the wrong system.
+**In a session with a human.** The default, and almost certainly you. Work
+the way you normally would: understand the request, branch, build it, get
+`npm run verify` green, commit. Approval happens in conversation — "go
+ahead" is the whole gate.
 
-**An issue represents a human-requested behaviour, so agents never open one
-unprompted.** A human asking for one is the gate — "make a separate issue for
-this" means file it, and so does an issue carrying the `epic` label, whose
-children an agent creates as sub-issues while planning it. Absent that, no.
-If you notice a bug while doing something else, or think of work worth doing,
-say so in your reply — do not open an issue for it. The list is the human's
-inbox, and an agent that files its own work item has quietly promoted its own
-idea to a commitment nobody made.
+There is no ceremony to perform. No issue to file, no label to move, no plan
+to post and wait on. If a GitHub issue already exists and the human named
+it, reference it in the commit body; if one does not, **do not create one** —
+the issue list is the human's inbox, and an agent that files its own work
+item has quietly promoted its own idea to a commitment nobody made. Say it
+in your reply instead.
 
-**A new request mid-task is scope creep onto the issue you are already on.**
-That is the default and it is fine — assume it unless the human says
-otherwise. Do not split work into a second issue on your own initiative; if
-you think it genuinely belongs apart, say why and let them decide. When the
-new request changes what was planned, update the plan in the issue body so the
-issue still describes what is actually being built.
+**Unattended, through the skills.** `.claude/skills/` holds three —
+`/triage`, `/implement`, `/review-pr` — that carry a GitHub issue from
+backlog to open PR with nobody watching, and `scripts/herd.sh` starts one
+agent per open issue on the skill its `status:*` label calls for. They are
+deliberately heavy with ceremony, because the only thing that matters when
+no one is watching is an agent that **stops** where a human would otherwise
+have interrupted it.
 
-| label                | means                                           | set by    |
-| -------------------- | ----------------------------------------------- | --------- |
-| `status:backlog`     | filed, nobody has triaged it                    | automatic |
-| `status:planning`    | an agent is writing the approach into the issue | agent     |
-| `status:ready`       | the plan is approved; **no agent has it yet**   | **human** |
-| `status:in-progress` | an agent has claimed it and is working          | agent     |
-| `status:in-review`   | PR is open and not a draft                      | automatic |
-| `status:blocked`     | an agent needs a decision only a human can make | agent     |
-| `status:done`        | PR merged, issue closed                         | automatic |
+**That is not this.** Those rules live in the skill files and in
+`.claude/rules/github.md`, deliberately out of here, so an attended session
+never pays for them in context. Each skill is
+`disable-model-invocation: true` and fires only when something types
+`/triage 12` — never on its own, and never at another skill's request.
 
-An issue wears **exactly one** of these. Set it with `scripts/status.sh`,
-never with `gh issue edit` — the script is what strips the old label, and it
-is the only reason an issue cannot end up in two states at once.
+## Branches and worktrees
 
-"Automatic" is `.github/workflows/status.yml` reacting to issue and PR events.
-Never hand-set `status:in-review` or `status:done` — open or merge the PR and
-let the workflow do it, so the status cannot disagree with git.
+**Never commit to `main`.** Branch `feat/<slug>`, `fix/<slug>` or
+`chore/<slug>`.
 
-### Two ways work arrives
+Several agents share this checkout and "nobody else is touching this" is
+never safe to assume. Two `next dev`/`next build` processes in one checkout
+corrupt `.next` — it surfaces as `ENOENT .next/routes-manifest.json` or
+`PageNotFoundError: Cannot find module for page: /api/...` and random e2e
+failures, and it is never a real regression (`rm -rf .next` and re-run). So
+if another agent is live, take a worktree:
 
-**In a session with a human.** The default, and almost always what you are
-doing. Someone is right there, so the ceremony collapses:
+```bash
+git worktree add ../resumix-wt/<slug> -b <type>/<slug> origin/main
+ln -s /Users/chrispyle/resumix/node_modules ../resumix-wt/<slug>/node_modules
+ln -sfn /Users/chrispyle/resumix/.env ../resumix-wt/<slug>/.env
+```
 
-- **Approval happens in conversation.** "Go ahead" _is_ the gate. Never make a
-  human open GitHub to move a label that they have already approved out loud.
-  Set the labels yourself as you pass through them, so the issue still tells
-  the truth to anyone reading it later.
-- **One issue, carried along as you go.** New requests extend it.
-- **Do not invoke the skills below.** Have an issue if there is one, then
-  worktree, branch, build, gate, PR — and move the label at each step.
-
-The human gate is not deleted here, it is _relocated_: it still takes a person
-to approve a plan, but that person is in the room and can say so directly.
-
-**Unattended, through the skills.** When no one is watching, the label _is_ the
-conversation, and the gate has to be a real stop. That is what the three skills
-below are for.
-
-### planning → ready is a human gate
-
-No agent may decide its own plan is approved. You set `status:planning`, write
-the plan into the issue, and **stop there** until a human approves it.
-
-What differs between the two paths above is only _how the approval arrives_.
-Unattended, it is a human swapping the label for `status:ready`, and there is
-nothing else it could be. In a session, it is the human saying "go ahead" —
-equally an approval, and you then set the label yourself to record that it
-happened. What is forbidden either way is moving past `planning` on your own
-judgement, with nobody having agreed to anything.
-
-`ready` and `in-progress` are deliberately separate, because "approved" and
-"someone is on it" are different facts and the tracker is useless if it cannot
-tell them apart. `ready` is a queue of work that has been blessed and is
-waiting for an agent. Moving `ready → in-progress` is how an agent **claims**
-the issue — do it before writing code, not after, so a second agent reading the
-issue list can see the work is taken.
-
-So: `planning` is waiting on a human. `ready` is waiting on an agent.
-`in-progress` means an agent already has it — including an agent reworking an
-open PR after review, which is the same activity and keeps the same label.
-
-### Three skills, for the unattended path
-
-Each phase has a skill in `.claude/skills/`, invoked by hand, for work running
-without a human in the loop. **In an ordinary session, ignore them** and follow
-the walk directly — they exist to make an unattended agent stop where a human
-would otherwise have interrupted it.
-
-| skill             | phase                         | ends at                                          |
-| ----------------- | ----------------------------- | ------------------------------------------------ |
-| `/triage <n>`     | size the issue and plan it    | `status:ready`, or `status:planning` for a human |
-| `/implement <n>`  | build it and open the PR      | a PR, never a merge                              |
-| `/review-pr <pr>` | answer review until mergeable | green and answered, never a merge                |
-
-**They never invoke each other.** A phase boundary is a human decision, and
-three separate invocations is what keeps it one.
-
-### The walk
-
-1. **Have an issue.** `gh issue view <n>`. If the request arrived as a
-   conversation and there is no issue for it, ask whether to file one rather
-   than filing it — then carry that single issue through every step below.
-2. **Plan in the open.** `/triage <n>` — it sizes the issue and writes the
-   plan into the **issue body**, fenced by `<!-- resumix:plan -->`, below
-   whatever the human wrote. The body rather than a comment, so a re-plan
-   replaces the old one instead of burying it. That plan is the thing being
-   approved — it is written for a reader who has not seen the code.
-3. **Claim it**, once a human has set `status:ready`: `/implement <n>` sets
-   `status:in-progress` and worktrees and branches as below. Small imperative
-   commits; reference the issue in the body, not the subject, so
-   `git log --oneline` stays readable.
-4. **Open the PR** into `main` with `Closes #<n>` in the body. That link is
-   what closes the issue on merge and what drives the label. Open it as a
-   draft if it is not ready; marking it ready is what sets `status:in-review`.
-5. **Survive review.** `/review-pr <pr>` answers every comment and gets the
-   gate green again. Changes requested sets `status:in-progress` on its own —
-   reworking a PR is still an agent working the issue.
-6. **Merge.** The workflow closes the issue and sets `status:done`. Nothing
-   to do by hand.
-
-If you hit something only the human can answer, `scripts/status.sh set <n>
-blocked`, comment with the precise question, and stop. A blocked issue is
-information; a guess that got merged is a bug.
-
-### Branches and worktrees
-
-One issue = one agent = one worktree = one branch. Branch
-`feat/<issue-number>-<slug>` (or `fix/`, `chore/` — match the issue's
-type label), worktree at
-`../resumix-wt/<issue-number>/`, outside the repo and never committed.
-`node_modules` is symlinked in from the main checkout — don't run
-`npm install` in a worktree unless you mean to replace that symlink.
-
-The `gh` detail, and the token the agent credential needs, are in
-`.claude/rules/github.md`.
+Worktrees live at `../resumix-wt/`, outside the repo and never committed.
+`node_modules` and `.env` are symlinked in — don't run `npm install` in a
+worktree unless you mean to replace that symlink.
