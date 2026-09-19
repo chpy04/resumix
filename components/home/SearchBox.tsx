@@ -1,20 +1,19 @@
 'use client';
 
-import { forwardRef } from 'react';
+import type { Ref } from 'react';
 
 interface SearchBoxProps {
   value: string;
   onChange: (value: string) => void;
+  /** Owned by the parent, which wires up the `/` and cmd+k focus shortcuts. */
+  ref?: Ref<HTMLInputElement>;
 }
 
 /**
  * Fuzzy-search input for the resume grid. The keyboard shortcuts that focus
  * this (`/` and cmd+k) are wired up by the parent, which owns the ref.
  */
-const SearchBox = forwardRef<HTMLInputElement, SearchBoxProps>(function SearchBox(
-  { value, onChange },
-  ref,
-) {
+export default function SearchBox({ value, onChange, ref }: SearchBoxProps) {
   return (
     <div className="relative w-full max-w-sm">
       <svg
@@ -40,6 +39,4 @@ const SearchBox = forwardRef<HTMLInputElement, SearchBoxProps>(function SearchBo
       </kbd>
     </div>
   );
-});
-
-export default SearchBox;
+}

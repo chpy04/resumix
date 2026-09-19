@@ -171,7 +171,7 @@ export default function PreviewPane({
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
               multiPage
-                ? 'border border-amber-700/60 bg-amber-950/40 text-amber-300'
+                ? 'border border-warning-line-strong/60 bg-warning-surface/40 text-warning-ink'
                 : 'border border-line text-ink-dim'
             }`}
             title={multiPage ? 'This resume is spilling past one page' : 'Page count'}
@@ -204,7 +204,7 @@ export default function PreviewPane({
       ) : null}
 
       {warnings.length > 0 ? (
-        <div className="max-h-24 shrink-0 overflow-auto rounded-md border border-amber-800/50 bg-amber-950/20 p-2 text-xs text-amber-300">
+        <div className="max-h-24 shrink-0 overflow-auto rounded-md border border-warning-line/50 bg-warning-surface/20 p-2 text-xs text-warning-ink">
           <ul className="list-disc space-y-0.5 pl-4">
             {warnings.map((message, index) => (
               <li key={index} className="break-words">

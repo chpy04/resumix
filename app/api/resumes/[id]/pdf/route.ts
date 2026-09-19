@@ -1,4 +1,4 @@
-import { compileTex, LatexServiceError } from '@/lib/latex';
+import { compileTex, latexUnavailableResult, LatexServiceError } from '@/lib/latex';
 import { errorResponse, type RouteContext, withApiErrors } from '@/lib/http';
 import { buildResumeFilename, sanitizeForHeader } from '@/lib/filename';
 import { NotFoundError } from '@/lib/queries/errors';
@@ -28,7 +28,7 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
       compiled = await compileTex(tex);
     } catch (err) {
       if (err instanceof LatexServiceError) {
-        return Response.json({ ok: false, pages: null, errors: [err.message], warnings, log: '' });
+        return Response.json(latexUnavailableResult(err, warnings));
       }
       throw err;
     }
