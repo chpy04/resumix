@@ -17,6 +17,7 @@ let deleteResumeRow: typeof import('./test-fixtures.ts').deleteResumeRow;
 let getDefaultResumeRow: typeof import('./test-fixtures.ts').getDefaultResumeRow;
 let insertExperience: typeof import('./test-fixtures.ts').insertExperience;
 let insertExperienceBullet: typeof import('./test-fixtures.ts').insertExperienceBullet;
+let seedUserId: typeof import('./test-fixtures.ts').seedUserId;
 let testTag: typeof import('./test-fixtures.ts').testTag;
 let closeTestDb: typeof import('./test-fixtures.ts').closeTestDb;
 
@@ -29,6 +30,7 @@ if (!skip) {
     getDefaultResumeRow,
     insertExperience,
     insertExperienceBullet,
+    seedUserId,
     testTag,
     closeTestDb,
   } = await import('./test-fixtures.ts'));
@@ -39,20 +41,21 @@ after(async () => {
 });
 
 test('createResume clones the default resume\'s template and selections', { skip }, async () => {
+  const userId = await seedUserId();
   const tag = testTag();
-  const defaultResume = await getDefaultResumeRow();
-  const exp = await insertExperience(tag);
+  const defaultResume = await getDefaultResumeRow(userId);
+  const exp = await insertExperience(userId, tag);
 
   // Select the new experience onto the *default* resume so we have
   // something distinctive to check got copied, then restore afterward.
   const originalDefaultSelections = await getSelections(defaultResume.id);
-  await replaceSelections(defaultResume.id, {
+  await replaceSelections(userId, defaultResume.id, {
     experiences: [...originalDefaultSelections.experiences, exp.id],
   });
 
   let clone;
   try {
-    clone = await createResume(`T6 Clone Test ${tag}`);
+    clone = await createResume(userId, `T6 Clone Test ${tag}`);
     assert.equal(clone.templateId, defaultResume.templateId);
     assert.equal(clone.isDefault, false);
 
@@ -69,33 +72,36 @@ test('createResume clones the default resume\'s template and selections', { skip
   } finally {
     if (clone) await deleteResumeRow(clone.id);
     // Restore the default resume's selections to their pre-test state.
-    await replaceSelections(defaultResume.id, { experiences: originalDefaultSelections.experiences });
+    await replaceSelections(userId, defaultResume.id, { experiences: originalDefaultSelections.experiences });
   }
 });
 
 test('deleteResume rejects the default resume with BadRequestError', { skip }, async () => {
-  const defaultResume = await getDefaultResumeRow();
-  await assert.rejects(() => deleteResume(defaultResume.id), BadRequestError);
+  const userId = await seedUserId();
+  const defaultResume = await getDefaultResumeRow(userId);
+  await assert.rejects(() => deleteResume(userId, defaultResume.id), BadRequestError);
   // It must still be there.
-  const stillThere = await getResumeRow(defaultResume.id);
+  const stillThere = await getResumeRow(userId, defaultResume.id);
   assert.ok(stillThere);
 });
 
 test('deleteResume removes a non-default resume', { skip }, async () => {
+  const userId = await seedUserId();
   const tag = testTag();
-  const clone = await createResume(`T6 Delete Test ${tag}`);
-  await deleteResume(clone.id);
-  const gone = await getResumeRow(clone.id);
+  const clone = await createResume(userId, `T6 Delete Test ${tag}`);
+  await deleteResume(userId, clone.id);
+  const gone = await getResumeRow(userId, clone.id);
   assert.equal(gone, null);
 });
 
 test('getResumeDetail includes archived library content (the UI filters it, not the API)', { skip }, async () => {
+  const userId = await seedUserId();
   const tag = testTag();
-  const archivedExp = await insertExperience(tag, { isArchived: true });
+  const archivedExp = await insertExperience(userId, tag, { isArchived: true });
   await insertExperienceBullet(archivedExp.id, 'Archived bullet', true);
 
-  const defaultResume = await getDefaultResumeRow();
-  const detail = await getResumeDetail(defaultResume.id);
+  const defaultResume = await getDefaultResumeRow(userId);
+  const detail = await getResumeDetail(userId, defaultResume.id);
   assert.ok(detail);
   const found = detail!.library.experiences.find((e) => e.id === archivedExp.id);
   assert.ok(found, 'archived experience must still be present in the library payload');
@@ -103,6 +109,7 @@ test('getResumeDetail includes archived library content (the UI filters it, not 
 });
 
 test('getResumeDetail returns null for a nonexistent resume', { skip }, async () => {
-  const detail = await getResumeDetail('00000000-0000-0000-0000-000000000000');
+  const userId = await seedUserId();
+  const detail = await getResumeDetail(userId, '00000000-0000-0000-0000-000000000000');
   assert.equal(detail, null);
 });

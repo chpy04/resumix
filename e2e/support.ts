@@ -7,12 +7,26 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export const PASSWORD = 'e2e-password';
 
-/** Logs in if the password gate is showing; no-op if already authenticated
- *  (a fresh `page` in a fresh context always needs this once). */
+/**
+ * Logs in if the password gate is showing; no-op if already authenticated.
+ *
+ * `AuthGate` renders nothing at all until `GET /api/session` answers, so the
+ * password field appears a network round trip *after* navigation — sampling
+ * `isVisible()` straight away would race it and silently skip the login. We
+ * wait for the field instead, and treat a timeout as "already authenticated",
+ * which is also what happens under `RESUMIX_AUTH_MODE=dev`, where there is
+ * no login screen at all.
+ */
 export async function login(page: Page): Promise<void> {
   await page.goto('/');
   const field = page.getByPlaceholder('Password');
-  if (await field.isVisible().catch(() => false)) {
+
+  const gateShowing = await field
+    .waitFor({ state: 'visible', timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (gateShowing) {
     await field.fill(PASSWORD);
     await page.keyboard.press('Enter');
     await expect(field).toBeHidden();
@@ -49,10 +63,9 @@ export async function waitForSaved(page: Page): Promise<void> {
 // Every mutation a test cares about proving still goes through the real UI.
 // ---------------------------------------------------------------------------
 
-async function getAuthToken(page: Page): Promise<string> {
-  const token = await page.evaluate(() => window.localStorage.getItem('resumix.token'));
-  if (!token) throw new Error('no auth token in localStorage — call login(page) first');
-  return token;
+/** The stored token, or null in `dev` auth mode where there isn't one. */
+async function getAuthToken(page: Page): Promise<string | null> {
+  return page.evaluate(() => window.localStorage.getItem('resumix.token'));
 }
 
 interface ApiResult<T> {
@@ -68,9 +81,12 @@ async function apiRequest<T>(
   const token = await getAuthToken(page);
   const result = await page.evaluate(
     async ({ path, method, body, token }) => {
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      // Absent in dev auth mode; the server resolves the session itself.
+      if (token) headers['x-resumix-token'] = token;
       const res = await fetch(path, {
         method: method ?? 'GET',
-        headers: { 'content-type': 'application/json', 'x-resumix-token': token },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const text = await res.text();
