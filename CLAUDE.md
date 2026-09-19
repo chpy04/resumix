@@ -181,26 +181,39 @@ So: `planning` is waiting on a human. `ready` is waiting on an agent.
 `in-progress` means an agent already has it — including an agent reworking an
 open PR after review, which is the same activity and keeps the same label.
 
+### Three skills, invoked by hand
+
+Each phase has a skill in `.claude/skills/`, and a human invokes each one:
+
+| skill             | phase                         | ends at                                          |
+| ----------------- | ----------------------------- | ------------------------------------------------ |
+| `/triage <n>`     | size the issue and plan it    | `status:ready`, or `status:planning` for a human |
+| `/implement <n>`  | build it and open the PR      | a PR, never a merge                              |
+| `/review-pr <pr>` | answer review until mergeable | green and answered, never a merge                |
+
+**They never invoke each other.** A phase boundary is a human decision, and
+three separate invocations is what keeps it one.
+
 ### The walk
 
 1. **Have an issue.** `gh issue view <n>`. If the request arrived as a
    conversation and there is no issue for it, stop and ask the human to file
    one — do not file it yourself.
-2. **Plan in the open.** `scripts/status.sh set <n> planning`, then post the
-   approach as an issue comment: what you will change, which files, what
-   could break, what you are deliberately leaving out. Then stop and hand
-   back. This comment is the thing being approved — write it for a reader
-   who has not seen the code.
-3. **Claim it**, once a human has set `status:ready`:
-   `scripts/status.sh set <n> in-progress`. Then worktree and branch below.
-   Small imperative commits; reference the issue in the body, not the
-   subject, so `git log --oneline` stays readable.
+2. **Plan in the open.** `/triage <n>` — it sizes the issue and writes the
+   plan into the **issue body**, fenced by `<!-- resumix:plan -->`, below
+   whatever the human wrote. The body rather than a comment, so a re-plan
+   replaces the old one instead of burying it. That plan is the thing being
+   approved — it is written for a reader who has not seen the code.
+3. **Claim it**, once a human has set `status:ready`: `/implement <n>` sets
+   `status:in-progress` and worktrees and branches as below. Small imperative
+   commits; reference the issue in the body, not the subject, so
+   `git log --oneline` stays readable.
 4. **Open the PR** into `main` with `Closes #<n>` in the body. That link is
    what closes the issue on merge and what drives the label. Open it as a
    draft if it is not ready; marking it ready is what sets `status:in-review`.
-5. **Survive review.** Changes requested sets `status:in-progress` again on
-   its own — reworking a PR is still an agent working the issue. Push fixes
-   to the same branch.
+5. **Survive review.** `/review-pr <pr>` answers every comment and gets the
+   gate green again. Changes requested sets `status:in-progress` on its own —
+   reworking a PR is still an agent working the issue.
 6. **Merge.** The workflow closes the issue and sets `status:done`. Nothing
    to do by hand.
 

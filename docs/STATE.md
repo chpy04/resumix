@@ -2,7 +2,8 @@
 
 What exists right now. This file describes the system as it stands — it is not
 a changelog and not a plan. What is being _worked on_ lives on the GitHub
-board; what was _decided_ and why lives in `docs/DECISIONS.md`; what changed
+issue and its `status:*` label; what was _decided_ and why lives in
+`docs/DECISIONS.md`; what changed
 and when lives in the git log.
 
 **Read this first** when picking the project up cold, then

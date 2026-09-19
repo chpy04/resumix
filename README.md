@@ -134,6 +134,65 @@ and a 1-page PDF. This is the project's acceptance bar (see
 already in your shell environment otherwise — so they work the same way
 locally and in CI/production where env vars are injected directly.
 
+## How work gets done here
+
+This repo is maintained largely by AI agents, and the process is part of the
+repo rather than a convention someone remembers. Every piece of work a **human**
+asks for is one GitHub issue — agents never file their own — and that issue's
+`status:*` label is the only record of where it stands.
+
+Three skills in `.claude/skills/` each drive one phase, and a human invokes
+each by hand. They never call each other, so every phase boundary is a
+deliberate decision rather than a runaway chain.
+
+```mermaid
+flowchart TD
+    H([human files an issue]) --> B
+
+    B["status:backlog"]:::state
+    B -->|"/triage"| T{"epic label?"}
+
+    T -->|yes| C["Track C — epic<br/>requirements + diagram<br/>sub-issues into backlog"]:::work
+    T -->|no| S{"how big?"}
+
+    S -->|"small, obvious"| A["Track A<br/>five-line plan"]:::work
+    S -->|"feature"| F["Track B<br/>plan + Excalidraw diagram"]:::work
+
+    A -->|self-approved| R
+    C --> P
+    F --> P
+
+    P["status:planning"]:::state
+    P -->|"human approves"| R
+
+    R["status:ready"]:::state
+    R -->|"/implement"| I
+
+    I["status:in-progress<br/><i>worktree + branch</i>"]:::state
+    I -->|"npm run verify green,<br/>PR opened"| V
+
+    V["status:in-review"]:::state
+    V -->|"/review-pr"| RV{"all comments<br/>answered?"}
+
+    RV -->|"changes requested"| I
+    RV -->|"green + answered"| M([human merges])
+
+    M --> D["status:done"]:::state
+
+    classDef state fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b
+    classDef work fill:#f0fdf4,stroke:#16a34a,color:#052e16
+```
+
+Two transitions are deliberately **not** automated. A human moves
+`planning → ready` — that move _is_ the approval, and it is the one an agent
+may never make itself. And a human presses merge. Everything else is either an
+agent setting a label through `scripts/status.sh`, or
+`.github/workflows/status.yml` reacting to a PR event.
+
+`ready` and `in-progress` look redundant and are not: `ready` means the plan
+is approved, `in-progress` means an agent has actually claimed it. Keeping them
+apart is what makes a queue of approved-but-unstarted work visible.
+
 ## Project layout
 
 ```
@@ -141,15 +200,16 @@ app/                     Next.js App Router (pages + app/api/** route handlers)
 lib/                     db schema/client, render engine, auth, queries, storage
 components/              React components
 drizzle/                 numbered .sql migrations
-scripts/                 migrate.ts, seed.ts, smoke.ts
+scripts/                 migrate.ts, seed.ts, smoke.ts, status.sh
 services/latex/          the pdflatex sidecar (Dockerfile + server.js)
 e2e/                     Playwright specs
 docs/                    architecture, contracts, decisions, deployment — see below
+.claude/skills/          triage, implement, review-pr — the lifecycle above
 ```
 
 ## Where to go next
 
-- [docs/STATE.md](docs/STATE.md) — what's built, what's in flight
+- [docs/STATE.md](docs/STATE.md) — what's built
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, repo layout, the smoke test
 - [docs/SCHEMA.md](docs/SCHEMA.md), [docs/API.md](docs/API.md), [docs/TEMPLATE_TOKENS.md](docs/TEMPLATE_TOKENS.md) — frozen contracts
 - [docs/DECISIONS.md](docs/DECISIONS.md) — why things are the way they are

@@ -8,7 +8,7 @@ paths: 'docs/**'
 
 Everything here describes **what exists right now**. Not what is planned, not
 what is in flight, not what a past task did — that all lives on the GitHub
-board (see the task lifecycle in `CLAUDE.md`). A sentence in `docs/` that
+issue (see the task lifecycle in `CLAUDE.md`). A sentence in `docs/` that
 would need rewording the moment a PR merges is a sentence that belongs in an
 issue instead.
 
