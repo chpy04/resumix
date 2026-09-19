@@ -7,6 +7,7 @@ const skip = !process.env.DATABASE_URL;
 // throws at import time otherwise, which would fail this whole file even
 // though every test below is marked `{ skip }`.
 let assembleLibrary: typeof import('./library.ts').assembleLibrary;
+let updateExperienceBullet: typeof import('./experience-bullets.ts').updateExperienceBullet;
 let insertExperience: typeof import('./test-fixtures.ts').insertExperience;
 let insertExperienceBullet: typeof import('./test-fixtures.ts').insertExperienceBullet;
 let seedUserId: typeof import('./test-fixtures.ts').seedUserId;
@@ -15,6 +16,7 @@ let closeTestDb: typeof import('./test-fixtures.ts').closeTestDb;
 
 if (!skip) {
   ({ assembleLibrary } = await import('./library.ts'));
+  ({ updateExperienceBullet } = await import('./experience-bullets.ts'));
   ({ insertExperience, insertExperienceBullet, seedUserId, testTag, closeTestDb } = await import(
     './test-fixtures.ts'
   ));
@@ -92,5 +94,42 @@ test(
     assert.ok(foundWith);
     const idsWith = foundWith!.bullets.map((b) => b.id).sort();
     assert.deepEqual(idsWith, [archivedBullet.id, keptBullet.id].sort());
+  },
+);
+
+test(
+  'assembleLibrary breaks a created_at tie on id, and editing a bullet does not reshuffle it',
+  { skip },
+  async () => {
+    const userId = await seedUserId();
+    const tag = testTag();
+    const parent = await insertExperience(userId, tag);
+
+    // One shared timestamp across all six, which is what the seed produces:
+    // `created_at` defaults to `now()`, and `now()` is transaction-start time.
+    // Without a tiebreaker this is a total tie and the scan order is the
+    // planner's business (D-030).
+    const tied = new Date('2020-01-01T00:00:00.000Z');
+    const inserted = [];
+    for (const n of ['one', 'two', 'three', 'four', 'five', 'six']) {
+      inserted.push(await insertExperienceBullet(parent.id, `${tag} ${n}`, false, tied));
+    }
+    const expected = inserted.map((b) => b.id).sort();
+
+    const bulletOrder = async (): Promise<string[]> => {
+      const library = await assembleLibrary(userId, true);
+      const found = library.experiences.find((e) => e.id === parent.id);
+      assert.ok(found, 'the test experience must be in the library');
+      return found.bullets.map((b) => b.id);
+    };
+
+    assert.deepEqual(await bulletOrder(), expected, 'a created_at tie must be broken by id');
+
+    // An UPDATE writes a new heap tuple, which is what used to move the row:
+    // this is the exact sequence that made three e2e tests fail in CI while
+    // passing locally.
+    await updateExperienceBullet(userId, inserted[2]!.id, { content: `${tag} edited` });
+
+    assert.deepEqual(await bulletOrder(), expected, 'editing a bullet must not move it');
   },
 );

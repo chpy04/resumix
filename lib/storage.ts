@@ -55,7 +55,9 @@ export async function getLatestResumePdfSnapshot(resumeId: string): Promise<PdfS
     })
     .from(resumePdf)
     .where(eq(resumePdf.resumeId, resumeId))
-    .orderBy(desc(resumePdf.createdAt))
+    // The id breaks ties; two saves in one transaction would share a
+    // created_at, and "latest" must never be a coin flip (D-030).
+    .orderBy(desc(resumePdf.createdAt), desc(resumePdf.id))
     .limit(1);
 
   if (!row) return null;
@@ -82,7 +84,9 @@ export async function getLatestResumePdfMetaByResumeId(
     })
     .from(resumePdf)
     .where(inArray(resumePdf.resumeId, resumeIds))
-    .orderBy(resumePdf.resumeId, desc(resumePdf.createdAt));
+    // Tie-broken on id, as above (D-030). DISTINCT ON takes the first row
+    // per resume_id, so a tie here silently picks an arbitrary snapshot.
+    .orderBy(resumePdf.resumeId, desc(resumePdf.createdAt), desc(resumePdf.id));
 
   for (const row of rows) {
     result.set(row.resumeId, { filename: row.filename, createdAt: row.createdAt.toISOString() });

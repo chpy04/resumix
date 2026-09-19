@@ -39,7 +39,8 @@ export async function listResumeSummaries(userId: string): Promise<ResumeSummary
     .select()
     .from(resume)
     .where(eq(resume.userId, userId))
-    .orderBy(desc(resume.isDefault), desc(resume.createdAt));
+    // The id breaks ties; the first column is not unique (D-030).
+    .orderBy(desc(resume.isDefault), desc(resume.createdAt), desc(resume.id));
 
   const pdfMeta = await getLatestResumePdfMetaByResumeId(rows.map((r) => r.id));
 

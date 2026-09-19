@@ -44,7 +44,14 @@ async function listExperiencesWithBullets(
         ? eq(experience.userId, userId)
         : and(eq(experience.userId, userId), eq(experience.isArchived, false)),
     )
-    .orderBy(asc(experience.createdAt));
+    // `created_at` alone is not a total order, so it is not an order at all:
+    // `defaultNow()` is Postgres `now()`, which is *transaction*-start time,
+    // so every row written in one transaction shares a timestamp — the seed
+    // gives all five of an experience's bullets the same one. A tie lets the
+    // planner return them in whatever order the scan yields, and an UPDATE
+    // rewrites the heap tuple, so editing a bullet is exactly what reshuffles
+    // it. The `id` tiebreaker makes the result reproducible (D-030).
+    .orderBy(asc(experience.createdAt), asc(experience.id));
 
   const bulletRows = await db
     .select({
@@ -60,7 +67,8 @@ async function listExperiencesWithBullets(
         ? eq(experience.userId, userId)
         : and(eq(experience.userId, userId), eq(experienceBullet.isArchived, false)),
     )
-    .orderBy(asc(experienceBullet.createdAt));
+    // Tie-broken on id, as above (D-030).
+    .orderBy(asc(experienceBullet.createdAt), asc(experienceBullet.id));
 
   const byExperience = bulletsByParent(bulletRows);
 
@@ -87,7 +95,8 @@ async function listProjectsWithBullets(
         ? eq(project.userId, userId)
         : and(eq(project.userId, userId), eq(project.isArchived, false)),
     )
-    .orderBy(asc(project.createdAt));
+    // Tie-broken on id, as above (D-030).
+    .orderBy(asc(project.createdAt), asc(project.id));
 
   const bulletRows = await db
     .select({
@@ -103,7 +112,8 @@ async function listProjectsWithBullets(
         ? eq(project.userId, userId)
         : and(eq(project.userId, userId), eq(projectBullet.isArchived, false)),
     )
-    .orderBy(asc(projectBullet.createdAt));
+    // Tie-broken on id, as above (D-030).
+    .orderBy(asc(projectBullet.createdAt), asc(projectBullet.id));
 
   const byProject = bulletsByParent(bulletRows);
 
@@ -129,7 +139,8 @@ async function listSkillRowsWithSkills(
         ? eq(technicalSkillRow.userId, userId)
         : and(eq(technicalSkillRow.userId, userId), eq(technicalSkillRow.isArchived, false)),
     )
-    .orderBy(asc(technicalSkillRow.createdAt));
+    // Tie-broken on id, as above (D-030).
+    .orderBy(asc(technicalSkillRow.createdAt), asc(technicalSkillRow.id));
 
   const skillRows = await db
     .select({
@@ -145,7 +156,8 @@ async function listSkillRowsWithSkills(
         ? eq(technicalSkillRow.userId, userId)
         : and(eq(technicalSkillRow.userId, userId), eq(technicalSkill.isArchived, false)),
     )
-    .orderBy(asc(technicalSkill.createdAt));
+    // Tie-broken on id, as above (D-030).
+    .orderBy(asc(technicalSkill.createdAt), asc(technicalSkill.id));
 
   const bySkillRow = bulletsByParent(skillRows);
 
