@@ -46,3 +46,7 @@ later template/content edits do not retroactively change an already-saved resume
 - Deployment (Vercel + Fly.io + Supabase) is documented but not executed — T11.
 - No multi-template UI; the schema supports it, the UI assumes one default.
 - PDF storage is `bytea`; swap point is `lib/storage.ts` if it ever outgrows that.
+- **Serverless pooling (T11).** `lib/db/index.ts` calls `postgres(url)` with defaults. On
+  Vercel + Supabase's Supavisor *transaction* pooler this must become
+  `postgres(url, { max: 1, prepare: false })` — transaction pooling does not support
+  prepared statements. Harmless locally; a production footgun.
