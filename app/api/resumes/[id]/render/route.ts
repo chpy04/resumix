@@ -3,6 +3,7 @@ import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { renderResumeById } from '@/lib/queries/render';
 import { renderBodySchema } from '@/lib/validation';
 import type { RenderResult } from '@/lib/types';
+import { requireUserId } from '@/lib/session';
 
 /**
  * Preview only — never persists. `templateOverride` lets the Template tab
@@ -11,10 +12,11 @@ import type { RenderResult } from '@/lib/types';
  */
 export async function POST(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {
+    const userId = await requireUserId(request);
     const { id } = await params;
     const body = await parseJsonBody(request, renderBodySchema);
 
-    const { tex, warnings } = await renderResumeById(id, body.templateOverride);
+    const { tex, warnings } = await renderResumeById(userId, id, body.templateOverride);
 
     let compiled;
     try {

@@ -17,6 +17,7 @@ let insertExperience: typeof import('./test-fixtures.ts').insertExperience;
 let insertExperienceBullet: typeof import('./test-fixtures.ts').insertExperienceBullet;
 let insertProject: typeof import('./test-fixtures.ts').insertProject;
 let insertTestResume: typeof import('./test-fixtures.ts').insertTestResume;
+let seedUserId: typeof import('./test-fixtures.ts').seedUserId;
 let testTag: typeof import('./test-fixtures.ts').testTag;
 let closeTestDb: typeof import('./test-fixtures.ts').closeTestDb;
 
@@ -32,6 +33,7 @@ if (!skip) {
     insertExperienceBullet,
     insertProject,
     insertTestResume,
+    seedUserId,
     testTag,
     closeTestDb,
   } = await import('./test-fixtures.ts'));
@@ -42,8 +44,9 @@ after(async () => {
 });
 
 test('a freshly created resume has empty selections', { skip }, async () => {
+  const userId = await seedUserId();
   const tag = testTag();
-  const resume = await insertTestResume(tag);
+  const resume = await insertTestResume(userId, tag);
   try {
     const selections = await getSelections(resume.id);
     assert.deepEqual(selections, {
@@ -63,13 +66,14 @@ test(
   'replaceSelections sets sort_order = array index and getSelections round-trips it',
   { skip },
   async () => {
+    const userId = await seedUserId();
     const tag = testTag();
-    const resume = await insertTestResume(tag);
-    const a = await insertExperience(`${tag}-a`);
-    const b = await insertExperience(`${tag}-b`);
+    const resume = await insertTestResume(userId, tag);
+    const a = await insertExperience(userId, `${tag}-a`);
+    const b = await insertExperience(userId, `${tag}-b`);
     try {
       // Reversed relative to insertion order — sort_order must follow the array, not insertion.
-      await replaceSelections(resume.id, { experiences: [b.id, a.id] });
+      await replaceSelections(userId, resume.id, { experiences: [b.id, a.id] });
 
       const selections = await getSelections(resume.id);
       assert.deepEqual(selections.experiences, [b.id, a.id]);
@@ -83,12 +87,13 @@ test(
   'replaceSelections is idempotent — calling twice with the same array does not duplicate rows',
   { skip },
   async () => {
+    const userId = await seedUserId();
     const tag = testTag();
-    const resume = await insertTestResume(tag);
-    const a = await insertExperience(tag);
+    const resume = await insertTestResume(userId, tag);
+    const a = await insertExperience(userId, tag);
     try {
-      await replaceSelections(resume.id, { experiences: [a.id] });
-      await replaceSelections(resume.id, { experiences: [a.id] });
+      await replaceSelections(userId, resume.id, { experiences: [a.id] });
+      await replaceSelections(userId, resume.id, { experiences: [a.id] });
 
       const rows = await db
         .select()
@@ -102,13 +107,14 @@ test(
 );
 
 test('a slice absent from the patch is left untouched', { skip }, async () => {
+  const userId = await seedUserId();
   const tag = testTag();
-  const resume = await insertTestResume(tag);
-  const exp = await insertExperience(tag);
-  const proj = await insertProject(tag);
+  const resume = await insertTestResume(userId, tag);
+  const exp = await insertExperience(userId, tag);
+  const proj = await insertProject(userId, tag);
   try {
-    await replaceSelections(resume.id, { experiences: [exp.id] });
-    await replaceSelections(resume.id, { projects: [proj.id] });
+    await replaceSelections(userId, resume.id, { experiences: [exp.id] });
+    await replaceSelections(userId, resume.id, { projects: [proj.id] });
 
     const selections = await getSelections(resume.id);
     assert.deepEqual(
@@ -126,17 +132,18 @@ test(
   'an unknown id in one slice rejects the whole request with BadRequestError and rolls back the transaction',
   { skip },
   async () => {
+    const userId = await seedUserId();
     const tag = testTag();
-    const resume = await insertTestResume(tag);
-    const exp = await insertExperience(tag);
-    const proj = await insertProject(tag);
+    const resume = await insertTestResume(userId, tag);
+    const exp = await insertExperience(userId, tag);
+    const proj = await insertProject(userId, tag);
     try {
       // Seed a known-good baseline.
-      await replaceSelections(resume.id, { experiences: [exp.id] });
+      await replaceSelections(userId, resume.id, { experiences: [exp.id] });
 
       await assert.rejects(
         () =>
-          replaceSelections(resume.id, {
+          replaceSelections(userId, resume.id, {
             projects: [proj.id],
             skillRows: ['00000000-0000-0000-0000-000000000000'],
           }),
@@ -162,15 +169,16 @@ test(
   'experienceBullets rejects a bullet id nested under the wrong experience',
   { skip },
   async () => {
+    const userId = await seedUserId();
     const tag = testTag();
-    const resume = await insertTestResume(tag);
-    const expA = await insertExperience(`${tag}-a`);
-    const expB = await insertExperience(`${tag}-b`);
+    const resume = await insertTestResume(userId, tag);
+    const expA = await insertExperience(userId, `${tag}-a`);
+    const expB = await insertExperience(userId, `${tag}-b`);
     const bulletOfA = await insertExperienceBullet(expA.id, 'Did a thing');
     try {
       await assert.rejects(
         () =>
-          replaceSelections(resume.id, {
+          replaceSelections(userId, resume.id, {
             experienceBullets: { [expB.id]: [bulletOfA.id] },
           }),
         BadRequestError,
@@ -185,13 +193,14 @@ test(
   'experienceBullets orders bullets per-parent and round-trips through getSelections',
   { skip },
   async () => {
+    const userId = await seedUserId();
     const tag = testTag();
-    const resume = await insertTestResume(tag);
-    const exp = await insertExperience(tag);
+    const resume = await insertTestResume(userId, tag);
+    const exp = await insertExperience(userId, tag);
     const bulletA = await insertExperienceBullet(exp.id, 'First');
     const bulletB = await insertExperienceBullet(exp.id, 'Second');
     try {
-      await replaceSelections(resume.id, {
+      await replaceSelections(userId, resume.id, {
         experiences: [exp.id],
         experienceBullets: { [exp.id]: [bulletB.id, bulletA.id] },
       });
@@ -208,12 +217,15 @@ test(
   'replaceSelections on a nonexistent id rejects without writing any row',
   { skip },
   async () => {
+    const userId = await seedUserId();
     const tag = testTag();
-    const resume = await insertTestResume(tag);
+    const resume = await insertTestResume(userId, tag);
     try {
       await assert.rejects(
         () =>
-          replaceSelections(resume.id, { experiences: ['00000000-0000-0000-0000-000000000000'] }),
+          replaceSelections(userId, resume.id, {
+            experiences: ['00000000-0000-0000-0000-000000000000'],
+          }),
         BadRequestError,
       );
       const rows = await db

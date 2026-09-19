@@ -189,13 +189,15 @@ possible. Mitigate it in layers instead of pretending it's fully private:
 2. Set these environment variables (Project Settings → Environment Variables),
    for both **Production** and **Preview**:
 
-   | Variable            | Value                                                       | Notes                                             |
-   | ------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
-   | `DATABASE_URL`      | the Supabase **pooler** string from step 1, port **6543**   | not the direct :5432 string                       |
-   | `LATEX_SERVICE_URL` | `https://resumix-latex.fly.dev` (your Fly app's public URL) | see the Fly section above                         |
-   | `APP_PASSWORD`      | your chosen long password                                   | this gates the whole app                          |
-   | `AUTH_SECRET`       | a separate long random string                               | signs the auth token; do not reuse `APP_PASSWORD` |
-   | `PDF_NAME_PREFIX`   | e.g. `Chris_Pyle`                                           | filename prefix for downloaded PDFs               |
+   | Variable            | Value                                                       | Notes                                                                                                                                               |
+   | ------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `DATABASE_URL`      | the Supabase **pooler** string from step 1, port **6543**   | not the direct :5432 string                                                                                                                         |
+   | `LATEX_SERVICE_URL` | `https://resumix-latex.fly.dev` (your Fly app's public URL) | see the Fly section above                                                                                                                           |
+   | `RESUMIX_AUTH_MODE` | `password`                                                  | the default in production, but set it explicitly. **Never `dev`** — that disables the login screen entirely and signs everyone in as the first user |
+   | `OWNER_EMAIL`       | the email of the seeded user                                | which account the shared password logs in as; optional while there is exactly one user, required once there are more                                |
+   | `APP_PASSWORD`      | your chosen long password                                   | this gates the whole app                                                                                                                            |
+   | `AUTH_SECRET`       | a separate long random string                               | signs the auth token; do not reuse `APP_PASSWORD`                                                                                                   |
+   | `PDF_NAME_PREFIX`   | e.g. `Chris_Pyle`                                           | filename prefix for downloaded PDFs                                                                                                                 |
 
 3. Deploy. Vercel runs `npm run build` (or `next build` directly) — this
    should succeed even though `DATABASE_URL` for the _build_ environment may
@@ -214,6 +216,14 @@ possible. Mitigate it in layers instead of pretending it's fully private:
    scaled to zero and needs to cold-start), either raise `maxDuration` on the
    render/pdf routes or accept that the very first render after idle may need
    a retry.
+
+## A note on multi-user (T14)
+
+The database supports many users, but the only implemented login is the
+shared password, which cannot tell people apart — it signs in as one account
+(`OWNER_EMAIL`). **A deployment today is therefore effectively single-user**,
+running on multi-user foundations. Inviting anyone else means implementing
+Supabase OAuth first: `lib/auth-supabase.ts`, then `RESUMIX_AUTH_MODE=supabase`.
 
 ## Troubleshooting
 

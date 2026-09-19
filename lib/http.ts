@@ -4,7 +4,7 @@
  * status without ever leaking a raw stack trace (docs/API.md, "Errors").
  */
 import type { ZodType } from 'zod';
-import { BadRequestError, NotFoundError } from './queries/errors.ts';
+import { BadRequestError, NotFoundError, UnauthorizedError } from './queries/errors.ts';
 
 /**
  * Second argument Next hands every dynamic App Router handler. Declared once
@@ -39,14 +39,15 @@ export async function parseJsonBody<T>(request: Request, schema: ZodType<T>): Pr
 }
 
 /**
- * Wraps a route handler body: `BadRequestError` -> 400, `NotFoundError` ->
- * 404, anything else -> 500 with a generic message (logged server-side,
- * never returned to the client).
+ * Wraps a route handler body: `UnauthorizedError` -> 401, `BadRequestError`
+ * -> 400, `NotFoundError` -> 404, anything else -> 500 with a generic
+ * message (logged server-side, never returned to the client).
  */
 export async function withApiErrors(handler: () => Promise<Response>): Promise<Response> {
   try {
     return await handler();
   } catch (err) {
+    if (err instanceof UnauthorizedError) return errorResponse(err.message, 401);
     if (err instanceof BadRequestError) return errorResponse(err.message, 400);
     if (err instanceof NotFoundError) return errorResponse(err.message, 404);
     console.error(err);

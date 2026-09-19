@@ -29,6 +29,25 @@ Row types are derived at the use site with `typeof table.$inferSelect`. There
 is no separate library of exported `*Record` aliases — one existed, went
 entirely unused, and was deleted.
 
+## Every query takes a `userId`
+
+Ownership lives on the five root tables (`template`, `experience`,
+`project`, `technical_skill_row`, `resume`). Everything else — bullets,
+skills, bridge rows, PDF snapshots — has **no** `user_id` and inherits its
+owner through a join to its parent (D-018). One source of truth per fact: a
+`user_id` on a bullet could contradict its experience's.
+
+So every exported query takes `userId` as its first parameter and filters on
+it, directly or through that join. A missing filter is silent — the query
+still returns rows, just somebody else's. `lib/queries/isolation.test.ts`
+holds one case per way of addressing a row by id; add to it when you add a
+query.
+
+Bridge rows are the subtle path: they carry no owner at all, so
+`replaceSelections` re-checks every content id in the request body against
+the caller before writing. Skipping that check would let one user select
+another's experience onto their own resume.
+
 ## Errors
 
 Throw `NotFoundError` for a missing row and `BadRequestError` for a request

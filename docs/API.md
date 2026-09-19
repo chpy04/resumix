@@ -1,10 +1,34 @@
 # API contract
 
 All routes live under `app/api/**/route.ts`. All are server-side and require a
-valid auth token except `POST /api/auth`.
+session except `POST /api/auth`.
 
-**Auth header:** `x-resumix-token: <token>`. Middleware rejects with `401` otherwise.
-The browser keeps the token in `localStorage` under `resumix.token`.
+**Everything is scoped to the caller.** Every handler resolves a user via
+`requireUserId(request)` and passes that id to the query layer; there is no
+ambient "current user" and no query runs without one. An id belonging to
+somebody else is answered exactly as a nonexistent one — `404` for a lookup,
+`400 unknown ... id` for a reference — never `403`, which would confirm the
+id is real.
+
+## Auth modes
+
+Selected by `RESUMIX_AUTH_MODE`, defaulting to `dev` outside production and
+`password` in production (see `lib/auth-mode.ts`).
+
+| mode       | how the caller is identified                                                                     | when                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `dev`      | **no login at all** — the session is the first row in `users`, the one `npm run db:seed` creates | local development                                                           |
+| `password` | shared `APP_PASSWORD` → HMAC token naming one user, sent as `x-resumix-token`                    | today's only non-local path                                                 |
+| `supabase` | Supabase OAuth JWT → `users.supabase_user_id`                                                    | **not implemented**; the seam is `lib/auth-supabase.ts`, which fails closed |
+
+In `password` mode the token is minted for `OWNER_EMAIL`, or for the only user
+in the table if that is unset. With several users and no `OWNER_EMAIL`, login
+is refused rather than guessed — one shared password cannot tell people apart.
+That ambiguity is what Supabase OAuth exists to resolve.
+
+**Auth header:** `x-resumix-token: <token>` (`password` mode only). The browser
+keeps the token in `localStorage` under `resumix.token`. In `dev` mode there is
+no token and no header.
 
 **Errors:** `{ "error": "message" }` with 400 / 401 / 404 / 500.
 **Casing:** JSON is `camelCase`; the DB is `snake_case`; Drizzle maps between them.
@@ -42,9 +66,14 @@ type Selections = {
 
 ## Auth
 
-| method | path        | body           | returns                       |
-| ------ | ----------- | -------------- | ----------------------------- |
-| POST   | `/api/auth` | `{ password }` | `{ token }` · 401 on mismatch |
+| method | path           | body           | returns                                                     |
+| ------ | -------------- | -------------- | ----------------------------------------------------------- |
+| POST   | `/api/auth`    | `{ password }` | `{ token }` · 401 on mismatch · 400 outside `password` mode |
+| GET    | `/api/session` | —              | `SessionInfo` = `{ user, mode }` · **401 = show the login** |
+
+The browser calls `GET /api/session` on load rather than treating a stored
+token as proof of a session: in `dev` mode there is no token at all, and the
+answer is whichever user the seed created.
 
 ## Resumes
 
@@ -82,7 +111,7 @@ with `ok: false`. `POST /pdf` then returns the same failure shape `/render` does
 is no PDF to name or snapshot. Clients must branch on `.ok`, never on
 `response.ok` alone.
 
-## Library (global content)
+## Library (the caller’s content)
 
 | method | path                             | body                                                       |
 | ------ | -------------------------------- | ---------------------------------------------------------- |

@@ -16,6 +16,7 @@ import type {
   ResumeDetail,
   ResumeSummary,
   Selections,
+  SessionInfo,
   Skill,
   SkillRow,
   Template,
@@ -79,6 +80,15 @@ export async function login(password: string): Promise<string | null> {
   }
   const body = (await response.json()) as { token: string };
   return body.token;
+}
+
+/**
+ * `GET /api/session` — who the server thinks we are, and which auth mode it
+ * is running. Throws `ApiError` with status 401 when there is no session,
+ * which is `AuthGate`'s cue to show the login screen.
+ */
+export function getSession(): Promise<SessionInfo> {
+  return requestJson<SessionInfo>('/api/session');
 }
 
 /** `GET /api/resumes` — default first, then most-recently-created first. */

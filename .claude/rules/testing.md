@@ -27,7 +27,7 @@ Two kinds live side by side:
 That skip is a trap worth knowing: without `DATABASE_URL` these 16 tests
 vanish and `npm test` still reports green. The `test` script passes
 `--env-file-if-exists=.env` for exactly that reason. If your test count
-drops below 110, your `.env` is missing, not your code.
+drops below 143, your `.env` is missing, not your code.
 
 Fixtures never assume an empty database and never touch rows they did not
 create (the dev DB is shared). Content rows are left behind, tagged with a

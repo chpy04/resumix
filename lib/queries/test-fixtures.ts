@@ -10,9 +10,14 @@
  * (D-011) — tests that create experiences/projects/skill rows leave them
  * behind, tagged with a random suffix so they're easy to spot. Resumes
  * *are* cleaned up (DELETE is allowed for non-default resumes).
+ *
+ * Since T14 every content row needs an owner, so each fixture takes a
+ * `userId`. Most tests use `seedUserId()` — the user `npm run db:seed`
+ * creates — while isolation tests call `insertUser()` for a second,
+ * fully-provisioned account to test *against*.
  */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db, sql } from '../db/index.ts';
 import {
   experience,
@@ -22,7 +27,10 @@ import {
   resume,
   technicalSkill,
   technicalSkillRow,
+  users,
 } from '../db/schema.ts';
+import type { User } from '../types.ts';
+import { provisionUser } from './users.ts';
 
 export const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -31,7 +39,26 @@ export function testTag(): string {
   return randomUUID().slice(0, 8);
 }
 
+/** The seeded user — the same one `dev` auth mode logs in as. Most tests run
+ *  as this user because the seeded Default resume belongs to them. */
+export async function seedUserId(): Promise<string> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .orderBy(asc(users.createdAt), asc(users.id))
+    .limit(1);
+  if (!row) throw new Error('no users seeded — run `npm run db:seed` first');
+  return row.id;
+}
+
+/** A second, fully-provisioned account (its own default template + Default
+ *  resume), for proving that one user cannot reach another's data. */
+export async function insertUser(tag: string): Promise<User> {
+  return provisionUser({ email: `t14-${tag}@example.test`, name: `Test User ${tag}` });
+}
+
 export async function insertExperience(
+  userId: string,
   tag: string,
   overrides: Partial<{ isArchived: boolean }> = {},
 ) {
@@ -43,6 +70,7 @@ export async function insertExperience(
       dateRange: '2020 - 2021',
       location: 'Remote',
       isArchived: overrides.isArchived ?? false,
+      userId,
     })
     .returning();
   if (!row) throw new Error('failed to insert test experience');
@@ -62,13 +90,14 @@ export async function insertExperienceBullet(
   return row;
 }
 
-export async function insertProject(tag: string) {
+export async function insertProject(userId: string, tag: string) {
   const [row] = await db
     .insert(project)
     .values({
       name: `T6 Test Project ${tag}`,
       technologies: 'TypeScript',
       dateRange: '2022',
+      userId,
     })
     .returning();
   if (!row) throw new Error('failed to insert test project');
@@ -81,10 +110,10 @@ export async function insertProjectBullet(projectId: string, content: string) {
   return row;
 }
 
-export async function insertSkillRow(tag: string) {
+export async function insertSkillRow(userId: string, tag: string) {
   const [row] = await db
     .insert(technicalSkillRow)
-    .values({ name: `T6 Test Skills ${tag}`, top: true })
+    .values({ name: `T6 Test Skills ${tag}`, top: true, userId })
     .returning();
   if (!row) throw new Error('failed to insert test skill row');
   return row;
@@ -96,19 +125,23 @@ export async function insertSkill(technicalSkillRowId: string, name: string) {
   return row;
 }
 
-export async function getDefaultResumeRow() {
-  const [row] = await db.select().from(resume).where(eq(resume.isDefault, true)).limit(1);
+export async function getDefaultResumeRow(userId: string) {
+  const [row] = await db
+    .select()
+    .from(resume)
+    .where(and(eq(resume.userId, userId), eq(resume.isDefault, true)))
+    .limit(1);
   if (!row)
     throw new Error('no default resume/template seeded — run scripts/migrate.ts and seed one');
   return row;
 }
 
-/** Inserts a throwaway (non-default) resume against the seeded default template. */
-export async function insertTestResume(tag: string) {
-  const defaultResume = await getDefaultResumeRow();
+/** Inserts a throwaway (non-default) resume against that user's default template. */
+export async function insertTestResume(userId: string, tag: string) {
+  const defaultResume = await getDefaultResumeRow(userId);
   const [row] = await db
     .insert(resume)
-    .values({ name: `T6 Test Resume ${tag}`, templateId: defaultResume.templateId })
+    .values({ name: `T6 Test Resume ${tag}`, templateId: defaultResume.templateId, userId })
     .returning();
   if (!row) throw new Error('failed to insert test resume');
   return row;

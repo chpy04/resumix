@@ -21,7 +21,7 @@ Run all of it, not a subset:
   That bug reached `main` once, which is why `build` is in the gate.
 - `npm test` needs `DATABASE_URL` (it reads `.env`). Without it, the 16
   `lib/queries` integration suites self-skip and the run still reports
-  green. Expect **110 passing, 0 skipped**.
+  green. Expect **143 passing, 0 skipped**.
 - `npm run smoke` reads live database state, and a Playwright run leaves
   edited content behind — hence the reseed immediately before it. Running
   `smoke` straight after `test:e2e` will fail the round-trip diff for
@@ -79,6 +79,10 @@ the rule text and the lint config.
    it's safe to re-run while iterating.
 5. `npm run db:seed -- --force && npm run smoke` to confirm the V1 round
    trip still holds.
+6. If the new table is a **root** table (not reachable from another), it needs
+   `user_id uuid not null references users (id) on delete restrict` plus an
+   index on it. If it hangs off an existing table it must **not** have one —
+   it inherits its owner through its parent (`docs/SCHEMA.md`, D-018).
 
 ## Adding an API endpoint
 
@@ -91,8 +95,16 @@ Three layers, in this order (see `.claude/rules/api-routes.md`):
    `parseJsonBody` and the shared `RouteContext` from `lib/http.ts`.
    Handlers should have almost no logic of their own.
 
-Then update `docs/API.md` in the same commit. Auth is automatic —
-`middleware.ts` guards every `/api/*` route except `/api/auth`.
+Then update `docs/API.md` in the same commit.
+
+**Resolve the caller and scope every query to them.** Start the handler body
+with `const userId = await requireUserId(request)` (`lib/session.ts`) and
+thread that id into the query function, which must filter on it.
+`middleware.ts` guards `/api/*` but cannot identify the user (Edge runtime,
+no database), so it is not what keeps accounts apart — your `WHERE` clause
+is. Answer another user's id with `NotFoundError`, never a 403, and add a
+case to `lib/queries/isolation.test.ts` for any new way to address someone
+else's row by id.
 
 ## The smoke test
 

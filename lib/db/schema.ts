@@ -3,7 +3,7 @@
  * exactly — see docs/SCHEMA.md for the frozen contract this implements.
  */
 
-import { eq, relations } from 'drizzle-orm';
+import { eq, isNotNull, relations, sql } from 'drizzle-orm';
 import {
   boolean,
   customType,
@@ -15,12 +15,24 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 /** Every row gets these; maintained by the shared `set_updated_at()` trigger. */
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+};
+
+/**
+ * Every root-level table carries its owner. `restrict`, not `cascade`:
+ * content is never deleted (D-011), so deleting a user is a deliberate
+ * manual operation rather than something a stray query can trigger.
+ */
+const owner = {
+  userId: uuid('user_id')
+    .notNull()
+    .references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
 };
 
 /** postgres.js hands bytea columns back as Node `Buffer`s. */
@@ -31,7 +43,32 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 });
 
 // ---------------------------------------------------------------------------
-// Content tables (global, shared by every resume)
+// Users
+//
+// `users`, not `user`: `user` is a reserved word in Postgres. No password
+// column — authentication is external (Supabase OAuth); `supabaseUserId` is
+// the join key to `auth.users.id` and is null until that is wired up.
+// ---------------------------------------------------------------------------
+
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    name: text('name'),
+    supabaseUserId: text('supabase_user_id'),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('ux_users_email_lower').on(sql`lower(${t.email})`),
+    uniqueIndex('ux_users_supabase_user_id')
+      .on(t.supabaseUserId)
+      .where(isNotNull(t.supabaseUserId)),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Content tables (per-user; a resume may only reference its owner's content)
 // ---------------------------------------------------------------------------
 
 export const template = pgTable(
@@ -42,20 +79,29 @@ export const template = pgTable(
     content: text('content').notNull(),
     isDefault: boolean('is_default').notNull().default(false),
     isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
     ...timestamps,
   },
-  (t) => [uniqueIndex('ux_template_one_default').on(t.isDefault).where(eq(t.isDefault, true))],
+  (t) => [
+    uniqueIndex('ux_template_one_default_per_user').on(t.userId).where(eq(t.isDefault, true)),
+    index('ix_template_user_id').on(t.userId),
+  ],
 );
 
-export const experience = pgTable('experience', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  company: text('company').notNull(),
-  title: text('title').notNull(),
-  dateRange: text('date_range').notNull(),
-  location: text('location').notNull(),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const experience = pgTable(
+  'experience',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    company: text('company').notNull(),
+    title: text('title').notNull(),
+    dateRange: text('date_range').notNull(),
+    location: text('location').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [index('ix_experience_user_id').on(t.userId)],
+);
 
 export const experienceBullet = pgTable(
   'experience_bullet',
@@ -71,14 +117,19 @@ export const experienceBullet = pgTable(
   (t) => [index('ix_experience_bullet_experience_id').on(t.experienceId)],
 );
 
-export const project = pgTable('project', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  technologies: text('technologies').notNull(),
-  dateRange: text('date_range').notNull(),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const project = pgTable(
+  'project',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    technologies: text('technologies').notNull(),
+    dateRange: text('date_range').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [index('ix_project_user_id').on(t.userId)],
+);
 
 export const projectBullet = pgTable(
   'project_bullet',
@@ -94,15 +145,20 @@ export const projectBullet = pgTable(
   (t) => [index('ix_project_bullet_project_id').on(t.projectId)],
 );
 
-export const technicalSkillRow = pgTable('technical_skill_row', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  top: boolean('top').notNull().default(true),
-  /** Joins this row's skills. ', ' for skill lists, ' $|$ ' for interests. */
-  separator: text('separator').notNull().default(', '),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const technicalSkillRow = pgTable(
+  'technical_skill_row',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    top: boolean('top').notNull().default(true),
+    /** Joins this row's skills. ', ' for skill lists, ' $|$ ' for interests. */
+    separator: text('separator').notNull().default(', '),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [index('ix_technical_skill_row_user_id').on(t.userId)],
+);
 
 export const technicalSkill = pgTable(
   'technical_skill',
@@ -131,11 +187,13 @@ export const resume = pgTable(
     templateId: uuid('template_id')
       .notNull()
       .references(() => template.id, { onDelete: 'restrict' }),
+    ...owner,
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('ux_resume_one_default').on(t.isDefault).where(eq(t.isDefault, true)),
+    uniqueIndex('ux_resume_one_default_per_user').on(t.userId).where(eq(t.isDefault, true)),
     index('ix_resume_template_id').on(t.templateId),
+    index('ix_resume_user_id').on(t.userId),
   ],
 );
 
@@ -259,8 +317,17 @@ export const resumePdf = pgTable(
 // Relations (used by the query API; harmless if unused by callers)
 // ---------------------------------------------------------------------------
 
-export const experienceRelations = relations(experience, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  templates: many(template),
+  experiences: many(experience),
+  projects: many(project),
+  skillRows: many(technicalSkillRow),
+  resumes: many(resume),
+}));
+
+export const experienceRelations = relations(experience, ({ many, one }) => ({
   bullets: many(experienceBullet),
+  user: one(users, { fields: [experience.userId], references: [users.id] }),
 }));
 
 export const experienceBulletRelations = relations(experienceBullet, ({ one }) => ({

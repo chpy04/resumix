@@ -8,7 +8,53 @@ All tables get `created_at timestamptz not null default now()` and
 rows stay referenced by existing resumes and keep rendering there; they are just
 hidden from the picker unless "show archived" is toggled on.
 
-## Content tables (global, shared by every resume)
+## Ownership — every row belongs to exactly one user
+
+The five **root** tables carry `user_id uuid not null references users (id) on
+delete restrict`:
+
+`template`, `experience`, `project`, `technical_skill_row`, `resume`.
+
+Everything else infers its owner through its parent and carries **no**
+`user_id` of its own:
+
+| table                         | owner is               | reached via              |
+| ----------------------------- | ---------------------- | ------------------------ |
+| `experience_bullet`           | its experience's owner | `experience_id`          |
+| `project_bullet`              | its project's owner    | `project_id`             |
+| `technical_skill`             | its row's owner        | `technical_skill_row_id` |
+| every `resume_*` bridge table | its resume's owner     | `resume_id`              |
+| `resume_pdf`                  | its resume's owner     | `resume_id`              |
+
+This is deliberate. A second `user_id` on a bullet would be a second,
+independently-writable copy of a fact the parent already records, and the two
+could disagree — a bullet claiming one owner while its experience claims
+another. One source of truth per fact.
+
+The cost is that the query layer, not the schema, enforces isolation on the
+inferred tables: a bullet update filters through a join to its parent, and
+every content id arriving in a selections request is re-checked against the
+caller's `user_id` before any bridge row is written. `lib/queries/isolation.test.ts`
+is the executable statement of that guarantee.
+
+`on delete restrict`, not `cascade`: content is never deleted (D-011), so
+removing a user is a deliberate manual operation. A cascade could not work
+anyway — `experience_bullet` restricts deletion of its experience, so the
+cascade would stop there.
+
+### `users`
+
+| column             | type          | notes                                                                                          |
+| ------------------ | ------------- | ---------------------------------------------------------------------------------------------- |
+| `email`            | text not null | unique on `lower(email)` — identity is case-insensitive                                        |
+| `name`             | text          | nullable; display only                                                                         |
+| `supabase_user_id` | text          | join key to Supabase's `auth.users.id`; unique **when not null**, null until OAuth is wired up |
+
+Named `users`, not `user`, because `user` is a reserved word in Postgres.
+**There is no password column and there never will be one** — authentication
+is external (see `docs/API.md`, "Auth modes").
+
+## Content tables (per-user)
 
 ### `template`
 
@@ -21,7 +67,8 @@ hidden from the picker unless "show archived" is toggled on.
 
 ### `experience`
 
-`company` text, `title` text, `date_range` text, `location` text, `is_archived`.
+`company` text, `title` text, `date_range` text, `location` text, `is_archived`,
+`user_id` → `users(id)`.
 
 ### `experience_bullet`
 
@@ -29,7 +76,8 @@ hidden from the picker unless "show archived" is toggled on.
 
 ### `project`
 
-`name` text, `technologies` text, `date_range` text, `is_archived`.
+`name` text, `technologies` text, `date_range` text, `is_archived`,
+`user_id` → `users(id)`.
 
 ### `project_bullet`
 
@@ -38,7 +86,7 @@ hidden from the picker unless "show archived" is toggled on.
 ### `technical_skill_row`
 
 `name` text, `top` boolean not null default true, `is_archived`,
-`separator` text not null default `', '`.
+`separator` text not null default `', '`, `user_id` → `users(id)`.
 `top = true` → renders in the top "Technical Skills" section;
 `top = false` → renders in the bottom "Additional Information" section.
 `separator` is the string used to join this row's skills — `', '` for skill lists,
@@ -58,7 +106,12 @@ hidden from the picker unless "show archived" is toggled on.
 ### `resume`
 
 `name` text not null, `is_default` boolean not null default false
-(partial unique index: only one true), `template_id` → `template(id)` not null.
+(partial unique index: only one true **per user**), `template_id` →
+`template(id)` not null, `user_id` → `users(id)` not null.
+
+A resume may only reference its own owner's template; `updateResume` rejects a
+`templateId` belonging to anyone else with a 400, the same answer it gives for
+a template id that does not exist.
 
 ## Bridge tables — selection _and_ ordering
 

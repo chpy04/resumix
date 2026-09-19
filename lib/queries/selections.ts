@@ -12,8 +12,16 @@
  * Six slices, six near-identical bodies below rather than one generic
  * helper: the six bridge tables don't share a common Drizzle table shape,
  * and fighting the type system to unify them bought nothing but `any`.
+ *
+ * **Ownership.** Bridge rows carry no `user_id` — they are owned by their
+ * resume (docs/SCHEMA.md). But the *content* ids arriving in the request
+ * body are attacker-controlled, so every existence check below is filtered
+ * by the caller's `userId`: selecting another user's experience onto your
+ * own resume fails as "unknown experience id", indistinguishable from an
+ * id that was never real. Without that filter the bridge tables would be a
+ * side door into someone else's library.
  */
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
 import {
@@ -35,6 +43,10 @@ import { BadRequestError } from './errors.ts';
 
 type Tx = PgTransaction<any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/** Reads a resume's selections. Takes no `userId`: bridge rows are keyed by
+ *  `resume_id`, and every caller has already resolved that resume through a
+ *  user-scoped lookup (`getResumeRow(userId, id)`), which is what proves
+ *  ownership. */
 export async function getSelections(resumeId: string): Promise<Selections> {
   const [experiences, experienceBullets, projects, projectBullets, skillRows, skills] =
     await Promise.all([
@@ -121,12 +133,17 @@ function assertNoMissing(ids: string[], found: Set<string>, label: string): void
 // Top-level slices: experiences / projects / skillRows
 // ---------------------------------------------------------------------------
 
-async function replaceExperiences(tx: Tx, resumeId: string, ids: string[]): Promise<void> {
+async function replaceExperiences(
+  tx: Tx,
+  userId: string,
+  resumeId: string,
+  ids: string[],
+): Promise<void> {
   if (ids.length > 0) {
     const rows = await tx
       .select({ id: experience.id })
       .from(experience)
-      .where(inArray(experience.id, [...new Set(ids)]));
+      .where(and(inArray(experience.id, [...new Set(ids)]), eq(experience.userId, userId)));
     assertNoMissing(ids, new Set(rows.map((r) => r.id)), 'experience');
   }
   await tx.delete(resumeExperience).where(eq(resumeExperience.resumeId, resumeId));
@@ -136,12 +153,17 @@ async function replaceExperiences(tx: Tx, resumeId: string, ids: string[]): Prom
     .values(ids.map((experienceId, index) => ({ resumeId, experienceId, sortOrder: index })));
 }
 
-async function replaceProjects(tx: Tx, resumeId: string, ids: string[]): Promise<void> {
+async function replaceProjects(
+  tx: Tx,
+  userId: string,
+  resumeId: string,
+  ids: string[],
+): Promise<void> {
   if (ids.length > 0) {
     const rows = await tx
       .select({ id: project.id })
       .from(project)
-      .where(inArray(project.id, [...new Set(ids)]));
+      .where(and(inArray(project.id, [...new Set(ids)]), eq(project.userId, userId)));
     assertNoMissing(ids, new Set(rows.map((r) => r.id)), 'project');
   }
   await tx.delete(resumeProject).where(eq(resumeProject.resumeId, resumeId));
@@ -151,12 +173,19 @@ async function replaceProjects(tx: Tx, resumeId: string, ids: string[]): Promise
     .values(ids.map((projectId, index) => ({ resumeId, projectId, sortOrder: index })));
 }
 
-async function replaceSkillRows(tx: Tx, resumeId: string, ids: string[]): Promise<void> {
+async function replaceSkillRows(
+  tx: Tx,
+  userId: string,
+  resumeId: string,
+  ids: string[],
+): Promise<void> {
   if (ids.length > 0) {
     const rows = await tx
       .select({ id: technicalSkillRow.id })
       .from(technicalSkillRow)
-      .where(inArray(technicalSkillRow.id, [...new Set(ids)]));
+      .where(
+        and(inArray(technicalSkillRow.id, [...new Set(ids)]), eq(technicalSkillRow.userId, userId)),
+      );
     assertNoMissing(ids, new Set(rows.map((r) => r.id)), 'skill row');
   }
   await tx.delete(resumeTechnicalSkillRow).where(eq(resumeTechnicalSkillRow.resumeId, resumeId));
@@ -176,6 +205,7 @@ async function replaceSkillRows(tx: Tx, resumeId: string, ids: string[]): Promis
 
 async function replaceExperienceBullets(
   tx: Tx,
+  userId: string,
   resumeId: string,
   byParent: Record<string, string[]>,
 ): Promise<void> {
@@ -187,7 +217,8 @@ async function replaceExperienceBullets(
     const rows = await tx
       .select({ id: experienceBullet.id, parentId: experienceBullet.experienceId })
       .from(experienceBullet)
-      .where(inArray(experienceBullet.id, unique));
+      .innerJoin(experience, eq(experienceBullet.experienceId, experience.id))
+      .where(and(inArray(experienceBullet.id, unique), eq(experience.userId, userId)));
     const byId = new Map(rows.map((r) => [r.id, r.parentId]));
     assertNoMissing(unique, new Set(byId.keys()), 'experience bullet');
     for (const parentId of parentIds) {
@@ -216,6 +247,7 @@ async function replaceExperienceBullets(
 
 async function replaceProjectBullets(
   tx: Tx,
+  userId: string,
   resumeId: string,
   byParent: Record<string, string[]>,
 ): Promise<void> {
@@ -227,7 +259,8 @@ async function replaceProjectBullets(
     const rows = await tx
       .select({ id: projectBullet.id, parentId: projectBullet.projectId })
       .from(projectBullet)
-      .where(inArray(projectBullet.id, unique));
+      .innerJoin(project, eq(projectBullet.projectId, project.id))
+      .where(and(inArray(projectBullet.id, unique), eq(project.userId, userId)));
     const byId = new Map(rows.map((r) => [r.id, r.parentId]));
     assertNoMissing(unique, new Set(byId.keys()), 'project bullet');
     for (const parentId of parentIds) {
@@ -256,6 +289,7 @@ async function replaceProjectBullets(
 
 async function replaceSkills(
   tx: Tx,
+  userId: string,
   resumeId: string,
   byParent: Record<string, string[]>,
 ): Promise<void> {
@@ -267,7 +301,8 @@ async function replaceSkills(
     const rows = await tx
       .select({ id: technicalSkill.id, parentId: technicalSkill.technicalSkillRowId })
       .from(technicalSkill)
-      .where(inArray(technicalSkill.id, unique));
+      .innerJoin(technicalSkillRow, eq(technicalSkill.technicalSkillRowId, technicalSkillRow.id))
+      .where(and(inArray(technicalSkill.id, unique), eq(technicalSkillRow.userId, userId)));
     const byId = new Map(rows.map((r) => [r.id, r.parentId]));
     assertNoMissing(unique, new Set(byId.keys()), 'skill');
     for (const parentId of parentIds) {
@@ -295,34 +330,46 @@ async function replaceSkills(
 }
 
 export async function replaceSelections(
+  userId: string,
   resumeId: string,
   patch: Partial<Selections>,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     if (patch.experiences !== undefined) {
-      await replaceExperiences(tx, resumeId, patch.experiences);
+      await replaceExperiences(tx, userId, resumeId, patch.experiences);
     }
     if (patch.projects !== undefined) {
-      await replaceProjects(tx, resumeId, patch.projects);
+      await replaceProjects(tx, userId, resumeId, patch.projects);
     }
     if (patch.skillRows !== undefined) {
-      await replaceSkillRows(tx, resumeId, patch.skillRows);
+      await replaceSkillRows(tx, userId, resumeId, patch.skillRows);
     }
     if (patch.experienceBullets !== undefined) {
-      await replaceExperienceBullets(tx, resumeId, patch.experienceBullets);
+      await replaceExperienceBullets(tx, userId, resumeId, patch.experienceBullets);
     }
     if (patch.projectBullets !== undefined) {
-      await replaceProjectBullets(tx, resumeId, patch.projectBullets);
+      await replaceProjectBullets(tx, userId, resumeId, patch.projectBullets);
     }
     if (patch.skills !== undefined) {
-      await replaceSkills(tx, resumeId, patch.skills);
+      await replaceSkills(tx, userId, resumeId, patch.skills);
     }
   });
 }
 
-/** Copies every one of a resume's six selection slices to another resume,
- * preserving order — used to clone the default resume (POST /resumes). */
-export async function cloneSelections(fromResumeId: string, toResumeId: string): Promise<void> {
+/**
+ * Copies every one of a resume's six selection slices to another resume,
+ * preserving order — used to clone the default resume (POST /resumes).
+ *
+ * Both resumes belong to the same user by construction (the caller looked
+ * both up under that user), so the ids being copied are already theirs;
+ * `userId` is threaded through only so the re-validation inside
+ * `replaceSelections` has something to check against.
+ */
+export async function cloneSelections(
+  userId: string,
+  fromResumeId: string,
+  toResumeId: string,
+): Promise<void> {
   const selections = await getSelections(fromResumeId);
-  await replaceSelections(toResumeId, selections);
+  await replaceSelections(userId, toResumeId, selections);
 }

@@ -20,7 +20,7 @@ The consequence worth internalising: **a resume stores no text.** Editing a
 bullet is a global edit that instantly changes every resume that picked it.
 That is intentional, and most "bugs" that turn out not to be bugs are this.
 
-## Four invariants
+## Five invariants
 
 Breaking any of these is silent — nothing fails loudly at the moment you do it.
 
@@ -35,6 +35,26 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    on any machine without a live `DATABASE_URL` (D-014).
 4. **Nothing in the `middleware.ts` import graph may touch `node:crypto`.**
    Middleware runs on the Edge runtime. `lib/auth.ts` is Web Crypto only.
+5. **Every query is scoped to a user.** Handlers begin with
+   `const userId = await requireUserId(request)` (`lib/session.ts`) and pass
+   it down; the query layer filters on it. `user_id` lives only on the five
+   root tables (`template`, `experience`, `project`, `technical_skill_row`,
+   `resume`) — bullets, skills, bridge rows and PDF snapshots inherit their
+   owner through a join to their parent. Isolation is enforced in the
+   queries, **not** in `middleware.ts`, which runs on the Edge and cannot
+   reach the database. Another user's id must read as "not found", never
+   "forbidden". `lib/queries/isolation.test.ts` is the executable form of
+   this paragraph and the first thing to run after touching any query.
+
+## Auth modes
+
+`RESUMIX_AUTH_MODE` = `dev` | `password` | `supabase`, defaulting to `dev`
+outside production and `password` in production (`lib/auth-mode.ts`). `dev`
+means **no login screen**: the session is the first user in `users`, which is
+whoever `npm run db:seed` created. `supabase` is a written-but-unimplemented
+seam (`lib/auth-supabase.ts`) that fails closed. The browser suite pins
+`RESUMIX_AUTH_MODE=password` so it drives the real login screen; dev and
+supabase modes are covered in-process by `lib/session.test.ts`.
 
 ## Merge gate
 
@@ -54,7 +74,7 @@ one cannot:
   page default export taking a custom prop typechecks fine and fails the
   build. That bug reached `main` once.
 - `test` needs `DATABASE_URL` or 16 integration tests silently self-skip and
-  still report green. Expect **110 passing, 0 skipped**.
+  still report green. Expect **143 passing, 0 skipped**.
 - `smoke` reads live DB state and a prior Playwright run leaves edited
   content behind — hence the reseed before it.
 

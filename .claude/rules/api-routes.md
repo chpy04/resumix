@@ -39,10 +39,26 @@ export async function PATCH(request: Request, { params }: RouteContext): Promise
 - `201` on create, `204` with a null body on delete, `200` otherwise.
 - Unused handler parameters take a `_` prefix (`_request`).
 
-## Auth is already handled
+## Every handler resolves a caller
 
-`middleware.ts` guards every `/api/*` route except `/api/auth`. Do not check
-the token inside a handler.
+```ts
+const userId = await requireUserId(request); // lib/session.ts
+```
+
+First line of the handler body, then thread `userId` into the query
+function, which filters on it. `middleware.ts` guards `/api/*` (except
+`/api/auth`) but **cannot** say _which_ user is calling — it runs on the
+Edge runtime and has no database — so it is not what keeps accounts apart.
+Your `WHERE` clause is.
+
+`requireUserId` throws `UnauthorizedError` (-> 401) for every auth mode when
+it cannot resolve a session, so there is still no token check to write by
+hand. Another user's id must come back as `NotFoundError`, never a 403: a
+403 confirms the id exists. See `.claude/rules/auth.md` for the three modes
+and `lib/queries/isolation.test.ts` for the executable version of this rule.
+
+The exceptions are `POST /api/auth` (there is no caller yet — it mints the
+token) and `GET /api/session` (it answers _who_ the caller is).
 
 ## Two things that are not HTTP errors
 

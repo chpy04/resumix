@@ -24,7 +24,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
@@ -61,19 +61,41 @@ async function main() {
   const db = drizzle(sql, { schema });
 
   try {
-    // ---- Load the Default resume + its template ------------------------
+    // ---- Find the seeded user -------------------------------------------
+    // Everything is owned by someone now, so the smoke test reads back one
+    // specific user's resume: the first one, which is the single user
+    // `scripts/seed.ts` creates and the same one `dev` auth mode logs in as.
+    const userRow = (
+      await db
+        .select()
+        .from(schema.users)
+        .orderBy(asc(schema.users.createdAt), asc(schema.users.id))
+        .limit(1)
+    )[0];
+    if (!userRow) {
+      throw new Error('No users found — run scripts/seed.ts first.');
+    }
+    const userId = userRow.id;
+
+    // ---- Load that user's Default resume + its template -----------------
     const resumeRow = (
-      await db.select().from(schema.resume).where(eq(schema.resume.isDefault, true)).limit(1)
+      await db
+        .select()
+        .from(schema.resume)
+        .where(and(eq(schema.resume.userId, userId), eq(schema.resume.isDefault, true)))
+        .limit(1)
     )[0];
     if (!resumeRow) {
-      throw new Error('No default resume found — run scripts/seed.ts first.');
+      throw new Error(`No default resume for user ${userRow.email} — run scripts/seed.ts first.`);
     }
 
     const templateRow = (
       await db
         .select()
         .from(schema.template)
-        .where(eq(schema.template.id, resumeRow.templateId))
+        .where(
+          and(eq(schema.template.id, resumeRow.templateId), eq(schema.template.userId, userId)),
+        )
         .limit(1)
     )[0];
     if (!templateRow) {
@@ -82,13 +104,48 @@ async function main() {
       );
     }
 
-    // ---- Load the full Library (every content row, archived or not) ----
-    const experienceRows = await db.select().from(schema.experience);
-    const experienceBulletRows = await db.select().from(schema.experienceBullet);
-    const projectRows = await db.select().from(schema.project);
-    const projectBulletRows = await db.select().from(schema.projectBullet);
-    const skillRowRows = await db.select().from(schema.technicalSkillRow);
-    const skillRows_ = await db.select().from(schema.technicalSkill);
+    // ---- Load that user's Library (every content row, archived or not) --
+    // Bullets and skills carry no owner of their own; they inherit it from
+    // their parent, so they are filtered by a join rather than a column.
+    const experienceRows = await db
+      .select()
+      .from(schema.experience)
+      .where(eq(schema.experience.userId, userId));
+    const experienceBulletRows = (
+      await db
+        .select()
+        .from(schema.experienceBullet)
+        .innerJoin(
+          schema.experience,
+          eq(schema.experienceBullet.experienceId, schema.experience.id),
+        )
+        .where(eq(schema.experience.userId, userId))
+    ).map((r) => r.experience_bullet);
+    const projectRows = await db
+      .select()
+      .from(schema.project)
+      .where(eq(schema.project.userId, userId));
+    const projectBulletRows = (
+      await db
+        .select()
+        .from(schema.projectBullet)
+        .innerJoin(schema.project, eq(schema.projectBullet.projectId, schema.project.id))
+        .where(eq(schema.project.userId, userId))
+    ).map((r) => r.project_bullet);
+    const skillRowRows = await db
+      .select()
+      .from(schema.technicalSkillRow)
+      .where(eq(schema.technicalSkillRow.userId, userId));
+    const skillRows_ = (
+      await db
+        .select()
+        .from(schema.technicalSkill)
+        .innerJoin(
+          schema.technicalSkillRow,
+          eq(schema.technicalSkill.technicalSkillRowId, schema.technicalSkillRow.id),
+        )
+        .where(eq(schema.technicalSkillRow.userId, userId))
+    ).map((r) => r.technical_skill);
 
     const library: Library = {
       experiences: experienceRows.map((e) => ({
@@ -210,6 +267,7 @@ async function main() {
     mkdirSync(scratchDir, { recursive: true });
     writeFileSync(join(scratchDir, 'smoke-rendered.tex'), tex);
 
+    console.log(`Loaded user ${userRow.email} (${userId})`);
     console.log(`Loaded resume "${resumeRow.name}" (${resumeRow.id})`);
     console.log(`Template: "${templateRow.name}" (${templateRow.id})`);
     console.log(

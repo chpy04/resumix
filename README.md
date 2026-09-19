@@ -10,9 +10,12 @@ reordering existing content, not retyping it. When you're happy, you render
 the selection into a LaTeX template and get back a PDF, which is then
 snapshotted so it never silently changes underneath you later.
 
-Single-user, password-gated, backed by Postgres and a real `pdflatex`
-sidecar (not a WASM approximation — the LaTeX is the same LaTeX that
-compiles your actual resume).
+Multi-user, backed by Postgres and a real `pdflatex` sidecar (not a WASM
+approximation — the LaTeX is the same LaTeX that compiles your actual
+resume). Every experience, resume, template, and PDF belongs to exactly one
+account, and accounts cannot see each other's anything. **Locally there is no
+login at all** — the app signs in as the single user `npm run db:seed`
+creates.
 
 See [docs/STATE.md](docs/STATE.md) for current project status,
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design, and
@@ -54,8 +57,8 @@ git clone <this repo> && cd resumix
 
 # 1. Environment
 cp .env.example .env
-# the defaults work as-is for local dev; only change APP_PASSWORD/AUTH_SECRET
-# if you want a real password gate instead of the placeholder
+# the defaults work as-is for local dev. Leaving RESUMIX_AUTH_MODE empty
+# means "dev mode": no login screen, signed in as the seeded user.
 
 # 2. Postgres + the LaTeX compile sidecar, in containers
 docker compose up -d db latex
@@ -64,16 +67,38 @@ docker compose up -d db latex
 # 3. App dependencies
 npm install
 
-# 4. Apply migrations, then seed the real V1 resume as "Default"
+# 4. Apply migrations, then seed one user + the real V1 resume as "Default"
 npm run db:migrate
-npm run db:seed
+npm run db:seed   # creates SEED_USER_EMAIL (default: the address in the
+                  # reference resume) and everything under it
 
 # 5. Run it
 npm run dev
 ```
 
-Open http://localhost:3000, log in with the `APP_PASSWORD` from `.env`, and
-you should see one resume, "Default", ready to open, edit, and re-render.
+Open http://localhost:3000. There is no login screen in dev mode — you land
+straight on the seeded user's resume grid, showing one resume, "Default",
+ready to open, edit, and re-render.
+
+### Running with the password gate instead
+
+To exercise the gate the way a deployment would, set `RESUMIX_AUTH_MODE=password`
+in `.env` (with `APP_PASSWORD` and `AUTH_SECRET` set) and restart. You will get
+the login screen, and the token it mints is bound to a specific account —
+`OWNER_EMAIL`, or the only user in the table if that is unset.
+
+### Authentication, and what is still missing
+
+| mode                               | behaviour                                                                    |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `dev` (default locally)            | no login; session is the first user in `users`                               |
+| `password` (default in production) | shared `APP_PASSWORD` → signed token naming one user                         |
+| `supabase`                         | **not implemented** — the seam is `lib/auth-supabase.ts` and it fails closed |
+
+Supabase OAuth is the intended end state. Everything downstream of "who is
+this?" is already written against a `users` row, so switching over means
+implementing JWT verification in that one file; no query, route, or component
+changes. See `docs/API.md` ("Auth modes") and D-019.
 
 To confirm the whole pipeline end-to-end without opening a browser:
 
