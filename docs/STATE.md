@@ -69,6 +69,8 @@ Wave 2/3 progress:
 - **T13 feedback widget** — a floating "Give feedback" button on every gated page
   opens a form (bug / feature request, description, drag-drop-or-paste screenshot,
   auto-captured page URL) that files a **GitHub issue** via `POST /api/feedback`.
+  The form became a corner popover and the button became a dropzone afterwards —
+  see "Feedback widget: popover + drop-on-button" below.
   Screenshots are committed to the orphan `feedback-assets` branch and linked at
   their commit sha. This is the push half of the feedback loop; the pull half (an
   agent that works issues off GitHub) lives outside this repo. Needs `GITHUB_TOKEN`
@@ -164,6 +166,51 @@ Known, left alone deliberately: four `react-hooks/exhaustive-deps` warnings
 (two `autosave` deps in `ResumeEditor`, two in `ResumeGrid`). They are real
 observations, but fixing them changes editor behaviour and belongs in its
 own change with e2e coverage, not in a formatting pass.
+
+## Feedback widget: popover, drop-on-button, better issue body (2026-09-19)
+
+Three changes to T13's widget. The first two are UI only; the third changes the
+shape of the issue body, not the endpoint's wire contract. See D-022 and D-023.
+
+- **The form is a popover, not a modal.** It opens above the button in the
+  bottom-right corner instead of a centred panel over a dimmed backdrop. A bug
+  report is a description of what is on screen, and the backdrop was covering
+  the evidence. Dismissal is now the popover contract: Escape, Cancel, or a
+  click anywhere else on the site. The outside-click listener lives in
+  `FeedbackWidget` rather than the panel, because the button has to be
+  excluded from "outside" too — otherwise clicking it would close and
+  immediately reopen, wiping a half-written report. Clicking the button while
+  the form is open therefore toggles it shut.
+- **The button is the dropzone.** Dragging an image file onto "Give feedback"
+  opens the form with it already attached; dropping a second one swaps the
+  image without remounting the form, so typed text survives. While a file is
+  being dragged anywhere over the page the button says "Drop screenshot" (its
+  `aria-label` stays fixed, so the e2e suite and screen readers keep one name
+  for it), and a drop that misses is swallowed — otherwise the browser
+  navigates to the raw image and the user loses the page they were reporting.
+- The screenshot now lives in `FeedbackWidget`, since it can arrive while the
+  panel is closed; the panel keeps kind/description and stays presentational.
+- `lib/feedback/drag.ts` holds the two decisions worth testing without a
+  browser: a drag exposes `types` but not `files` until the drop (so
+  "is this a file drag" can only read `types`), and a multi-file drop takes
+  the first _image_, not the first file. 5 unit tests.
+- Three new e2e tests in `e2e/feedback.spec.ts` (drop-on-button attaches and
+  opens; a second drop preserves typed text; the popover dismisses on an
+  outside click and toggles on the button). Native file drags have no
+  Playwright API, so they build a real `DataTransfer` in the page.
+- **The issue body separates route from host.** `**Page:**` is now the route
+  alone (`/resume/abc?tab=template`), and the origin moved into the
+  Environment block beside a new `Browser:` line — so two reports about the
+  same page group together whether they came from prod or a laptop, and which
+  one it was is still recorded. `lib/feedback/user-agent.ts` turns the UA
+  string into `Chrome 142 on macOS`; the raw string stays underneath it,
+  because a hand-rolled parser is the right size for one caller only if
+  getting it wrong costs nothing. 4 unit tests there, plus the reworked body
+  tests in `issue.test.ts`.
+- While in there: these two components were the last 51 `[var(--color-x)]`
+  arbitrary values in the tree, missed by the standards pass because T13 was
+  developed on a parallel branch. They now use the generated utilities, and
+  the one raw `text-amber-400` became a `--color-warning` token.
 
 ## What is in flight
 
