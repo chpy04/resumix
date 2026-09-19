@@ -162,10 +162,10 @@ contributions from accumulating drift. See D-017.
   live in `.claude/rules/*.md`, each scoped by a `paths` glob so it loads
   only when the matching files are touched.
 
-Known, left alone deliberately: four `react-hooks/exhaustive-deps` warnings
-(two `autosave` deps in `ResumeEditor`, two in `ResumeGrid`). They are real
-observations, but fixing them changes editor behaviour and belongs in its
-own change with e2e coverage, not in a formatting pass.
+That pass left four `react-hooks/exhaustive-deps` warnings alone (two
+`autosave` deps in `ResumeEditor`, two in `ResumeGrid`) as needing their own
+change with e2e coverage. They have since been fixed: the rule is now
+`'error'` in `eslint.config.mjs` and the tree is clean.
 
 ## Feedback widget: popover, drop-on-button, better issue body (2026-09-19)
 
@@ -211,6 +211,41 @@ shape of the issue body, not the endpoint's wire contract. See D-022 and D-023.
   arbitrary values in the tree, missed by the standards pass because T13 was
   developed on a parallel branch. They now use the generated utilities, and
   the one raw `text-amber-400` became a `--color-warning` token.
+
+## T16 — quality pass (2026-09-19)
+
+No behaviour change. An audit against `.claude/rules/**` found the mechanical
+half fully enforced — `format:check`, `lint`, `typecheck` all clean, 182 tests
+passing with 0 skipped, all 22 route handlers calling `requireUserId` +
+`withApiErrors`, all 22 documented in `docs/API.md`, no raw DB rows leaving
+`lib/queries/**`, and no unused exports anywhere in the tree. Four things the
+linter cannot see:
+
+- **`warning` had no colour tokens.** `PreviewPane`'s render-warnings banner
+  and its multi-page badge were the last raw palette shades in the app
+  (`border-amber-800/50`, `bg-amber-950/20`, `text-amber-300`) — exactly the
+  drift `.claude/rules/styling.md` describes, and invisible to ESLint.
+  `--color-warning` existed but was a single value, so there was nothing to
+  reach for. It now has the same `ink`/`surface`/`line`/`line-strong` triplet
+  `danger` has, mapped to the shades already in use, so no pixels moved.
+- **`forwardRef` is legacy on React 19** (D-024). `SearchBox` and
+  `TemplateEditor` were the only two components not using the
+  `export default function Name(props: NameProps)` shape, and `forwardRef`
+  was the only reason. `ref` is a plain prop now.
+- **`TemplateEditor`'s `gutterRef` was dead** — assigned, never read. The
+  gutter tracks the textarea through a `transform`, not through the ref.
+- **The latex-unavailable response was duplicated** in `/render` and `/pdf`,
+  and the `/pdf` copy was an untyped object literal, so it was not checked
+  against `RenderResult` — the same silent widening `.claude/rules/data-access.md`
+  warns about, one layer up. Both now call `latexUnavailableResult()` in
+  `lib/latex.ts`. The distinction that rule cares about is untouched: a
+  compile error is still a result, an unreachable sidecar still throws, and
+  they still converge only at the HTTP boundary. 2 new unit tests.
+
+Also corrected the stale note in the standards-pass section above, which still
+claimed four `react-hooks/exhaustive-deps` warnings were outstanding.
+
+**184 unit tests passing, 0 skipped.** See `docs/agents/t16.md`.
 
 ## What is in flight
 

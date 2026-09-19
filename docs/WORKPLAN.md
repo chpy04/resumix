@@ -60,11 +60,12 @@ points for T9. T9 branches off T8 rather than off `main`.
 
 ## Wave 5 — post-feature-complete
 
-| id  | task                                                                                                          | owns                                                               | branch                     | status            |
-| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------- | ----------------- |
-| T13 | In-app feedback widget → GitHub issue                                                                         | `lib/feedback/**`, `app/api/feedback/**`, `components/feedback/**` | `feat/t13-feedback-widget` | ✅ merged         |
-| T14 | Multi-user: `users` table, per-user scoping of every query, dev/password/supabase auth modes, seeded dev user | `drizzle/0003_*`, `lib/session.ts`, `lib/auth*`, `lib/queries/**`  | `feat/t14-multi-user`      | ✅ merged         |
-| T15 | Feedback widget polish: popover form, drop-a-screenshot-on-the-button, route/origin split in the issue body   | `components/feedback/**`, `lib/feedback/**`                        | `feat/t15-feedback-polish` | ✅ done, unmerged |
+| id  | task                                                                                                                           | owns                                                                                    | branch                     | status            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | -------------------------- | ----------------- |
+| T13 | In-app feedback widget → GitHub issue                                                                                          | `lib/feedback/**`, `app/api/feedback/**`, `components/feedback/**`                      | `feat/t13-feedback-widget` | ✅ merged         |
+| T14 | Multi-user: `users` table, per-user scoping of every query, dev/password/supabase auth modes, seeded dev user                  | `drizzle/0003_*`, `lib/session.ts`, `lib/auth*`, `lib/queries/**`                       | `feat/t14-multi-user`      | ✅ merged         |
+| T15 | Feedback widget polish: popover form, drop-a-screenshot-on-the-button, route/origin split in the issue body                    | `components/feedback/**`, `lib/feedback/**`                                             | `feat/t15-feedback-polish` | ✅ done, unmerged |
+| T16 | Quality pass: `warning` colour tokens, drop `forwardRef` for React 19 ref-as-prop, de-duplicate the latex-unavailable response | `app/globals.css`, `components/**`, `lib/latex.ts`, `app/api/resumes/[id]/{render,pdf}` | `feat/t16-quality-pass`    | ✅ done, unmerged |
 
 T13 is the "push" half of a feedback loop whose "pull" half (an agent that
 reads issues off GitHub, fixes them, and deploys) lives outside this repo.
