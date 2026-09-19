@@ -12,6 +12,7 @@ import type {
   Bullet,
   Experience,
   Project,
+  RenderResult,
   ResumeDetail,
   ResumeSummary,
   Selections,
@@ -115,6 +116,21 @@ export function updateSelections(id: string, patch: Partial<Selections>): Promis
  */
 export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
   return requestJson<SaveResumePdfResult>(`/api/resumes/${id}/pdf`, { method: 'POST' });
+}
+
+/**
+ * `POST /api/resumes/:id/render` — the live preview pane's only network
+ * call. **Never persists anything** (that's `/pdf`, above). `templateOverride`
+ * lets the Template tab preview unsaved LaTeX. Check `.ok`: a LaTeX compile
+ * failure is a normal `200 { ok: false, errors, warnings }`, never a thrown
+ * `ApiError` — same shape as `saveResumePdf` (docs/agents/t6.md Deviations #2).
+ */
+export function renderResume(id: string, templateOverride?: string): Promise<RenderResult> {
+  return requestJson<RenderResult>(`/api/resumes/${id}/render`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(templateOverride === undefined ? {} : { templateOverride }),
+  });
 }
 
 // ---------------------------------------------------------------------------

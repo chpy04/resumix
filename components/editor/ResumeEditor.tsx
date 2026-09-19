@@ -20,13 +20,14 @@ import {
   updateSelections,
   updateSkill,
   updateSkillRow,
+  updateTemplate,
 } from '@/lib/api-client';
 import { affectedSlice, selectionsReducer, type SelectionsAction } from '@/lib/editor/selections-reducer';
 import { EMPTY_SELECTIONS, type Library, type Selections, type Template } from '@/lib/types';
 import ContentPane, { type ContentPaneCallbacks } from './ContentPane';
 import EditorHeader, { type EditorTab } from './EditorHeader';
-import PreviewPanePlaceholder from './PreviewPanePlaceholder';
-import TemplateTabPlaceholder from './TemplateTabPlaceholder';
+import PreviewPane from './PreviewPane';
+import TemplateTab from './TemplateTab';
 import { useAutosaveRegistry } from './useAutosaveRegistry';
 
 interface ResumeEditorProps {
@@ -484,6 +485,27 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
     [autosave.getController, resumeId],
   );
 
+  // Template content is optimistically updated the same way every other
+  // content field is (see `onExperienceFieldChange` etc.): the editor's
+  // in-memory `state.template.content` *is* the draft the live preview
+  // reads from, and autosave persists it to every resume that references
+  // this template in the background, on a longer ~1s debounce since a full
+  // LaTeX document is a much bigger payload than a bullet.
+  function onTemplateContentChange(content: string): void {
+    if (state.status !== 'ready') return;
+    const templateId = state.template.id;
+    setState((prev) =>
+      prev.status !== 'ready' ? prev : { ...prev, template: { ...prev.template, content } },
+    );
+    autosave
+      .getController<string>(
+        'template:content',
+        (value) => updateTemplate(templateId, { content: value }).then(() => undefined),
+        1000,
+      )
+      .schedule(content);
+  }
+
   async function handleDownload(): Promise<void> {
     setDownloading(true);
     setDownloadError(null);
@@ -573,7 +595,12 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
           {tab === 'content' ? (
             <ContentPane library={state.library} selections={selections} callbacks={contentCallbacks} />
           ) : (
-            <TemplateTabPlaceholder template={state.template} />
+            <TemplateTab
+              template={state.template}
+              onContentChange={onTemplateContentChange}
+              saveStatus={autosave.status}
+              onRetry={autosave.retryAll}
+            />
           )}
         </div>
 
@@ -588,10 +615,11 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
         />
 
         <div style={{ width: `${100 - splitPercent}%` }} className="min-h-0 overflow-hidden p-3">
-          <PreviewPanePlaceholder
+          <PreviewPane
             resumeId={resumeId}
-            templateName={state.template.name}
-            hasSavedPdf={state.latestPdf !== null}
+            templateContent={state.template.content}
+            selections={selections}
+            library={state.library}
           />
         </div>
       </div>
