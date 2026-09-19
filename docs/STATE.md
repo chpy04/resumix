@@ -24,8 +24,8 @@ carrying a status and two resume references — the live resume being tailored,
 and the immutable PDF snapshot pinned to it (D-031). Logging one clones a
 resume named after the company, so there is always something to tailor;
 everything else about it is freeform text and untyped attachments. Marking it
-applied moves it off the board into the Applied table, where most applications
-quietly stay (D-032).
+applied — or dragging it onto the Applied zone — moves it off the board into
+the Applied table, where most applications quietly stay (D-032).
 
 Rendering is: load the selections → substitute them into the template's
 `<<TOKEN>>` placeholders → POST the `.tex` to a TeX Live sidecar → get a real
@@ -40,10 +40,12 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 ## The pieces
 
 - **Web app** — Next.js 15 / React 19 / TypeScript / Tailwind v4, App Router.
-  The home page is the applications board: a **Pipeline** tab with a column
-  per status that still needs something (draft, interviewing, offered,
-  rejected) and an **Applied** tab holding everything sent, as a searchable
-  table. `/applications/[id]` is one application — fields, freeform notes,
+  The home page is the applications board: a **Pipeline** tab holding the
+  statuses that still want something (draft, interviewing, offered) as a
+  drag-and-drop kanban, and an **Applied** tab holding everything that has
+  left it — applied or rejected — as a searchable table. Picking a card up
+  reveals two drop zones under the columns, `applied` and `rejected`, which
+  are the only way those statuses appear on the board (D-033). `/applications/[id]` is one application — fields, freeform notes,
   attachments, the linked resume and the button that marks it applied.
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), and `/resume/[id]` is the two-pane editor: content
