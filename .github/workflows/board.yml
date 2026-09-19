@@ -1,8 +1,8 @@
 # Keeps the Projects v2 board in step with git. Only the transitions that are
 # unambiguously inferable from an event live here -- a PR being opened means
 # "ready for review", a PR being merged means "done". The transitions that
-# depend on judgement (-> Planning) or on a human's approval (-> In Progress)
-# are deliberately absent: see the task lifecycle in CLAUDE.md.
+# depend on judgement (-> Planning, -> In Progress, -> Blocked) or on a human's
+# approval (-> Ready) are deliberately absent: see the lifecycle in CLAUDE.md.
 #
 # Needs a `BOARD_TOKEN` secret -- a fine-grained PAT with read/write on Projects.
 # The default GITHUB_TOKEN cannot touch a user-owned Projects v2 board at all.
@@ -79,7 +79,9 @@ jobs:
             scripts/board.sh move "$issue" "$status"
           done
 
-      # Changes requested sends the work back without a human touching the board.
+      # Changes requested sends the work back without a human touching the
+      # board. It returns to In Progress rather than a column of its own --
+      # an agent reworking a PR is the same activity as an agent writing it.
       # An approval deliberately does *not* move anything: the merge does.
       - name: Changes requested -> In Progress
         if: >-

@@ -137,28 +137,37 @@ record of task state. Nothing in `docs/` tracks progress; if you find
 yourself typing "in progress" into a markdown file, you are in the wrong
 system.
 
-| status        | means                                       | moved by  |
-| ------------- | ------------------------------------------- | --------- |
-| `Backlog`     | filed, nobody has picked it up              | automatic |
-| `Planning`    | you are writing the approach into the issue | you       |
-| `In Progress` | the plan is approved; code may be written   | **human** |
-| `In Review`   | PR is open and not a draft                  | automatic |
-| `Blocked`     | you need a decision only the human can make | you       |
-| `Done`        | PR merged, issue closed                     | automatic |
+| status        | means                                           | moved by  |
+| ------------- | ----------------------------------------------- | --------- |
+| `Backlog`     | filed, nobody has triaged it                    | automatic |
+| `Planning`    | an agent is writing the approach into the issue | agent     |
+| `Ready`       | the plan is approved; **no agent has it yet**   | **human** |
+| `In Progress` | an agent has claimed it and is working          | agent     |
+| `In Review`   | PR is open and not a draft                      | automatic |
+| `Blocked`     | an agent needs a decision only a human can make | agent     |
+| `Done`        | PR merged, issue closed                         | automatic |
 
 "Automatic" is `.github/workflows/board.yml` reacting to issue and PR events.
 Never hand-move a card into `In Review` or `Done` — open or merge the PR and
 let the workflow do it, so the board cannot disagree with git.
 
-### Planning → In Progress is a human gate
+### Planning → Ready is a human gate
 
 This is the one transition an agent must never make. You move the card to
 `Planning`, write the plan into the issue, and **stop there**. A human reads
-that plan and drags the card to `In Progress`; that move is the approval, and
-it is what tells you the approach is agreed and code may start.
+that plan and drags the card to `Ready`; that move is the approval, and it is
+what says the approach is agreed and code may start.
 
-So: finding an issue already in `In Progress` means its plan was approved.
-Finding one in `Planning` means it is waiting on a human — not on you.
+`Ready` and `In Progress` are deliberately separate, because "approved" and
+"someone is on it" are different facts and the board is useless if it cannot
+tell them apart. `Ready` is a queue of work that has been blessed and is
+waiting for an agent. Moving `Ready → In Progress` is how an agent **claims**
+the issue — do it before writing code, not after, so a second agent looking at
+the board can see the work is taken.
+
+So: `Planning` is waiting on a human. `Ready` is waiting on an agent.
+`In Progress` means an agent already has it — including an agent reworking an
+open PR after review, which is the same activity and stays in the same column.
 
 ### The walk
 
@@ -169,14 +178,16 @@ Finding one in `Planning` means it is waiting on a human — not on you.
    could break, what you are deliberately leaving out. Then stop and hand
    back. This comment is the thing being approved — write it for a reader
    who has not seen the code.
-3. **Build**, once the card is in `In Progress`. Worktree and branch below.
+3. **Claim it**, once a human has moved the card to `Ready`:
+   `scripts/board.sh move <n> "In Progress"`. Then worktree and branch below.
    Small imperative commits; reference the issue in the body, not the
    subject, so `git log --oneline` stays readable.
 4. **Open the PR** into `main` with `Closes #<n>` in the body. That link is
    what closes the issue on merge and what moves the card. Open it as a draft
    if it is not ready; marking it ready is what puts it in `In Review`.
 5. **Survive review.** Changes requested moves the card back to
-   `In Progress` on its own. Push fixes to the same branch.
+   `In Progress` on its own — reworking a PR is still an agent working the
+   issue. Push fixes to the same branch.
 6. **Merge.** The workflow closes the issue and moves the card to `Done`.
    Nothing to do by hand.
 

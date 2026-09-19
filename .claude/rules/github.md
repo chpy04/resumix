@@ -12,9 +12,14 @@ mechanical half — the commands, and the conventions for the plumbing itself.
 ## The board
 
 One Projects v2 board, user-owned (`chpy04`), with a single-select `Status`
-field holding exactly six options:
+field holding exactly seven options:
 
-`Backlog` · `Planning` · `In Progress` · `In Review` · `Blocked` · `Done`
+`Backlog` · `Planning` · `Ready` · `In Progress` · `In Review` · `Blocked` ·
+`Done`
+
+`Ready` and `In Progress` look redundant and are not: `Ready` means a human
+approved the plan, `In Progress` means an agent has claimed the work. Merging
+them loses the ability to see a queue of approved-but-unstarted work.
 
 Those names are load-bearing. `scripts/board.sh` looks an option up **by
 name** and fails loudly if it is missing, so renaming a column in the GitHub
@@ -27,10 +32,12 @@ scripts/board.sh move <issue-number> "Planning"
 scripts/board.sh pr-issues <pr-number>     # the issues a PR closes
 ```
 
-Agents only ever move a card to `Planning` or `Blocked`. Everything else is
-either automatic (`.github/workflows/board.yml`) or the human's
-(`Planning → In Progress` is the approval gate — never move a card into
-`In Progress` yourself, that is the thing you are waiting for).
+Agents move a card to `Planning` (starting to plan), `In Progress` (claiming
+approved work) and `Blocked`. Everything else is either automatic
+(`.github/workflows/board.yml`) or the human's — `Planning → Ready` is the
+approval gate, and an agent must never make that move itself. Claiming an
+issue out of `Ready` is fine and expected; promoting your own plan out of
+`Planning` is not.
 
 ## Tokens
 
