@@ -1,8 +1,8 @@
 import { expect, type Page } from '@playwright/test';
 // pdfjs-dist ships pure-JS text extraction that needs no canvas/DOM, so it
 // works fine directly under Node inside a Playwright test (not the browser
-// context) — see docs/agents/t10.md for why this is the chosen approach for
-// "does the PDF actually contain X" assertions instead of screenshot diffing.
+// context). This is how "does the PDF actually contain X" is asserted —
+// screenshot diffing would fail on font hinting without catching content bugs.
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 export const PASSWORD = 'e2e-password';
@@ -215,7 +215,7 @@ export async function extractPdfText(base64: string): Promise<string> {
  * Simulates an `@dnd-kit` pointer drag: press on the source row's drag
  * handle, move past the 4px activation-distance constraint, hover over the
  * target row, and release. `@dnd-kit`'s `PointerSensor` is the only sensor
- * registered in this app (no `KeyboardSensor` — see docs/agents/t10.md), so
+ * registered in this app (no `KeyboardSensor`), so
  * a real mouse gesture is the only way to drive it end to end; Playwright's
  * `mouse` API dispatches real pointer events in Chromium, which is exactly
  * what `PointerSensor` listens for.

@@ -21,7 +21,7 @@ Run all of it, not a subset:
   That bug reached `main` once, which is why `build` is in the gate.
 - `npm test` needs `DATABASE_URL` (it reads `.env`). Without it, the 16
   `lib/queries` integration suites self-skip and the run still reports
-  green. Expect **143 passing, 0 skipped**.
+  green. Expect **170 passing, 0 skipped**.
 - `npm run smoke` reads live database state, and a Playwright run leaves
   edited content behind — hence the reseed immediately before it. Running
   `smoke` straight after `test:e2e` will fail the round-trip diff for
@@ -127,6 +127,6 @@ database shape, the HTTP interface and the template token syntax. They are
 **contracts**, not incidental notes — other code, and other agents, depend on
 them being accurate. Update them deliberately, in the same commit as the
 change they describe. If reality and a contract disagree, that is a bug in
-one of them: decide which, fix it, and say so. Inside a task/wave where
-contracts are declared frozen (`docs/WORKPLAN.md`), propose the change
+one of them: decide which, fix it, and say so. If an issue's approved plan
+declares contracts frozen, propose the change in a comment on that issue
 rather than making it.
