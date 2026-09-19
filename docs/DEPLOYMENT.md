@@ -195,6 +195,8 @@ possible. Mitigate it in layers instead of pretending it's fully private:
    | `APP_PASSWORD` | your chosen long password | this gates the whole app |
    | `AUTH_SECRET` | a separate long random string | signs the auth token; do not reuse `APP_PASSWORD` |
    | `PDF_NAME_PREFIX` | e.g. `Chris_Pyle` | filename prefix for downloaded PDFs |
+   | `GITHUB_TOKEN` | a PAT with issues + contents write on the repo | powers the "Give feedback" button; without it `POST /api/feedback` returns 503 |
+   | `GITHUB_REPO` | `chpy04/resumix` | where feedback issues are filed |
 
 3. Deploy. Vercel runs `npm run build` (or `next build` directly) — this
    should succeed even though `DATABASE_URL` for the *build* environment may

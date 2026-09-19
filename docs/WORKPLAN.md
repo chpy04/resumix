@@ -51,3 +51,11 @@ points for T9. T9 branches off T8 rather than off `main`.
 | T10 | Spec-compliance e2e suite (8 specs, one per spec.md promise) | ✅ merged |
 | T11 | Deployment path (Supabase / Fly.io / Vercel), README, CLAUDE.md, CONTRIBUTING.md | ✅ merged |
 | T12 | Final review pass → `docs/REVIEW.md` | ✅ done (by the PM; the review agent was killed by a cyber-safeguard false positive) |
+
+## Wave 5 — post-feature-complete
+| id | task | owns | branch | status |
+|---|---|---|---|---|
+| T13 | In-app feedback widget → GitHub issue | `lib/feedback/**`, `app/api/feedback/**`, `components/feedback/**` | `feat/t13-feedback-widget` | 🔨 in review |
+
+T13 is the "push" half of a feedback loop whose "pull" half (an agent that
+reads issues off GitHub, fixes them, and deploys) lives outside this repo.
