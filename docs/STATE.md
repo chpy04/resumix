@@ -19,6 +19,11 @@ once, globally. Editing a bullet is therefore a global edit that instantly
 changes every resume that selected it. That is intentional, and it is the
 source of most reports that turn out not to be bugs.
 
+An **application** is the other half: one row per job applied to, carrying a
+status and two resume references — the live resume being tailored, and the
+immutable PDF snapshot that was actually sent (D-031). Everything else about
+it is freeform text and untyped attachments.
+
 Rendering is: load the selections → substitute them into the template's
 `<<TOKEN>>` placeholders → POST the `.tex` to a TeX Live sidecar → get a real
 `pdflatex` PDF back. Saving a PDF snapshots the bytes into `resume_pdf`, and
@@ -35,8 +40,11 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   Home page is a resume grid with fuzzy search and per-card download of the
   saved snapshot. `/resume/[id]` is a two-pane editor: content selection with
   `@dnd-kit` reordering and per-slice autosave on the left, a live PDF preview
-  and a LaTeX template tab on the right.
-- **Database** — Postgres, 15 tables, Drizzle for typed queries and
+  and a LaTeX template tab on the right. `/applications` is the board —
+  every application in a column per status — and `/applications/[id]` is its
+  detail page: fields, freeform notes, attachments, and the button that marks
+  one applied.
+- **Database** — Postgres, 17 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
   the pool on first query, because `next build` evaluates every route module
@@ -67,9 +75,10 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 
 ## Users and isolation
 
-Every query is scoped to a user. `user_id` sits on the five root tables
-(`template`, `experience`, `project`, `technical_skill_row`, `resume`); every
-other table inherits its owner through a join to its parent (D-018). Every
+Every query is scoped to a user. `user_id` sits on the six root tables
+(`template`, `experience`, `project`, `technical_skill_row`, `resume`,
+`application`); every other table inherits its owner through a join to its
+parent (D-018). Every
 query function takes a `userId` and filters on it, and another user's id reads
 as "not found", never "forbidden". Isolation is enforced in the query layer,
 not in `middleware.ts` — middleware runs on the Edge and cannot reach the

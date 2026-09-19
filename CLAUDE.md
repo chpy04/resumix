@@ -17,6 +17,13 @@ container → get a real `pdflatex` PDF back. Saved PDFs are snapshotted into
 `resume_pdf`, so a resume's downloaded bytes never silently change when
 content or templates are edited later.
 
+An **Application** is one job applied to: a company, a status
+(`draft`/`applied`/`interviewing`/`offered`/`rejected`), freeform notes,
+untyped attachments, and two resume references — the live `resume_id` you
+tailor before sending, and the `resume_pdf_id` snapshot pinned the moment you
+mark it applied. Two tables, deliberately: no company, event, task or contact
+tables (D-031).
+
 The consequence worth internalising: **a resume stores no text.** Editing a
 bullet is a global edit that instantly changes every resume that picked it.
 That is intentional, and most "bugs" that turn out not to be bugs are this.
@@ -40,8 +47,8 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    `const userId = await requireUserId(request)` (`lib/session.ts`) and pass
    it down; the query layer filters on it. `user_id` lives only on the five
    root tables (`template`, `experience`, `project`, `technical_skill_row`,
-   `resume`) — bullets, skills, bridge rows and PDF snapshots inherit their
-   owner through a join to their parent. Isolation is enforced in the
+   `resume`, `application`) — bullets, skills, bridge rows, PDF snapshots and
+   application files inherit their owner through a join to their parent. Isolation is enforced in the
    queries, **not** in `middleware.ts`, which runs on the Edge and cannot
    reach the database. Another user's id must read as "not found", never
    "forbidden". `lib/queries/isolation.test.ts` is the executable form of
@@ -75,7 +82,7 @@ one cannot:
   page default export taking a custom prop typechecks fine and fails the
   build. That bug reached `main` once.
 - `test` needs `DATABASE_URL` or 16 integration tests silently self-skip and
-  still report green. Expect **184 passing, 0 skipped**.
+  still report green. Expect **218 passing, 0 skipped**.
 - `smoke` reads live DB state and a prior Playwright run leaves edited
   content behind — hence the reseed before it.
 

@@ -10,21 +10,23 @@ hidden from the picker unless "show archived" is toggled on.
 
 ## Ownership — every row belongs to exactly one user
 
-The five **root** tables carry `user_id uuid not null references users (id) on
+The six **root** tables carry `user_id uuid not null references users (id) on
 delete restrict`:
 
-`template`, `experience`, `project`, `technical_skill_row`, `resume`.
+`template`, `experience`, `project`, `technical_skill_row`, `resume`,
+`application`.
 
 Everything else infers its owner through its parent and carries **no**
 `user_id` of its own:
 
-| table                         | owner is               | reached via              |
-| ----------------------------- | ---------------------- | ------------------------ |
-| `experience_bullet`           | its experience's owner | `experience_id`          |
-| `project_bullet`              | its project's owner    | `project_id`             |
-| `technical_skill`             | its row's owner        | `technical_skill_row_id` |
-| every `resume_*` bridge table | its resume's owner     | `resume_id`              |
-| `resume_pdf`                  | its resume's owner     | `resume_id`              |
+| table                         | owner is                | reached via              |
+| ----------------------------- | ----------------------- | ------------------------ |
+| `experience_bullet`           | its experience's owner  | `experience_id`          |
+| `project_bullet`              | its project's owner     | `project_id`             |
+| `technical_skill`             | its row's owner         | `technical_skill_row_id` |
+| every `resume_*` bridge table | its resume's owner      | `resume_id`              |
+| `resume_pdf`                  | its resume's owner      | `resume_id`              |
+| `application_file`            | its application's owner | `application_id`         |
 
 This is deliberate. A second `user_id` on a bullet would be a second,
 independently-writable copy of a fact the parent already records, and the two
@@ -151,3 +153,60 @@ wholesale on reorder — never patched incrementally.
 | `created_at` | timestamptz                           | latest row per resume = what home page downloads |
 
 History is kept (one row per save). "Most recent PDF" = `order by created_at desc limit 1`.
+
+## Applications
+
+Two tables, and deliberately only two: no company table, no event log, no
+tasks, no contacts. An application is one row of mostly-optional text plus a
+status, because applications differ from each other enough that structure gets
+in the way (D-031).
+
+### `application`
+
+| column          | type                                       | notes                                                             |
+| --------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| `user_id`       | uuid → `users(id)` not null                | a root table, like `resume`                                       |
+| `company`       | text not null                              | plain text; two applications to one company are two rows          |
+| `role_title`    | text not null default `''`                 |                                                                   |
+| `posting_url`   | text not null default `''`                 | empty or http(s) — it is rendered as a link                       |
+| `notes`         | text not null default `''`                 | freeform; the only place unstructured detail goes                 |
+| `status`        | `application_status` not null              | `draft` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
+| `applied_at`    | timestamptz                                | null exactly while nothing has been sent                          |
+| `resume_id`     | uuid → `resume(id)` on delete set null     | the **live** resume being tailored                                |
+| `resume_pdf_id` | uuid → `resume_pdf(id)` on delete restrict | the **frozen** snapshot that was sent                             |
+| `is_archived`   | boolean not null default false             |                                                                   |
+
+**The two resume references are not redundant.** `resume_id` is the mutable
+thing you keep editing; `resume_pdf_id` is what the company actually received.
+Marking an application applied sets the second and leaves the first alone, so
+"what did they get?" and "what has that resume become since?" stay separately
+answerable.
+
+They also differ on delete for that reason. Losing the editor link costs
+nothing, so `resume_id` is `set null`. Losing the evidence does, so
+`resume_pdf_id` is `restrict` — and since `resume_pdf` cascades from `resume`,
+that makes deleting a resume an application was sent with impossible.
+`deleteResume` checks first and answers `400`, rather than letting Postgres
+raise a foreign-key error as a 500.
+
+`applied_at` is not settable by the API. It follows from `status`
+(`lib/applications/status.ts`): stamped the first time an application leaves
+`draft`, never cleared afterwards — including when the status moves back,
+because the date something was sent is a fact and the status is an opinion.
+
+### `application_file`
+
+| column           | type                                       | notes                                    |
+| ---------------- | ------------------------------------------ | ---------------------------------------- |
+| `application_id` | uuid → `application(id)` on delete cascade | owner inherited through this             |
+| `filename`       | text not null                              | sanitized: no path components            |
+| `content_type`   | text not null                              | as uploaded; **not** what is served back |
+| `bytes`          | bytea not null                             |                                          |
+| `byte_size`      | integer not null                           |                                          |
+| `is_archived`    | boolean not null default false             |                                          |
+
+No `kind` column: a cover letter, a take-home, a screenshot of the posting and
+an offer letter are all just files. Uploads are capped at 4 MB
+(`lib/applications/attachments.ts`), and what comes back out is typed from a
+fixed list rather than echoed from the upload, so a stored `.html` cannot come
+back as a live page on this origin.
