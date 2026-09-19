@@ -5,6 +5,7 @@ import {
   findExperienceId,
   getResumeDetail,
   login,
+  type ResumeDetailLike,
 } from './support';
 
 /**
@@ -40,6 +41,26 @@ import {
  * was missing underneath it: they say what the editor's save traffic must look
  * like, so the next change to this wiring has something to fail against.
  */
+
+/**
+ * Reads one bullet's text back out of a fresh library payload, **by id**.
+ *
+ * Addressing it by position instead would be wrong here, and quietly so.
+ * `lib/queries/library.ts` orders bullets by `created_at` alone, and the seed
+ * writes every bullet of an experience in one transaction, so they all share
+ * one timestamp — the ordering is a total tie that Postgres is free to break
+ * differently on each scan, and editing a row is exactly what makes it do so.
+ * An index-based assertion here therefore compares the edit against whichever
+ * *other* bullet happened to surface first. Every existing spec that checks
+ * bullet content (`global-edit`) addresses by id for this reason.
+ */
+function bulletContent(detail: ResumeDetailLike, bulletId: string): string {
+  for (const experience of detail.library.experiences) {
+    const bullet = experience.bullets.find((b) => b.id === bulletId);
+    if (bullet) return bullet.content;
+  }
+  throw new Error(`no bullet ${bulletId} in the library`);
+}
 
 /** A `PATCH /api/experience-bullets/<id>`-shaped record of one request. */
 type SaveRecord = string;
@@ -128,9 +149,9 @@ test('autosave coalesces a burst of keystrokes into one request', async ({ page 
   await expect.poll(saves.all).toEqual([`PATCH /api/experience-bullets/${bulletId}`]);
   saves.reset();
 
-  // Twelve keystrokes at 15ms apart — ~180ms of typing, comfortably inside
+  // Eleven keystrokes at 15ms apart — ~165ms of typing, comfortably inside
   // the 500ms debounce, so the correct behaviour is exactly one request.
-  // A per-render controller would produce twelve.
+  // A per-render controller would produce eleven.
   const suffix = ' abcdefghij';
   await textarea.press('End');
   await textarea.pressSequentially(suffix, { delay: 15 });
@@ -145,9 +166,7 @@ test('autosave coalesces a burst of keystrokes into one request', async ({ page 
   // The one request carried the *last* value, not the first — coalescing
   // replaces the pending value rather than dropping the later keystrokes.
   const after = await getResumeDetail(page, resumeId);
-  expect(findExperienceBullet(after, 'Northeastern Electric Racing', 0).content).toBe(
-    baseline + suffix,
-  );
+  expect(bulletContent(after, bulletId)).toBe(baseline + suffix);
 });
 
 test('autosave gives two fields edited together their own queues', async ({ page }) => {
@@ -196,8 +215,8 @@ test('autosave gives two fields edited together their own queues', async ({ page
   // All three landed, in full. A shared queue would leave one of the bullets
   // holding its original seeded text.
   const after = await getResumeDetail(page, resumeId);
-  expect(findExperienceBullet(after, 'Northeastern Electric Racing', 0).content).toBe(firstText);
-  expect(findExperienceBullet(after, 'Northeastern Electric Racing', 1).content).toBe(secondText);
+  expect(bulletContent(after, first.bulletId)).toBe(firstText);
+  expect(bulletContent(after, second.bulletId)).toBe(secondText);
   expect(after.selections.experiences).not.toContain(unicodeId);
 });
 
@@ -227,7 +246,7 @@ test('autosave survives a reload — both the debounced and the immediate channe
   await expect
     .poll(async () => {
       const current = await getResumeDetail(page, resumeId);
-      return findExperienceBullet(current, 'Northeastern Electric Racing', 0).content;
+      return bulletContent(current, bulletId);
     })
     .toBe(edited);
 
