@@ -3,7 +3,8 @@
 Deliberately thin. It carries what must be in context for _every_ change;
 everything directory-specific lives in `.claude/rules/`, which loads only
 when you touch matching files. Read `docs/STATE.md` first, then
-`docs/ARCHITECTURE.md`.
+`docs/ARCHITECTURE.md`. What is being _worked on_ is not in `docs/` at all —
+it is on the GitHub board (see "Task lifecycle" below).
 
 ## What this is
 
@@ -95,13 +96,15 @@ error messages name the rule file.
 | `auth.md`         | the auth + middleware graph                  |
 | `testing.md`      | `**/*.test.ts`, `e2e/**`, `scripts/**`       |
 | `docs.md`         | `docs/**`                                    |
+| `github.md`       | `.github/**`, `scripts/board.sh`             |
 
 ## Contracts
 
 `docs/SCHEMA.md`, `docs/API.md`, `docs/TEMPLATE_TOKENS.md` are authoritative.
 Code must match them; a disagreement is a bug in one of them to be fixed
 deliberately, not papered over. Update the contract in the same commit as
-the code. During a declared wave they are frozen — propose, don't edit.
+the code. If an issue's approved plan declares a contract frozen, propose
+the change in a comment on that issue — don't edit.
 
 ## How to work here
 
@@ -120,28 +123,74 @@ the code. During a declared wave they are frozen — propose, don't edit.
 - **Don't add a dependency** to solve something the platform does. There is
   no test framework, no assertion library, no state manager, and the LaTeX
   sidecar has zero runtime deps. That is deliberate.
-- Every merged change updates `docs/STATE.md`.
+- **`docs/` describes the present tense.** It says what exists, never what
+  is planned or in flight — that lives on the board. A merged change updates
+  `docs/STATE.md` only where it changed what is true, not to record that it
+  happened; the issue and the PR are the record of that.
 
-## Worktree / branch convention
+## Task lifecycle
 
-One task = one agent = one git worktree = one branch.
-Branches `feat/<task-id>-<slug>`; worktrees at `../resumix-wt/<task-id>/`,
-outside the repo, never committed. `node_modules` is symlinked in from the
-main checkout — don't run `npm install` in a worktree unless you mean to
-replace that symlink. Small, imperative commits. `docs/WORKPLAN.md` is the
-task board; `docs/agents/<task-id>.md` is what each task actually did.
+**Every piece of work a person asks for is one GitHub issue.** A feature, a
+bug, a refactor, a docs pass — if a human requested it, it gets an issue
+before it gets a branch. The issue's `Status` on the board is the _only_
+record of task state. Nothing in `docs/` tracks progress; if you find
+yourself typing "in progress" into a markdown file, you are in the wrong
+system.
 
-## Traps already discovered
+| status        | means                                       | moved by  |
+| ------------- | ------------------------------------------- | --------- |
+| `Backlog`     | filed, nobody has picked it up              | automatic |
+| `Planning`    | you are writing the approach into the issue | you       |
+| `In Progress` | the plan is approved; code may be written   | **human** |
+| `In Review`   | PR is open and not a draft                  | automatic |
+| `Blocked`     | you need a decision only the human can make | you       |
+| `Done`        | PR merged, issue closed                     | automatic |
 
-- **A page's default export can't take a custom prop.** `next build`
-  type-checks App Router page/layout default exports against Next's own
-  generated types. Plain `tsc` passes; the build fails.
-- **react-pdf must be client-only, with a local worker.** `PdfViewer` is only
-  ever loaded via `next/dynamic({ ssr: false })`. Its pdf.js worker is a
-  hand-copied static file (`public/pdf.worker.min.mjs`), never a CDN, so it
-  cannot version-skew against the bundled `pdfjs-dist`. `next.config.ts` also
-  aliases `canvas: false` and pins `pdfjs-dist` to its minified build to route
-  around a `next dev` HMR bug — see `docs/agents/t9.md` before touching any
-  of it.
-- **Ports**: web 3000 (e2e uses 3100), latex 8080, postgres **5433** — 5432
-  is usually already taken.
+"Automatic" is `.github/workflows/board.yml` reacting to issue and PR events.
+Never hand-move a card into `In Review` or `Done` — open or merge the PR and
+let the workflow do it, so the board cannot disagree with git.
+
+### Planning → In Progress is a human gate
+
+This is the one transition an agent must never make. You move the card to
+`Planning`, write the plan into the issue, and **stop there**. A human reads
+that plan and drags the card to `In Progress`; that move is the approval, and
+it is what tells you the approach is agreed and code may start.
+
+So: finding an issue already in `In Progress` means its plan was approved.
+Finding one in `Planning` means it is waiting on a human — not on you.
+
+### The walk
+
+1. **Have an issue.** `gh issue view <n>`. If the request arrived as a
+   conversation, file it first with `gh issue create` and say that you did.
+2. **Plan in the open.** `scripts/board.sh move <n> Planning`, then post the
+   approach as an issue comment: what you will change, which files, what
+   could break, what you are deliberately leaving out. Then stop and hand
+   back. This comment is the thing being approved — write it for a reader
+   who has not seen the code.
+3. **Build**, once the card is in `In Progress`. Worktree and branch below.
+   Small imperative commits; reference the issue in the body, not the
+   subject, so `git log --oneline` stays readable.
+4. **Open the PR** into `main` with `Closes #<n>` in the body. That link is
+   what closes the issue on merge and what moves the card. Open it as a draft
+   if it is not ready; marking it ready is what puts it in `In Review`.
+5. **Survive review.** Changes requested moves the card back to
+   `In Progress` on its own. Push fixes to the same branch.
+6. **Merge.** The workflow closes the issue and moves the card to `Done`.
+   Nothing to do by hand.
+
+If you hit something only the human can answer, `scripts/board.sh move <n>
+Blocked`, comment with the precise question, and stop. A blocked card is
+information; a guess that got merged is a bug.
+
+### Branches and worktrees
+
+One issue = one agent = one worktree = one branch. Branch
+`feat/<issue-number>-<slug>` (or `fix/`), worktree at
+`../resumix-wt/<issue-number>/`, outside the repo and never committed.
+`node_modules` is symlinked in from the main checkout — don't run
+`npm install` in a worktree unless you mean to replace that symlink.
+
+The `gh` and GraphQL detail, and the token scopes the board needs, are in
+`.claude/rules/github.md`.
