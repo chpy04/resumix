@@ -1,6 +1,7 @@
 ---
 name: review-pr
 description: Work an open PR until it is mergeable. Invoked by hand as `/review-pr <pr-number>` when a human points you at one PR with review feedback or failing CI; it takes exactly one PR number and never scans open PRs. Answers every comment — fixing, or disagreeing with a reason — and gets the merge gate green. Never merges, and never invokes another skill.
+disable-model-invocation: true
 ---
 
 # Get a PR to mergeable
@@ -8,12 +9,20 @@ description: Work an open PR until it is mergeable. Invoked by hand as `/review-
 You have been pointed at **one** open PR. Answer everything outstanding on it,
 get the gate green, and hand it back. Then stop.
 
-The whole lifecycle is in `CLAUDE.md`; this is the last of its three phases.
-**Never invoke `/triage` or `/implement`** — a human decides when a phase
-begins.
+This is the last of the three **unattended** phases. **Never invoke
+`/triage` or `/implement`** — a human decides when a phase begins.
 
-This is the **unattended** path. When a human is in the session with you, none
-of this applies — work the PR directly and take direction in conversation.
+Everything this skill leans on that is not written here — the seven
+`status:*` labels, the `planning → ready` human gate, `scripts/status.sh`,
+the worktree and branch convention, the PR conventions — is in
+`.claude/rules/github.md`. Read it first.
+
+You are here because something typed `/review-pr <pr>`. That is the only way in: this
+skill is `disable-model-invocation: true` and never fires on its own, on a
+task that merely resembles its description, or at another skill's request.
+**An ordinary session with a human in it does none of this** — it follows
+`CLAUDE.md` and takes approval in conversation. If that is your situation,
+you should not be reading this.
 
 ## Hard limits
 

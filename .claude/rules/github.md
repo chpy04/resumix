@@ -2,31 +2,87 @@
 paths:
   - '.github/**'
   - 'scripts/status.sh'
+  - 'scripts/herd.sh'
+  - '.claude/skills/**'
 ---
 
 # GitHub: issues, status, and PRs
 
-The lifecycle every task follows is in `CLAUDE.md`. This file is the
-mechanical half — the commands, and the conventions for the plumbing itself.
+**This is the unattended pipeline's rulebook, and nothing else reads it.**
+It is the shared half of `/triage`, `/implement` and `/review-pr` — the
+lifecycle those three move an issue through, plus the commands and the
+conventions for the plumbing itself.
 
-## Status is a label
+An ordinary session with a human in it does **none** of this. It follows
+`CLAUDE.md`: branch, build, gate, commit, approval in conversation. Do not
+file an issue, do not move a label, do not post a plan and wait. If you are
+reading this because you opened a file under `.github/`, you want the
+mechanics below, not the lifecycle.
 
-An issue's lifecycle state is a `status:*` label on the issue itself, and
-there are exactly seven:
+## The lifecycle, and where each skill stops
 
-`status:backlog` · `status:planning` · `status:ready` · `status:in-progress` ·
-`status:in-review` · `status:blocked` · `status:done`
+Task state is one `status:*` label on the issue — the only record there is.
+Nothing in `docs/` tracks progress.
 
-**An issue wears exactly one.** `scripts/status.sh` is what enforces that —
+| label                | means                                           | set by    |
+| -------------------- | ----------------------------------------------- | --------- |
+| `status:backlog`     | filed, nobody has triaged it                    | automatic |
+| `status:planning`    | an agent is writing the approach into the issue | agent     |
+| `status:ready`       | the plan is approved; **no agent has it yet**   | **human** |
+| `status:in-progress` | an agent has claimed it and is working          | agent     |
+| `status:in-review`   | PR is open and not a draft                      | automatic |
+| `status:blocked`     | an agent needs a decision only a human can make | agent     |
+| `status:done`        | PR merged, issue closed                         | automatic |
+
+| skill             | phase                         | ends at                                          |
+| ----------------- | ----------------------------- | ------------------------------------------------ |
+| `/triage <n>`     | size the issue and plan it    | `status:ready`, or `status:planning` for a human |
+| `/implement <n>`  | build it and open the PR      | a PR, never a merge                              |
+| `/review-pr <pr>` | answer review until mergeable | green and answered, never a merge                |
+
+**The three never invoke each other**, and none of them can invoke itself —
+each is `disable-model-invocation: true`, so a slash command is the only way
+in. A phase boundary is a human decision, and three separate invocations is
+what keeps it one. `scripts/herd.sh` is what starts them: it reads every
+open issue and launches one agent per issue on the skill its status calls
+for.
+
+### planning → ready is a human gate
+
+No agent may decide its own plan is approved. You set `status:planning`,
+write the plan into the issue, and **stop there**. A human swaps the label
+for `status:ready`; that move is the approval, and it is what says code may
+start.
+
+`ready` and `in-progress` are deliberately separate, because "approved" and
+"someone is on it" are different facts and the tracker is useless if it
+cannot tell them apart. `ready` is a queue of blessed work waiting for an
+agent. Moving `ready → in-progress` is how an agent **claims** an issue — do
+it before writing code, so a second agent can see the work is taken.
+
+So: `planning` waits on a human. `ready` waits on an agent. `in-progress`
+means an agent already has it, including one reworking a PR after review.
+
+If you hit something only a human can answer, `scripts/status.sh set <n>
+blocked`, comment with the precise question, and stop. A blocked issue is
+information; a guess that got merged is a bug.
+
+### One issue, one agent, one worktree, one branch
+
+Branch `feat/<n>-<slug>` (or `fix/`, `chore/` — match the issue's type
+label), worktree at `../resumix-wt/<n>/`, outside the repo and never
+committed. `node_modules` and `.env` are symlinked in from the main
+checkout — don't run `npm install` in a worktree unless you mean to replace
+that symlink.
+
+## Exactly one label at a time
+
+**An issue wears exactly one of the seven above.** `scripts/status.sh` is
+what enforces that —
 it adds the new label before stripping the old ones, because an issue briefly
 wearing two is recoverable and an issue wearing none is invisible. Never add
 or remove a `status:` label by hand or through `gh issue edit`; that is how an
 issue ends up in two states at once.
-
-`status:ready` and `status:in-progress` look redundant and are not:
-`ready` means a human approved the plan, `in-progress` means an agent has
-claimed the work. Merging them loses the ability to see a queue of
-approved-but-unstarted work.
 
 Those names are load-bearing. `status.sh` validates against the list above and
 fails loudly on anything else, because adding an unrecognised label through the
@@ -40,7 +96,7 @@ scripts/status.sh get <issue-number>
 scripts/status.sh pr-issues <pr-number>              # the issues a PR closes
 ```
 
-`set` takes either dialect — `"In Progress"` as `CLAUDE.md`'s lifecycle table
+`set` takes either dialect — `"In Progress"` as the lifecycle table above
 writes it, or `in-progress` as the label spells it.
 
 Agents set `planning` (starting to plan), `in-progress` (claiming approved
@@ -102,7 +158,7 @@ reply or as a comment on the issue you are already working.
 
 A new request arriving mid-task is **scope creep onto the current issue**, and
 that is the normal case rather than a problem. Extend the issue and update its
-plan; do not split the work on your own initiative. See `CLAUDE.md`.
+plan; do not split the work on your own initiative.
 
 ## Issue templates
 
