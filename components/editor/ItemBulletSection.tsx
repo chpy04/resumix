@@ -185,6 +185,7 @@ function ItemRow<TParent extends ParentWithBullets>({
 
   return (
     <div
+      data-testid={`content-row-${item.id}`}
       className={`rounded-md border px-2 py-1.5 ${
         selected ? 'border-[var(--color-accent)]/40 bg-[var(--color-surface-2)]' : 'border-[var(--color-line)]'
       } ${item.isArchived ? 'opacity-70' : ''}`}
@@ -289,6 +290,7 @@ function BulletList({
       {ordered.map((bullet) => (
         <SortableRow key={bullet.id} id={bullet.id}>
           <div
+            data-testid={`bullet-row-${bullet.id}`}
             className={`flex items-start gap-2 rounded border px-1.5 py-1 ${
               selectedSet.has(bullet.id) ? 'border-[var(--color-accent)]/30 bg-[var(--color-surface-2)]' : 'border-[var(--color-line)]'
             } ${bullet.isArchived ? 'opacity-70' : ''}`}

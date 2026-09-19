@@ -52,6 +52,7 @@ export default function ResumeCard({ resume, isDefault = false }: ResumeCardProp
 
   return (
     <div
+      data-testid={`resume-card-${resume.id}`}
       role="button"
       tabIndex={0}
       onClick={handleNavigate}
@@ -85,6 +86,7 @@ export default function ResumeCard({ resume, isDefault = false }: ResumeCardProp
         </span>
         <button
           type="button"
+          data-testid="resume-download-button"
           onClick={handleDownload}
           disabled={!hasSavedPdf || downloading}
           title={

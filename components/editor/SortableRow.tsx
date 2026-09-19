@@ -28,6 +28,7 @@ export default function SortableRow({ id, children, className }: SortableRowProp
     <div
       ref={setNodeRef}
       style={style}
+      data-testid={`drag-row-${id}`}
       className={`flex items-start gap-1.5 ${isDragging ? 'z-10 opacity-70' : ''} ${className ?? ''}`}
     >
       <DragHandle {...attributes} {...listeners} />
