@@ -4,6 +4,13 @@ Each task is one agent, one git worktree, one branch, merged to `main` by the PM
 (the orchestrating agent) after review. Branches: `feat/<task-id>-<slug>`.
 Worktrees live in `../resumix-wt/<task-id>` (outside the repo, never committed).
 
+**Merge gate — every branch must pass all four before it is merged:**
+`npx tsc --noEmit`, `npm test`, `npm run build`, and a real end-to-end exercise of
+whatever it built. `tsc --noEmit` is **not** sufficient on its own: `next build`
+additionally validates App Router export signatures, and a page whose default export
+takes a custom prop typechecks fine but fails the build. That exact bug reached `main`
+in T4 because the gate was typecheck-only.
+
 Contracts in `docs/SCHEMA.md`, `docs/API.md`, `docs/TEMPLATE_TOKENS.md` are frozen
 for the duration of a wave. An agent that needs a contract change must say so in
 its report rather than edit the contract unilaterally.
@@ -31,7 +38,7 @@ its report rather than edit the contract unilaterally.
 ## Wave 3 — depends on wave 2
 | id | task | owns | branch | status |
 |---|---|---|---|---|
-| T7 | Home page: resume grid, fuzzy search, new/open/download | `app/page.tsx`, `components/home/**` | `feat/t7-home` | in flight (started early, against the frozen API contract) |
+| T7 | Home page: resume grid, fuzzy search, new/open/download | `app/page.tsx`, `components/home/**` | `feat/t7-home` | ✅ merged |
 | T8 | Editor: content pane, dnd ordering, archive toggle, autosave | `app/resume/[id]/**`, `components/editor/**` | `feat/t8-editor` | blocked on T6 |
 | T9 | Template tab + PDF preview pane + save/download | `components/preview/**`, `components/template/**` | `feat/t9-preview` | blocked on T8 |
 
