@@ -8,6 +8,7 @@
  */
 
 import { authedFetch } from '@/lib/auth-client';
+import type { FeedbackKind } from './feedback/issue.ts';
 import type {
   Bullet,
   Experience,
@@ -300,4 +301,40 @@ function extractFilename(contentDisposition: string | null): string | null {
   // Matches both `filename="foo.pdf"` and unquoted `filename=foo.pdf`.
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(contentDisposition);
   return match?.[1]?.trim() ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Feedback — the floating "Give feedback" widget's only network call.
+// Sends multipart (not JSON) because a screenshot rides along; deliberately
+// sets no `content-type` so the browser writes the multipart boundary.
+// ---------------------------------------------------------------------------
+
+export interface FeedbackResult {
+  number: number;
+  url: string;
+  /** False if the issue was filed but its screenshot couldn't be uploaded. */
+  screenshotUploaded: boolean;
+}
+
+export interface FeedbackInput {
+  kind: FeedbackKind;
+  description: string;
+  url: string;
+  viewport?: string;
+  userAgent?: string;
+  screenshot?: File | null;
+}
+
+/** `POST /api/feedback` — creates a GitHub issue. `503` means the deployment
+ *  has no `GITHUB_TOKEN`; `502` means GitHub itself refused. */
+export function submitFeedback(input: FeedbackInput): Promise<FeedbackResult> {
+  const form = new FormData();
+  form.set('kind', input.kind);
+  form.set('description', input.description);
+  form.set('url', input.url);
+  if (input.viewport) form.set('viewport', input.viewport);
+  if (input.userAgent) form.set('userAgent', input.userAgent);
+  if (input.screenshot) form.set('screenshot', input.screenshot, input.screenshot.name);
+
+  return requestJson<FeedbackResult>('/api/feedback', { method: 'POST', body: form });
 }
