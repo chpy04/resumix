@@ -33,7 +33,7 @@ its report rather than edit the contract unilaterally.
 | id | task | owns | branch | status |
 |---|---|---|---|---|
 | T5 | Seed script: V1 resume content + default template + Default resume + `scripts/smoke.ts` | `scripts/seed.ts`, `lib/seed-data/**` | `feat/t5-seed` | ✅ merged |
-| T6 | API route handlers (all of docs/API.md) + `lib/queries/**`, `lib/storage.ts`, `lib/filename.ts` | `app/api/**`, `lib/queries/**` | `feat/t6-api` | in flight |
+| T6 | API route handlers (all of docs/API.md) + `lib/queries/**`, `lib/storage.ts`, `lib/filename.ts` | `app/api/**`, `lib/queries/**` | `feat/t6-api` | ✅ merged |
 
 ## Wave 3 — depends on wave 2
 | id | task | owns | branch | status |
