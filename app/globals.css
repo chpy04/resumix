@@ -28,6 +28,10 @@
   --color-danger-line-strong: var(--color-red-800);
 
   --color-success: var(--color-green-500);
+
+  /* Something worked but not entirely — the feedback report that filed while
+   * its screenshot upload failed. Distinct from `danger`: nothing was lost. */
+  --color-warning: var(--color-amber-400);
 }
 
 html,
