@@ -4,7 +4,7 @@ Deliberately thin. It carries what must be in context for _every_ change;
 everything directory-specific lives in `.claude/rules/`, which loads only
 when you touch matching files. Read `docs/STATE.md` first, then
 `docs/ARCHITECTURE.md`. What is being _worked on_ is not in `docs/` at all —
-it is on the GitHub board (see "Task lifecycle" below).
+it is on the GitHub issue (see "Task lifecycle" below).
 
 ## What this is
 
@@ -96,7 +96,7 @@ error messages name the rule file.
 | `auth.md`         | the auth + middleware graph                  |
 | `testing.md`      | `**/*.test.ts`, `e2e/**`, `scripts/**`       |
 | `docs.md`         | `docs/**`                                    |
-| `github.md`       | `.github/**`, `scripts/board.sh`             |
+| `github.md`       | `.github/**`, `scripts/status.sh`            |
 
 ## Contracts
 
@@ -124,7 +124,7 @@ the change in a comment on that issue — don't edit.
   no test framework, no assertion library, no state manager, and the LaTeX
   sidecar has zero runtime deps. That is deliberate.
 - **`docs/` describes the present tense.** It says what exists, never what
-  is planned or in flight — that lives on the board. A merged change updates
+  is planned or in flight — that lives on the issue. A merged change updates
   `docs/STATE.md` only where it changed what is true, not to record that it
   happened; the issue and the PR are the record of that.
 
@@ -132,76 +132,90 @@ the change in a comment on that issue — don't edit.
 
 **Every piece of work a person asks for is one GitHub issue.** A feature, a
 bug, a refactor, a docs pass — if a human requested it, it gets an issue
-before it gets a branch. The issue's `Status` on the board is the _only_
-record of task state. Nothing in `docs/` tracks progress; if you find
-yourself typing "in progress" into a markdown file, you are in the wrong
-system.
+before it gets a branch. The issue's `status:*` label is the _only_ record of
+task state. Nothing in `docs/` tracks progress; if you find yourself typing
+"in progress" into a markdown file, you are in the wrong system.
 
-| status        | means                                           | moved by  |
-| ------------- | ----------------------------------------------- | --------- |
-| `Backlog`     | filed, nobody has triaged it                    | automatic |
-| `Planning`    | an agent is writing the approach into the issue | agent     |
-| `Ready`       | the plan is approved; **no agent has it yet**   | **human** |
-| `In Progress` | an agent has claimed it and is working          | agent     |
-| `In Review`   | PR is open and not a draft                      | automatic |
-| `Blocked`     | an agent needs a decision only a human can make | agent     |
-| `Done`        | PR merged, issue closed                         | automatic |
+**An issue represents a human-requested behaviour, so agents do not file
+them.** There is exactly one exception: the child issues of an issue labelled
+`epic`, which an agent creates as sub-issues when it plans that epic. Nothing
+else. If you notice a bug while doing something else, or think of work worth
+doing, say so in your reply or in a comment on the issue you are already on —
+do not open an issue for it. The list is the human's inbox, and an agent that
+files its own work item has quietly promoted its own idea to a commitment
+nobody made.
 
-"Automatic" is `.github/workflows/board.yml` reacting to issue and PR events.
-Never hand-move a card into `In Review` or `Done` — open or merge the PR and
-let the workflow do it, so the board cannot disagree with git.
+| label                | means                                           | set by    |
+| -------------------- | ----------------------------------------------- | --------- |
+| `status:backlog`     | filed, nobody has triaged it                    | automatic |
+| `status:planning`    | an agent is writing the approach into the issue | agent     |
+| `status:ready`       | the plan is approved; **no agent has it yet**   | **human** |
+| `status:in-progress` | an agent has claimed it and is working          | agent     |
+| `status:in-review`   | PR is open and not a draft                      | automatic |
+| `status:blocked`     | an agent needs a decision only a human can make | agent     |
+| `status:done`        | PR merged, issue closed                         | automatic |
 
-### Planning → Ready is a human gate
+An issue wears **exactly one** of these. Set it with `scripts/status.sh`,
+never with `gh issue edit` — the script is what strips the old label, and it
+is the only reason an issue cannot end up in two states at once.
 
-This is the one transition an agent must never make. You move the card to
-`Planning`, write the plan into the issue, and **stop there**. A human reads
-that plan and drags the card to `Ready`; that move is the approval, and it is
-what says the approach is agreed and code may start.
+"Automatic" is `.github/workflows/status.yml` reacting to issue and PR events.
+Never hand-set `status:in-review` or `status:done` — open or merge the PR and
+let the workflow do it, so the status cannot disagree with git.
 
-`Ready` and `In Progress` are deliberately separate, because "approved" and
-"someone is on it" are different facts and the board is useless if it cannot
-tell them apart. `Ready` is a queue of work that has been blessed and is
-waiting for an agent. Moving `Ready → In Progress` is how an agent **claims**
-the issue — do it before writing code, not after, so a second agent looking at
-the board can see the work is taken.
+### planning → ready is a human gate
 
-So: `Planning` is waiting on a human. `Ready` is waiting on an agent.
-`In Progress` means an agent already has it — including an agent reworking an
-open PR after review, which is the same activity and stays in the same column.
+This is the one transition an agent must never make. You set `status:planning`,
+write the plan into the issue, and **stop there**. A human reads that plan and
+swaps the label for `status:ready`; that move is the approval, and it is what
+says the approach is agreed and code may start.
+
+`ready` and `in-progress` are deliberately separate, because "approved" and
+"someone is on it" are different facts and the tracker is useless if it cannot
+tell them apart. `ready` is a queue of work that has been blessed and is
+waiting for an agent. Moving `ready → in-progress` is how an agent **claims**
+the issue — do it before writing code, not after, so a second agent reading the
+issue list can see the work is taken.
+
+So: `planning` is waiting on a human. `ready` is waiting on an agent.
+`in-progress` means an agent already has it — including an agent reworking an
+open PR after review, which is the same activity and keeps the same label.
 
 ### The walk
 
 1. **Have an issue.** `gh issue view <n>`. If the request arrived as a
-   conversation, file it first with `gh issue create` and say that you did.
-2. **Plan in the open.** `scripts/board.sh move <n> Planning`, then post the
+   conversation and there is no issue for it, stop and ask the human to file
+   one — do not file it yourself.
+2. **Plan in the open.** `scripts/status.sh set <n> planning`, then post the
    approach as an issue comment: what you will change, which files, what
    could break, what you are deliberately leaving out. Then stop and hand
    back. This comment is the thing being approved — write it for a reader
    who has not seen the code.
-3. **Claim it**, once a human has moved the card to `Ready`:
-   `scripts/board.sh move <n> "In Progress"`. Then worktree and branch below.
+3. **Claim it**, once a human has set `status:ready`:
+   `scripts/status.sh set <n> in-progress`. Then worktree and branch below.
    Small imperative commits; reference the issue in the body, not the
    subject, so `git log --oneline` stays readable.
 4. **Open the PR** into `main` with `Closes #<n>` in the body. That link is
-   what closes the issue on merge and what moves the card. Open it as a draft
-   if it is not ready; marking it ready is what puts it in `In Review`.
-5. **Survive review.** Changes requested moves the card back to
-   `In Progress` on its own — reworking a PR is still an agent working the
-   issue. Push fixes to the same branch.
-6. **Merge.** The workflow closes the issue and moves the card to `Done`.
-   Nothing to do by hand.
+   what closes the issue on merge and what drives the label. Open it as a
+   draft if it is not ready; marking it ready is what sets `status:in-review`.
+5. **Survive review.** Changes requested sets `status:in-progress` again on
+   its own — reworking a PR is still an agent working the issue. Push fixes
+   to the same branch.
+6. **Merge.** The workflow closes the issue and sets `status:done`. Nothing
+   to do by hand.
 
-If you hit something only the human can answer, `scripts/board.sh move <n>
-Blocked`, comment with the precise question, and stop. A blocked card is
+If you hit something only the human can answer, `scripts/status.sh set <n>
+blocked`, comment with the precise question, and stop. A blocked issue is
 information; a guess that got merged is a bug.
 
 ### Branches and worktrees
 
 One issue = one agent = one worktree = one branch. Branch
-`feat/<issue-number>-<slug>` (or `fix/`), worktree at
+`feat/<issue-number>-<slug>` (or `fix/`, `chore/` — match the issue's
+type label), worktree at
 `../resumix-wt/<issue-number>/`, outside the repo and never committed.
 `node_modules` is symlinked in from the main checkout — don't run
 `npm install` in a worktree unless you mean to replace that symlink.
 
-The `gh` and GraphQL detail, and the token scopes the board needs, are in
+The `gh` detail, and the token the agent credential needs, are in
 `.claude/rules/github.md`.

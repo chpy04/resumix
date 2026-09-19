@@ -105,8 +105,9 @@ skipped count must be zero. `build` is not redundant with `typecheck`:
 whose default export takes a custom prop typechecks fine and fails the build.
 
 CI runs the same gate as seven parallel workflows under `.github/workflows/`,
-one per failure class, sharing composite actions for setup. `board.yml` is the
-exception — it syncs the GitHub board rather than running any gate.
+one per failure class, sharing composite actions for setup. `status.yml` is
+the exception — it keeps an issue's `status:*` label in step with git rather
+than running any gate, and needs no secret to do it.
 
 Standards are enforced mechanically, not by prose: Prettier over the tree, and
 an ESLint flat config whose `no-restricted-*` rules turn the invariants into
