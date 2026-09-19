@@ -13,3 +13,6 @@ test-results/
 .pgdata/
 lib/render/.scratch/
 scripts/.scratch/
+/test-results/
+/playwright-report/
+/blob-report/
