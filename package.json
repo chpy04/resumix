@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types \"lib/**/*.test.ts\"",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
-    "db:seed": "node --experimental-strip-types scripts/seed.ts"
+    "db:seed": "node --experimental-strip-types scripts/seed.ts",
+    "smoke": "node --experimental-strip-types scripts/smoke.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

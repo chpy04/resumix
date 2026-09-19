@@ -27,7 +27,17 @@ Waves 0 and 1 are complete and merged to `main`:
   smoke test could not pass. The T3 test had been rewriting the reference file's pipes into
   commas to compensate; that adjustment was removed and the round-trip now compares verbatim.
 
-There is still no API and no UI, so the app does not run end to end yet.
+Wave 2/3 progress:
+
+- **T5 seed + smoke** — `npm run db:seed` loads the V1 resume content and a fully-selected
+  Default resume; `npm run smoke` reads it back **out of the database**, renders, diffs
+  against `docs/reference/v1-resume.tex`, and compiles it through the real latex sidecar.
+  **Verified passing: round-trip match + `ok=true, pages=1`.** The spec's governing
+  constraint — "I should always be able to represent my current resume" — is met.
+- **T7 home page** — resume grid, fuzzy search, per-card download of the saved snapshot.
+
+The API (T6) is the last thing standing between this and a running app; the editor
+(T8/T9) has not started.
 
 ## What is in flight
 
