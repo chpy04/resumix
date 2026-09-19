@@ -9,7 +9,7 @@
  *     every piece of seeded content selected, in the reference resume's order
  *
  * This is the project's smoke test: representing the user's real resume
- * within the schema is the acceptance bar (see docs/agents/t5.md).
+ * within the schema is the acceptance bar.
  *
  * The single user it creates is also what makes `dev` auth mode work — the
  * app logs in as the first user in the table with no password (see

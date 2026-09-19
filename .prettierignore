@@ -7,7 +7,3 @@ public/pdf.worker.min.mjs
 test-results/
 playwright-report/
 *.tsbuildinfo
-
-# Historical per-task completion reports — an append-only archive, not living
-# docs. Reformatting them only adds churn to future diffs.
-docs/agents/

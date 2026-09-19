@@ -25,7 +25,7 @@ import type {
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const;
 
-/** `POST /api/resumes/:id/pdf` — see docs/agents/t6.md Deviations #2. */
+/** `POST /api/resumes/:id/pdf` — the `ok: false` arm is in `docs/API.md`. */
 export type SaveResumePdfResult =
   | { ok: true; filename: string; createdAt: string }
   | { ok: false; pages: number | null; errors: string[]; warnings: string[]; log: string };
@@ -146,7 +146,7 @@ export function updateSelections(id: string, patch: Partial<Selections>): Promis
 /**
  * `POST /api/resumes/:id/pdf` — renders, compiles, and stores a snapshot.
  * Check `.ok` before reading `.filename`; a LaTeX failure is `200 { ok: false, ... }`,
- * never a thrown `ApiError` (see docs/agents/t6.md Deviations #2).
+ * never a thrown `ApiError` (`docs/API.md`).
  */
 export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
   return requestJson<SaveResumePdfResult>(`/api/resumes/${id}/pdf`, { method: 'POST' });
@@ -157,7 +157,7 @@ export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
  * call. **Never persists anything** (that's `/pdf`, above). `templateOverride`
  * lets the Template tab preview unsaved LaTeX. Check `.ok`: a LaTeX compile
  * failure is a normal `200 { ok: false, errors, warnings }`, never a thrown
- * `ApiError` — same shape as `saveResumePdf` (docs/agents/t6.md Deviations #2).
+ * `ApiError` — same shape as `saveResumePdf` (`docs/API.md`).
  */
 export function renderResume(id: string, templateOverride?: string): Promise<RenderResult> {
   return requestJson<RenderResult>(`/api/resumes/${id}/render`, {

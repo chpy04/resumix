@@ -1,0 +1,17 @@
+name: Chore
+description: Refactor, dependency bump, docs, tooling, CI — no user-visible behaviour change
+labels: ['chore']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs doing
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why now
+      description: Chores compete with features. What makes this worth doing.
+    validations:
+      required: true
