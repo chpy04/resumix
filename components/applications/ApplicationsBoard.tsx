@@ -151,8 +151,8 @@ export default function ApplicationsBoard() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <main className="mx-auto flex h-screen max-w-7xl flex-col px-6 py-6">
+      <header className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink">Applications</h1>
           <p className="mt-1 text-sm text-ink-dim">
@@ -184,7 +184,7 @@ export default function ApplicationsBoard() {
         </div>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line">
         <nav className="flex gap-1" role="tablist" aria-label="Application views">
           <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>
             Pipeline
@@ -223,22 +223,28 @@ export default function ApplicationsBoard() {
 
       {state.status === 'ready' ? (
         <>
-          {tab === 'pipeline' ? (
-            <KanbanBoard applications={visible} onStatusChange={handleStatusChange} />
-          ) : (
-            <AppliedTable applications={closed} onStatusChange={handleStatusChange} />
-          )}
-
+          {/* Above the board, not below it: the board fills the rest of the
+              screen, so anything after it would be pushed out of sight. */}
           {applications.length === 0 ? (
-            <p className="mt-10 text-sm text-ink-dim">
+            <p className="mb-4 shrink-0 text-sm text-ink-dim">
               No applications yet. Add one as soon as you see a posting — it starts from a resume
               you already have, and you tailor the copy from inside it.
             </p>
           ) : null}
 
           {applications.length > 0 && query.trim().length > 0 && visible.length === 0 ? (
-            <p className="mt-10 text-sm text-ink-dim">No applications match &quot;{query}&quot;.</p>
+            <p className="mb-4 shrink-0 text-sm text-ink-dim">
+              No applications match &quot;{query}&quot;.
+            </p>
           ) : null}
+
+          {tab === 'pipeline' ? (
+            <KanbanBoard applications={visible} onStatusChange={handleStatusChange} />
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <AppliedTable applications={closed} onStatusChange={handleStatusChange} />
+            </div>
+          )}
         </>
       ) : null}
 
@@ -284,9 +290,9 @@ function TabButton({
 
 function BoardSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
+    <div className="grid min-h-0 flex-1 gap-4 sm:grid-cols-3" aria-hidden="true">
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
+        <div key={index} className="animate-pulse rounded-lg border border-line bg-surface" />
       ))}
     </div>
   );

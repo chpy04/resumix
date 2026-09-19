@@ -15,22 +15,24 @@ interface KanbanColumnProps {
  * One board column, and one drop target. The droppable id *is* the status, so
  * a drop needs no lookup table — `statusForDrop` reads it straight off.
  *
- * The column keeps a minimum height whether or not it holds anything: an
- * empty column you cannot drop into is a worse target than a visible one.
+ * The column fills whatever height the board gives it, empty or not: an empty
+ * column you cannot drop into is a worse target than a visible one, and a
+ * column that grows with its contents would push the drop zones off screen.
+ * Cards scroll within it instead.
  */
 export default function KanbanColumn({ status, count, children }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="flex items-center justify-between border-b border-line pb-1.5 text-xs font-semibold tracking-wide text-ink-dim uppercase">
+    <section className="flex min-h-0 flex-col gap-2">
+      <h2 className="flex shrink-0 items-center justify-between border-b border-line pb-1.5 text-xs font-semibold tracking-wide text-ink-dim uppercase">
         {statusLabel(status)}
         <span className="text-ink-dim/70">{count}</span>
       </h2>
       <div
         ref={setNodeRef}
         data-testid={`kanban-column-${status}`}
-        className={`flex min-h-40 flex-col gap-2 rounded-lg border border-dashed p-2 transition-colors ${
+        className={`flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg border border-dashed p-2 transition-colors ${
           isOver ? 'border-accent bg-surface-2' : 'border-transparent'
         }`}
       >

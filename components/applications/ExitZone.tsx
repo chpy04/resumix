@@ -24,12 +24,12 @@ export default function ExitZone({ status, hint }: ExitZoneProps) {
     <div
       ref={setNodeRef}
       data-testid={`kanban-exit-${status}`}
-      className={`flex min-h-24 flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+      className={`flex h-full flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
         isOver ? 'border-accent bg-surface-2 text-ink' : 'border-line bg-surface/50 text-ink-dim'
       }`}
     >
-      <span className="text-sm font-semibold">{statusLabel(status)}</span>
-      <span className="mt-0.5 text-xs">{hint}</span>
+      <span className="text-base font-semibold">{statusLabel(status)}</span>
+      <span className="mt-1 text-xs">{hint}</span>
     </div>
   );
 }

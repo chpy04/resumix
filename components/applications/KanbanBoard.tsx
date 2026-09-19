@@ -38,6 +38,12 @@ const EXIT_HINTS: Record<string, string> = {
  * — there is no ordering within a column to persist, since an application
  * carries no sort_order.
  *
+ * The whole board is one screen: the columns stretch to fill everything above
+ * the zone row and scroll internally, and the zone row's height is held in
+ * reserve even when empty. Letting the columns take that space and then
+ * shrink on drag would move every card out from under the cursor at exactly
+ * the wrong moment.
+ *
  * One `DndContext` for the whole board, unlike the editor's per-list
  * contexts: cross-column dragging is the entire point here.
  */
@@ -75,27 +81,29 @@ export default function KanbanBoard({ applications, onStatusChange }: KanbanBoar
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {columns.map((column) => (
-          <KanbanColumn
-            key={column.status}
-            status={column.status}
-            count={column.applications.length}
-          >
-            {column.applications.map((application) => (
-              <DraggableCard key={application.id} application={application} />
-            ))}
-          </KanbanColumn>
-        ))}
-      </div>
-
-      {activeId ? (
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          {EXIT_STATUSES.map((status) => (
-            <ExitZone key={status} status={status} hint={EXIT_HINTS[status] ?? ''} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-3">
+          {columns.map((column) => (
+            <KanbanColumn
+              key={column.status}
+              status={column.status}
+              count={column.applications.length}
+            >
+              {column.applications.map((application) => (
+                <DraggableCard key={application.id} application={application} />
+              ))}
+            </KanbanColumn>
           ))}
         </div>
-      ) : null}
+
+        <div className="mt-4 grid h-48 shrink-0 grid-cols-2 gap-4">
+          {activeId
+            ? EXIT_STATUSES.map((status) => (
+                <ExitZone key={status} status={status} hint={EXIT_HINTS[status] ?? ''} />
+              ))
+            : null}
+        </div>
+      </div>
 
       <DragOverlay dropAnimation={null}>
         {active ? <ApplicationCard application={active} /> : null}
