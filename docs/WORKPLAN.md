@@ -46,7 +46,8 @@ T8 and T9 share `app/resume/[id]/page.tsx`; T8 owns it and leaves named mount
 points for T9. T9 branches off T8 rather than off `main`.
 
 ## Wave 4 — integration
-| id | task |
-|---|---|
-| T10 | End-to-end smoke test: seeded Default renders a PDF matching the V1 resume |
-| T11 | Full review pass + deployment notes (Vercel / Fly.io / Supabase) |
+| id | task | status |
+|---|---|---|
+| T10 | Spec-compliance e2e suite (8 specs, one per spec.md promise) | ✅ merged |
+| T11 | Deployment path (Supabase / Fly.io / Vercel), README, CLAUDE.md, CONTRIBUTING.md | ✅ merged |
+| T12 | Final fresh-eyes review pass → `docs/REVIEW.md` | in flight |
