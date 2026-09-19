@@ -12,7 +12,7 @@ import type { Library, Selections } from '@/lib/types';
 // Next.js trap). See `PdfViewer.tsx` for the matching worker-source setup.
 const PdfViewer = dynamic(() => import('./PdfViewer'), {
   ssr: false,
-  loading: () => <div className="p-4 text-xs text-[var(--color-ink-dim)]">Loading viewer…</div>,
+  loading: () => <div className="p-4 text-xs text-ink-dim">Loading viewer…</div>,
 });
 
 interface PreviewPaneProps {
@@ -48,11 +48,18 @@ interface GoodRender {
  * rendered PDF stays on screen underneath the error panel until a new
  * render succeeds.
  */
-export default function PreviewPane({ resumeId, templateContent, selections, library }: PreviewPaneProps) {
+export default function PreviewPane({
+  resumeId,
+  templateContent,
+  selections,
+  library,
+}: PreviewPaneProps) {
   const [good, setGood] = useState<GoodRender | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
-  const [phase, setPhase] = useState<'idle' | 'rendering' | 'ok' | 'compile-error' | 'network-error'>('idle');
+  const [phase, setPhase] = useState<
+    'idle' | 'rendering' | 'ok' | 'compile-error' | 'network-error'
+  >('idle');
   const [networkMessage, setNetworkMessage] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,11 +95,15 @@ export default function PreviewPane({ resumeId, templateContent, selections, lib
           } else {
             // Keep whatever `good` already holds — never blank the pane on
             // a transient compile failure while typing.
-            setErrors(result.errors.length > 0 ? result.errors : ['The template failed to compile.']);
+            setErrors(
+              result.errors.length > 0 ? result.errors : ['The template failed to compile.'],
+            );
             setPhase('compile-error');
           }
         } catch (error) {
-          setNetworkMessage(error instanceof ApiError ? error.message : 'Could not reach the preview service.');
+          setNetworkMessage(
+            error instanceof ApiError ? error.message : 'Could not reach the preview service.',
+          );
           setPhase('network-error');
         }
       },
@@ -115,7 +126,6 @@ export default function PreviewPane({ resumeId, templateContent, selections, lib
   const libraryKey = useMemo(() => JSON.stringify(library), [library]);
   useEffect(() => {
     controllerRef.current?.schedule({ templateContent });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionsKey, libraryKey, templateContent]);
 
   useEffect(() => {
@@ -132,13 +142,26 @@ export default function PreviewPane({ resumeId, templateContent, selections, lib
   const multiPage = (good?.pages ?? 0) > 1;
 
   return (
-    <div className="flex h-full flex-col gap-2 overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
+    <div className="flex h-full flex-col gap-2 overflow-hidden rounded-lg border border-line bg-surface p-3">
       <div className="flex shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {phase === 'rendering' ? (
-            <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-dim)]">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-3 w-3 animate-spin">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="42" strokeDashoffset="14" />
+            <span className="inline-flex items-center gap-1.5 text-xs text-ink-dim">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                className="h-3 w-3 animate-spin"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeDasharray="42"
+                  strokeDashoffset="14"
+                />
               </svg>
               Rendering…
             </span>
@@ -149,7 +172,7 @@ export default function PreviewPane({ resumeId, templateContent, selections, lib
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
               multiPage
                 ? 'border border-amber-700/60 bg-amber-950/40 text-amber-300'
-                : 'border border-[var(--color-line)] text-[var(--color-ink-dim)]'
+                : 'border border-line text-ink-dim'
             }`}
             title={multiPage ? 'This resume is spilling past one page' : 'Page count'}
           >
@@ -160,14 +183,16 @@ export default function PreviewPane({ resumeId, templateContent, selections, lib
       </div>
 
       {networkMessage ? (
-        <div className="shrink-0 rounded-md border border-red-900/50 bg-red-950/30 p-2 text-xs text-red-300">
+        <div className="shrink-0 rounded-md border border-danger-line/50 bg-danger-surface/30 p-2 text-xs text-danger-ink">
           {networkMessage}
         </div>
       ) : null}
 
       {errors.length > 0 ? (
-        <div className="max-h-40 shrink-0 overflow-auto rounded-md border border-red-900/50 bg-red-950/30 p-2 text-xs text-red-300">
-          <p className="mb-1 font-medium">The template failed to compile — showing the last good preview.</p>
+        <div className="max-h-40 shrink-0 overflow-auto rounded-md border border-danger-line/50 bg-danger-surface/30 p-2 text-xs text-danger-ink">
+          <p className="mb-1 font-medium">
+            The template failed to compile — showing the last good preview.
+          </p>
           <ul className="list-disc space-y-0.5 pl-4">
             {errors.map((message, index) => (
               <li key={index} className="break-words">
@@ -190,19 +215,19 @@ export default function PreviewPane({ resumeId, templateContent, selections, lib
         </div>
       ) : null}
 
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto rounded-md bg-[var(--color-canvas)]">
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto rounded-md bg-canvas">
         {good ? (
           <PdfViewer fileUrl={good.fileUrl} width={pageWidth} />
         ) : phase === 'rendering' ? (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--color-ink-dim)]">
+          <div className="flex h-full items-center justify-center text-xs text-ink-dim">
             Rendering your first preview…
           </div>
         ) : phase === 'compile-error' || phase === 'network-error' ? (
-          <div className="flex h-full items-center justify-center p-4 text-center text-xs text-[var(--color-ink-dim)]">
+          <div className="flex h-full items-center justify-center p-4 text-center text-xs text-ink-dim">
             No PDF yet — fix the error above to see a preview.
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--color-ink-dim)]">
+          <div className="flex h-full items-center justify-center text-xs text-ink-dim">
             Preview will appear here.
           </div>
         )}

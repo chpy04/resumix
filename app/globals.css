@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/*
+ * The whole palette. Every colour in the app comes from one of these tokens
+ * via a generated utility (`text-ink-dim`, `bg-danger-surface`, …) — see
+ * .claude/rules/styling.md. Raw palette shades (`text-red-400`) and
+ * arbitrary values (`text-[var(--color-ink)]`) are both out.
+ *
+ * The danger/success tokens alias Tailwind's own scale rather than hardcoding
+ * hex, so they track the framework's colour space instead of drifting from it.
+ */
 @theme {
   --color-canvas: #0f1115;
   --color-surface: #171a21;
@@ -8,6 +17,17 @@
   --color-ink: #e6e8ec;
   --color-ink-dim: #9aa1ad;
   --color-accent: #6ea8fe;
+
+  /* Error states. `danger` is inline error text; the rest build the banner
+   * (surface + line) and the retry button inside it (line-strong + ink-strong). */
+  --color-danger: var(--color-red-400);
+  --color-danger-ink: var(--color-red-300);
+  --color-danger-ink-strong: var(--color-red-200);
+  --color-danger-surface: var(--color-red-950);
+  --color-danger-line: var(--color-red-900);
+  --color-danger-line-strong: var(--color-red-800);
+
+  --color-success: var(--color-green-500);
 }
 
 html,

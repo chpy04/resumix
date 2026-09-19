@@ -45,7 +45,12 @@ function stubFetch(routes: (call: Call) => { status: number; body: unknown }): {
     });
   }) as typeof fetch;
 
-  return { calls, restore: () => { globalThis.fetch = original; } };
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -70,13 +75,25 @@ test('the assets branch is overridable', () => {
 
 test('a missing token fails closed rather than defaulting', () => {
   assert.throws(() => readGitHubConfig({ GITHUB_REPO: 'owner/repo' }), FeedbackConfigError);
-  assert.throws(() => readGitHubConfig({ GITHUB_TOKEN: '   ', GITHUB_REPO: 'o/r' }), FeedbackConfigError);
+  assert.throws(
+    () => readGitHubConfig({ GITHUB_TOKEN: '   ', GITHUB_REPO: 'o/r' }),
+    FeedbackConfigError,
+  );
 });
 
 test('a malformed repo slug is rejected', () => {
-  assert.throws(() => readGitHubConfig({ GITHUB_TOKEN: 'abc', GITHUB_REPO: 'resumix' }), FeedbackConfigError);
-  assert.throws(() => readGitHubConfig({ GITHUB_TOKEN: 'abc', GITHUB_REPO: 'a/b/c' }), FeedbackConfigError);
-  assert.throws(() => readGitHubConfig({ GITHUB_TOKEN: 'abc', GITHUB_REPO: '/repo' }), FeedbackConfigError);
+  assert.throws(
+    () => readGitHubConfig({ GITHUB_TOKEN: 'abc', GITHUB_REPO: 'resumix' }),
+    FeedbackConfigError,
+  );
+  assert.throws(
+    () => readGitHubConfig({ GITHUB_TOKEN: 'abc', GITHUB_REPO: 'a/b/c' }),
+    FeedbackConfigError,
+  );
+  assert.throws(
+    () => readGitHubConfig({ GITHUB_TOKEN: 'abc', GITHUB_REPO: '/repo' }),
+    FeedbackConfigError,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -89,14 +106,20 @@ test('uploading onto an existing branch commits on top of its head', async () =>
     if (call.path.endsWith('/git/ref/heads/feedback-assets')) {
       return { status: 200, body: { object: { sha: 'head1' } } };
     }
-    if (call.path.endsWith('/git/commits/head1')) return { status: 200, body: { tree: { sha: 'tree0' } } };
+    if (call.path.endsWith('/git/commits/head1'))
+      return { status: 200, body: { tree: { sha: 'tree0' } } };
     if (call.path.endsWith('/git/trees')) return { status: 201, body: { sha: 'tree1' } };
     if (call.path.endsWith('/git/commits')) return { status: 201, body: { sha: 'commit1' } };
     return { status: 200, body: {} };
   });
 
   try {
-    const url = await uploadScreenshot(CONFIG, new Uint8Array([1, 2, 3]), 'screenshots/a.png', 'msg');
+    const url = await uploadScreenshot(
+      CONFIG,
+      new Uint8Array([1, 2, 3]),
+      'screenshots/a.png',
+      'msg',
+    );
     assert.equal(url, 'https://raw.githubusercontent.com/chpy04/resumix/commit1/screenshots/a.png');
   } finally {
     restore();
@@ -157,13 +180,18 @@ test('bytes are sent base64-encoded', async () => {
   assert.equal(blob.body!.content, 'aGVsbG8=');
 });
 
-test('a failed upload surfaces GitHub\'s own message', async () => {
-  const { restore } = stubFetch(() => ({ status: 403, body: { message: 'Resource not accessible' } }));
+test("a failed upload surfaces GitHub's own message", async () => {
+  const { restore } = stubFetch(() => ({
+    status: 403,
+    body: { message: 'Resource not accessible' },
+  }));
   try {
     await assert.rejects(
       uploadScreenshot(CONFIG, new Uint8Array([1]), 'a.png', 'msg'),
       (err: unknown) =>
-        err instanceof GitHubApiError && err.status === 403 && err.message.includes('Resource not accessible'),
+        err instanceof GitHubApiError &&
+        err.status === 403 &&
+        err.message.includes('Resource not accessible'),
     );
   } finally {
     restore();
@@ -210,9 +238,15 @@ test('a 422 on labels retries unlabelled instead of losing the report', async ()
 });
 
 test('a non-422 failure is not retried', async () => {
-  const { calls, restore } = stubFetch(() => ({ status: 401, body: { message: 'Bad credentials' } }));
+  const { calls, restore } = stubFetch(() => ({
+    status: 401,
+    body: { message: 'Bad credentials' },
+  }));
   try {
-    await assert.rejects(createIssue(CONFIG, { title: 't', body: 'b', labels: [] }), GitHubApiError);
+    await assert.rejects(
+      createIssue(CONFIG, { title: 't', body: 'b', labels: [] }),
+      GitHubApiError,
+    );
   } finally {
     restore();
   }

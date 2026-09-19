@@ -3,7 +3,7 @@
 Resumix is a resume-tailoring workbench. The core idea: **content is global,
 a resume is a selection.** Every experience, project, bullet, and skill you
 have ever written lives once in the database. A "resume" doesn't store any
-text of its own — it stores *which* of that content you picked for this
+text of its own — it stores _which_ of that content you picked for this
 application and in what order. Edit a bullet once and it updates on every
 resume that uses it. Composing a resume for a new company is picking and
 reordering existing content, not retyping it. When you're happy, you render
@@ -89,20 +89,22 @@ and a 1-page PDF. This is the project's acceptance bar (see
 
 ## Command reference
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Next.js dev server on :3000, hot reload |
-| `npm run build` | Production build (`next build`); also the strictest typecheck (validates App Router export signatures, not just types) |
-| `npm start` | Run the production build (`next start`) |
-| `npm test` | Unit tests (`node --test`) across `lib/**/*.test.ts` — pure logic; DB-backed tests self-skip if `DATABASE_URL` isn't reachable |
-| `npm run test:e2e` | Playwright browser tests (`e2e/**`); spins up its own dev server on :3100 and **force-reseeds the database** — see `playwright.config.ts` before running against data you care about |
-| `npm run db:migrate` | Applies any `drizzle/*.sql` files not yet recorded in `_migrations`. Idempotent — safe to re-run. |
-| `npm run db:seed` | Seeds the real V1 resume content + Default template + Default resume. Refuses to run twice unless you pass `--force` (wipes and reseeds) |
-| `npm run smoke` | The end-to-end check described above: DB → render → compile → assert |
-| `npx tsc --noEmit` | Typecheck only (faster than `build`, but not sufficient on its own — see the note above) |
-| `npm run lint` | `next lint` |
+| Command              | What it does                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run dev`        | Next.js dev server on :3000, hot reload                                                                                                                                              |
+| `npm run build`      | Production build (`next build`); also the strictest typecheck (validates App Router export signatures, not just types)                                                               |
+| `npm start`          | Run the production build (`next start`)                                                                                                                                              |
+| `npm test`           | Tests across `lib/**/*.test.ts` (`node --test`). Loads `.env`; the DB-backed `lib/queries` suites self-skip without `DATABASE_URL`, so expect 110 passing and 0 skipped              |
+| `npm run test:e2e`   | Playwright browser tests (`e2e/**`); spins up its own dev server on :3100 and **force-reseeds the database** — see `playwright.config.ts` before running against data you care about |
+| `npm run db:migrate` | Applies any `drizzle/*.sql` files not yet recorded in `_migrations`. Idempotent — safe to re-run.                                                                                    |
+| `npm run db:seed`    | Seeds the real V1 resume content + Default template + Default resume. Refuses to run twice unless you pass `--force` (wipes and reseeds)                                             |
+| `npm run smoke`      | The end-to-end check described above: DB → render → compile → assert                                                                                                                 |
+| `npm run typecheck`  | `tsc --noEmit` — faster than `build`, but not sufficient on its own (see the note above)                                                                                             |
+| `npm run lint`       | ESLint (`eslint.config.mjs`); `lint:fix` applies the fixable ones                                                                                                                    |
+| `npm run format`     | Prettier over the tree; `format:check` is the CI/gate variant                                                                                                                        |
+| `npm run verify`     | **The merge gate.** format:check → lint → typecheck → test → build → reseed → smoke → e2e. Needs `docker compose up -d db latex`                                                     |
 
-`db:migrate`, `db:seed`, and `smoke` load `.env` automatically (via Node's
+`test`, `db:migrate`, `db:seed`, and `smoke` load `.env` automatically (via Node's
 `--env-file-if-exists`) if one is present, and fall back to whatever is
 already in your shell environment otherwise — so they work the same way
 locally and in CI/production where env vars are injected directly.

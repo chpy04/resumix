@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { createResumeViaUi, findExperienceBullet, getResumeDetail, login, renderResumeText, waitForSaved } from './support';
+import {
+  createResumeViaUi,
+  findExperienceBullet,
+  getResumeDetail,
+  login,
+  renderResumeText,
+  waitForSaved,
+} from './support';
 
 /**
  * spec.md: "we only ever archive, that way resumes can reference archived
@@ -21,21 +28,28 @@ test('archiving a bullet hides it from the default picker view but still renders
   // visible in the picker too, so it can still be deselected).
   const resumeA = await createResumeViaUi(page, `T10 Archive A ${Date.now()}`);
   const detail = await getResumeDetail(page, resumeA);
-  const { bulletId, content } = findExperienceBullet(detail, 'Via Separations (NExT Consulting)', 1);
+  const { bulletId, content } = findExperienceBullet(
+    detail,
+    'Via Separations (NExT Consulting)',
+    1,
+  );
 
   const resumeB = await createResumeViaUi(page, `T10 Archive B ${Date.now()}`);
-  await page.getByRole('button', { name: 'Expand Via Separations (NExT Consulting) bullets' }).click();
+  await page
+    .getByRole('button', { name: 'Expand Via Separations (NExT Consulting) bullets' })
+    .click();
   const bulletRowB = page.locator(`[data-testid="bullet-row-${bulletId}"]`);
   await bulletRowB.getByRole('checkbox', { name: 'Include this bullet on this resume' }).click();
   await waitForSaved(page);
-  await expect(bulletRowB.getByRole('checkbox', { name: 'Include this bullet on this resume' })).toHaveAttribute(
-    'aria-checked',
-    'false',
-  );
+  await expect(
+    bulletRowB.getByRole('checkbox', { name: 'Include this bullet on this resume' }),
+  ).toHaveAttribute('aria-checked', 'false');
 
   // Archive the bullet (a global edit) from resume A, where it's expanded already.
   await page.goto(`/resume/${resumeA}`);
-  await page.getByRole('button', { name: 'Expand Via Separations (NExT Consulting) bullets' }).click();
+  await page
+    .getByRole('button', { name: 'Expand Via Separations (NExT Consulting) bullets' })
+    .click();
   const bulletRowA = page.locator(`[data-testid="bullet-row-${bulletId}"]`);
   await bulletRowA.getByRole('button', { name: /^archive/i }).click();
   await waitForSaved(page);
@@ -43,7 +57,9 @@ test('archiving a bullet hides it from the default picker view but still renders
   // Back on resume B (deselected it): with "show archived" off (the
   // default), the bullet must not appear in the picker at all.
   await page.goto(`/resume/${resumeB}`);
-  await page.getByRole('button', { name: 'Expand Via Separations (NExT Consulting) bullets' }).click();
+  await page
+    .getByRole('button', { name: 'Expand Via Separations (NExT Consulting) bullets' })
+    .click();
   await expect(page.locator(`[data-testid="bullet-row-${bulletId}"]`)).toHaveCount(0);
 
   // Toggling "show archived" on brings it back, clearly marked archived.
@@ -51,10 +67,9 @@ test('archiving a bullet hides it from the default picker view but still renders
   const reappeared = page.locator(`[data-testid="bullet-row-${bulletId}"]`);
   await expect(reappeared).toHaveCount(1);
   await expect(reappeared.getByText('Archived', { exact: true })).toBeVisible();
-  await expect(reappeared.getByRole('checkbox', { name: 'Include this bullet on this resume' })).toHaveAttribute(
-    'aria-checked',
-    'false',
-  );
+  await expect(
+    reappeared.getByRole('checkbox', { name: 'Include this bullet on this resume' }),
+  ).toHaveAttribute('aria-checked', 'false');
 
   // Critically: resume A, which still has the archived bullet selected,
   // still renders it on the PDF — archiving never silently drops content

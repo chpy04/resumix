@@ -1,12 +1,8 @@
-import { parseJsonBody, withApiErrors } from '@/lib/http';
+import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { NotFoundError } from '@/lib/queries/errors';
 import { getResumeRow } from '@/lib/queries/resumes';
 import { getSelections, replaceSelections } from '@/lib/queries/selections';
 import { selectionsPatchSchema } from '@/lib/validation';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 /**
  * Autosave target. Replaces each slice present in the body wholesale inside

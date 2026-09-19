@@ -119,7 +119,10 @@ async function describeFailure(response: Response, path: string): Promise<string
   let detail = '';
   try {
     const body = (await response.json()) as { message?: string; errors?: { message?: string }[] };
-    const extra = body.errors?.map((e) => e.message).filter(Boolean).join('; ');
+    const extra = body.errors
+      ?.map((e) => e.message)
+      .filter(Boolean)
+      .join('; ');
     detail = [body.message, extra].filter(Boolean).join(' — ');
   } catch {
     // Non-JSON error body (rare); the status alone will have to do.
@@ -160,7 +163,10 @@ export async function uploadScreenshot(
 
   let baseTree: string | undefined;
   if (head) {
-    const commit = await gh<{ tree: { sha: string } }>(cfg, `${repoPath}/git/commits/${head.object.sha}`);
+    const commit = await gh<{ tree: { sha: string } }>(
+      cfg,
+      `${repoPath}/git/commits/${head.object.sha}`,
+    );
     baseTree = commit!.tree.sha;
   }
 

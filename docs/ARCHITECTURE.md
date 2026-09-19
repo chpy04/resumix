@@ -29,18 +29,18 @@ hand back the exact bytes a resume was last saved with.
                     └────────────┘  └──────────────────┘
 ```
 
-| Concern | Choice | Why |
-|---|---|---|
-| Framework | Next.js 15 App Router, React 19, TypeScript | Vercel target, server + client in one repo |
-| Styling | Tailwind CSS v4 | fast, no design system needed |
-| DB access | Drizzle ORM + `postgres.js`, server-side only | typed SQL, plain SQL migrations, portable off Supabase |
-| DB (dev) | `postgres:17` container in docker-compose | matches spec's "separate postgres container" |
-| DB (prod) | Supabase Postgres via Supavisor pooler | just a different `DATABASE_URL` |
-| LaTeX | sidecar container: TeX Live + Express `/compile` | real `pdflatex`; V1 template compiles unchanged |
-| PDF storage | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter | one code path dev/prod; swap to Supabase Storage later |
-| Auth | single shared password → HMAC token in `localStorage`, checked by middleware | single-user, per spec |
-| Drag + drop | `@dnd-kit` | proven in V1 |
-| PDF preview | `react-pdf` (pdf.js) | proven in V1 |
+| Concern     | Choice                                                                       | Why                                                    |
+| ----------- | ---------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Framework   | Next.js 15 App Router, React 19, TypeScript                                  | Vercel target, server + client in one repo             |
+| Styling     | Tailwind CSS v4                                                              | fast, no design system needed                          |
+| DB access   | Drizzle ORM + `postgres.js`, server-side only                                | typed SQL, plain SQL migrations, portable off Supabase |
+| DB (dev)    | `postgres:17` container in docker-compose                                    | matches spec's "separate postgres container"           |
+| DB (prod)   | Supabase Postgres via Supavisor pooler                                       | just a different `DATABASE_URL`                        |
+| LaTeX       | sidecar container: TeX Live + Express `/compile`                             | real `pdflatex`; V1 template compiles unchanged        |
+| PDF storage | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                 | one code path dev/prod; swap to Supabase Storage later |
+| Auth        | single shared password → HMAC token in `localStorage`, checked by middleware | single-user, per spec                                  |
+| Drag + drop | `@dnd-kit`                                                                   | proven in V1                                           |
+| PDF preview | `react-pdf` (pdf.js)                                                         | proven in V1                                           |
 
 ## Repo layout
 

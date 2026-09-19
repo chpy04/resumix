@@ -7,7 +7,7 @@
  * convention: it attaches the stored token and handles 401 -> logout.
  */
 
-import { authedFetch } from '@/lib/auth-client';
+import { authedFetch } from './auth-client.ts';
 import type { FeedbackKind } from './feedback/issue.ts';
 import type {
   Bullet,
@@ -20,7 +20,7 @@ import type {
   Skill,
   SkillRow,
   Template,
-} from '@/lib/types';
+} from './types.ts';
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const;
 
@@ -62,6 +62,26 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * `POST /api/auth` — the one request made before a token exists, so it is
+ * also the one that cannot use `authedFetch`'s 401 handling: a wrong
+ * password is the expected outcome, not an expired session. Returns the
+ * minted token, or `null` when the password was rejected.
+ */
+export async function login(password: string): Promise<string | null> {
+  const response = await fetch('/api/auth', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ password }),
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorMessage(response));
+  }
+  const body = (await response.json()) as { token: string };
+  return body.token;
+}
+
 /** `GET /api/resumes` — default first, then most-recently-created first. */
 export function listResumes(): Promise<ResumeSummary[]> {
   return requestJson<ResumeSummary[]>('/api/resumes');
@@ -71,7 +91,7 @@ export function listResumes(): Promise<ResumeSummary[]> {
 export function createResume(name: string): Promise<ResumeSummary> {
   return requestJson<ResumeSummary>('/api/resumes', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ name }),
   });
 }
@@ -87,7 +107,10 @@ export function getResumeDetail(id: string): Promise<ResumeDetail> {
 }
 
 /** `PATCH /api/resumes/:id` — renaming a resume or swapping its template. */
-export function updateResume(id: string, patch: { name?: string; templateId?: string }): Promise<ResumeSummary> {
+export function updateResume(
+  id: string,
+  patch: { name?: string; templateId?: string },
+): Promise<ResumeSummary> {
   return requestJson<ResumeSummary>(`/api/resumes/${id}`, {
     method: 'PATCH',
     headers: JSON_HEADERS,
@@ -156,7 +179,13 @@ export function createExperience(data: {
 
 export function updateExperience(
   id: string,
-  patch: Partial<{ company: string; title: string; dateRange: string; location: string; isArchived: boolean }>,
+  patch: Partial<{
+    company: string;
+    title: string;
+    dateRange: string;
+    location: string;
+    isArchived: boolean;
+  }>,
 ): Promise<Experience> {
   return requestJson<Experience>(`/api/experiences/${id}`, {
     method: 'PATCH',
@@ -184,7 +213,11 @@ export function updateExperienceBullet(
   });
 }
 
-export function createProject(data: { name: string; technologies: string; dateRange: string }): Promise<Project> {
+export function createProject(data: {
+  name: string;
+  technologies: string;
+  dateRange: string;
+}): Promise<Project> {
   return requestJson<Project>('/api/projects', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -222,7 +255,11 @@ export function updateProjectBullet(
   });
 }
 
-export function createSkillRow(data: { name: string; top: boolean; separator?: string }): Promise<SkillRow> {
+export function createSkillRow(data: {
+  name: string;
+  top: boolean;
+  separator?: string;
+}): Promise<SkillRow> {
   return requestJson<SkillRow>('/api/skill-rows', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -249,7 +286,10 @@ export function createSkill(skillRowId: string, name: string): Promise<Skill> {
   });
 }
 
-export function updateSkill(id: string, patch: Partial<{ name: string; isArchived: boolean }>): Promise<Skill> {
+export function updateSkill(
+  id: string,
+  patch: Partial<{ name: string; isArchived: boolean }>,
+): Promise<Skill> {
   return requestJson<Skill>(`/api/skills/${id}`, {
     method: 'PATCH',
     headers: JSON_HEADERS,
@@ -281,7 +321,8 @@ export async function downloadResumePdf(id: string): Promise<void> {
     throw new ApiError(response.status, await parseErrorMessage(response));
   }
 
-  const filename = extractFilename(response.headers.get('content-disposition')) ?? `resume-${id}.pdf`;
+  const filename =
+    extractFilename(response.headers.get('content-disposition')) ?? `resume-${id}.pdf`;
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   try {

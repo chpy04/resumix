@@ -4,12 +4,7 @@
  * client so the handler stays as thin as every other one under `app/api/**`.
  */
 
-import {
-  createIssue,
-  readGitHubConfig,
-  uploadScreenshot,
-  type CreatedIssue,
-} from './github.ts';
+import { createIssue, readGitHubConfig, uploadScreenshot, type CreatedIssue } from './github.ts';
 import {
   extensionForMimeType,
   issueBody,

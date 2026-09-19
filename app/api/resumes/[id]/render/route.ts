@@ -1,12 +1,8 @@
 import { compileTex, LatexServiceError } from '@/lib/latex';
-import { parseJsonBody, withApiErrors } from '@/lib/http';
+import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { renderResumeById } from '@/lib/queries/render';
 import { renderBodySchema } from '@/lib/validation';
 import type { RenderResult } from '@/lib/types';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 /**
  * Preview only — never persists. `templateOverride` lets the Template tab

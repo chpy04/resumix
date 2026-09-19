@@ -1,17 +1,29 @@
 import { expect, test } from '@playwright/test';
-import { createResumeViaUi, findExperienceBullet, getResumeDetail, login, waitForSaved } from './support';
+import {
+  createResumeViaUi,
+  findExperienceBullet,
+  getResumeDetail,
+  login,
+  waitForSaved,
+} from './support';
 
 /**
  * spec.md: "editing content (creating, updating, or archiving), should be a
  * global change that effects all resumes." This is called out in the task
  * brief as "the single most important behavioral claim in the spec."
  */
-test('editing a bullet on one resume is visible on every other resume that selected it', async ({ page }) => {
+test('editing a bullet on one resume is visible on every other resume that selected it', async ({
+  page,
+}) => {
   await login(page);
 
   const resumeA = await createResumeViaUi(page, `T10 Global A ${Date.now()}`);
   const detail = await getResumeDetail(page, resumeA);
-  const { bulletId, content: originalContent } = findExperienceBullet(detail, 'Northeastern Electric Racing', 0);
+  const { bulletId, content: originalContent } = findExperienceBullet(
+    detail,
+    'Northeastern Electric Racing',
+    0,
+  );
 
   const marker = `T10-GLOBAL-EDIT-MARKER-${Date.now()}`;
   const newContent = `${marker} — edited from resume A`;

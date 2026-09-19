@@ -20,7 +20,12 @@ test('the title uses only the first non-empty line of the description', () => {
 });
 
 test('a long first line is truncated on a word boundary', () => {
-  const title = issueTitle('bug', 'a'.repeat(10) + ' ' + 'the preview pane keeps flickering every single time I type a character into the editor');
+  const title = issueTitle(
+    'bug',
+    'a'.repeat(10) +
+      ' ' +
+      'the preview pane keeps flickering every single time I type a character into the editor',
+  );
   assert.ok(title.length <= '[Bug] '.length + 72, title);
   assert.ok(title.endsWith('…'));
   assert.ok(!title.includes('  '));
@@ -83,7 +88,9 @@ test('a screenshot url becomes an inline image', () => {
     screenshotUrl: 'https://raw.githubusercontent.com/o/r/sha/screenshots/a.png',
     submittedAt: AT,
   });
-  assert.ok(body.includes('![screenshot](https://raw.githubusercontent.com/o/r/sha/screenshots/a.png)'));
+  assert.ok(
+    body.includes('![screenshot](https://raw.githubusercontent.com/o/r/sha/screenshots/a.png)'),
+  );
 });
 
 test('a failed screenshot upload is reported in the body instead of dropped', () => {

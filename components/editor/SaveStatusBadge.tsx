@@ -17,7 +17,7 @@ export default function SaveStatusBadge({ status, onRetry }: SaveStatusBadgeProp
 
   if (status === 'saving') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-dim)]">
+      <span className="inline-flex items-center gap-1.5 text-xs text-ink-dim">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-3 w-3 animate-spin">
           <circle
             cx="12"
@@ -39,7 +39,7 @@ export default function SaveStatusBadge({ status, onRetry }: SaveStatusBadgeProp
       <button
         type="button"
         onClick={onRetry}
-        className="inline-flex items-center gap-1.5 rounded border border-red-800 bg-red-950/30 px-2 py-1 text-xs text-red-300 transition-colors hover:bg-red-900/40"
+        className="inline-flex items-center gap-1.5 rounded border border-danger-line-strong bg-danger-surface/30 px-2 py-1 text-xs text-danger-ink transition-colors hover:bg-danger-line/40"
       >
         Save failed — retry
       </button>
@@ -47,9 +47,15 @@ export default function SaveStatusBadge({ status, onRetry }: SaveStatusBadgeProp
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-dim)]">
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-3 w-3 text-green-500">
-        <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <span className="inline-flex items-center gap-1.5 text-xs text-ink-dim">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-3 w-3 text-success">
+        <path
+          d="M5 13l4 4L19 7"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
       Saved
     </span>

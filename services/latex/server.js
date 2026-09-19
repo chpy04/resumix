@@ -315,7 +315,12 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      if (typeof payload !== 'object' || payload === null || typeof payload.tex !== 'string' || payload.tex.length === 0) {
+      if (
+        typeof payload !== 'object' ||
+        payload === null ||
+        typeof payload.tex !== 'string' ||
+        payload.tex.length === 0
+      ) {
         sendJson(res, 400, { error: '"tex" must be a non-empty string' });
         return;
       }
@@ -332,7 +337,10 @@ const server = http.createServer(async (req, res) => {
         const result = await compile(payload.tex);
         sendJson(res, 200, result);
       } catch (err) {
-        sendJson(res, 500, { error: 'compile failed unexpectedly', detail: String(err && err.message ? err.message : err) });
+        sendJson(res, 500, {
+          error: 'compile failed unexpectedly',
+          detail: String(err && err.message ? err.message : err),
+        });
       } finally {
         release();
       }
@@ -341,7 +349,10 @@ const server = http.createServer(async (req, res) => {
 
     sendJson(res, 404, { error: 'not found' });
   } catch (err) {
-    sendJson(res, 500, { error: 'internal error', detail: String(err && err.message ? err.message : err) });
+    sendJson(res, 500, {
+      error: 'internal error',
+      detail: String(err && err.message ? err.message : err),
+    });
   }
 });
 

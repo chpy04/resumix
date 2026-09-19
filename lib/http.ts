@@ -6,6 +6,15 @@
 import type { ZodType } from 'zod';
 import { BadRequestError, NotFoundError } from './queries/errors.ts';
 
+/**
+ * Second argument Next hands every dynamic App Router handler. Declared once
+ * here because `next build` type-checks handler signatures against its own
+ * generated types, so the shape is not ours to vary per route.
+ */
+export interface RouteContext {
+  params: Promise<{ id: string }>;
+}
+
 export function errorResponse(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
 }

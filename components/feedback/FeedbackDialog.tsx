@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+} from 'react';
 import type { FeedbackKind } from '@/lib/feedback/issue';
 import { formatBytes } from '@/lib/feedback/screenshot-client';
 import type { FeedbackResult } from '@/lib/api-client';
@@ -164,7 +171,7 @@ export default function FeedbackDialog({
                   placeholder={
                     kind === 'bug'
                       ? 'What happened, and what did you expect instead?'
-                      : "What would you like to be able to do?"
+                      : 'What would you like to be able to do?'
                   }
                   className="mt-3 w-full resize-y rounded-md border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)] disabled:opacity-50"
                 />
@@ -279,9 +286,13 @@ function ScreenshotField({
     return (
       <div className="mt-3 flex items-center gap-3 rounded-md border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2">
         {previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a blob: URL from a
-          // local File; next/image would have nothing to optimise.
-          <img src={previewUrl} alt="Screenshot preview" className="h-12 w-16 rounded object-cover" />
+          // A blob: URL from a local File; next/image would have nothing to optimise.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewUrl}
+            alt="Screenshot preview"
+            className="h-12 w-16 rounded object-cover"
+          />
         ) : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs text-[var(--color-ink)]">{screenshot.name}</p>

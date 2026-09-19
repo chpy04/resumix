@@ -8,6 +8,17 @@ const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
 
 // ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+/** Messages are spelled out because `parseJsonBody` renders them as
+ *  `<field>: <message>`, and zod's default "Too small" wording is useless
+ *  to a caller. */
+export const loginSchema = z.object({
+  password: z.string('is required').min(1, 'is required'),
+});
+
+// ---------------------------------------------------------------------------
 // Resumes
 // ---------------------------------------------------------------------------
 

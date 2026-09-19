@@ -1,0 +1,23 @@
+# `next build`. This catches things `tsc --noEmit` cannot: App Router export
+# signatures are checked against Next's own generated types, and the webpack
+# config is actually resolved. A page whose default export takes a custom prop
+# typechecks fine and fails here — that bug reached main once.
+#
+# No DATABASE_URL is set on purpose: `next build` evaluates every route module
+# while collecting page data, so this job is also the regression test for the
+# lazy DB client (D-014). An eager postgres() call fails this job.
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  next-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+      - run: npm run build

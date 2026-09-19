@@ -1,6 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { createResumeViaUi, extractPdfText, findExperienceBullet, getResumeDetail, login, waitForSaved } from './support';
+import {
+  createResumeViaUi,
+  extractPdfText,
+  findExperienceBullet,
+  getResumeDetail,
+  login,
+  waitForSaved,
+} from './support';
 
 /**
  * spec.md: "If I save a resume, and then change the template or content, but
@@ -11,7 +18,9 @@ import { createResumeViaUi, extractPdfText, findExperienceBullet, getResumeDetai
  * in the brief — tested here as an actual byte-content comparison of two
  * real downloaded PDFs, not just a "some PDF exists" check.
  */
-test('the home page download always gives the last-saved snapshot, not live content', async ({ page }) => {
+test('the home page download always gives the last-saved snapshot, not live content', async ({
+  page,
+}) => {
   await login(page);
 
   const resumeId = await createResumeViaUi(page, `T10 Drift Co ${Date.now()}`);
@@ -48,7 +57,10 @@ test('the home page download always gives the last-saved snapshot, not live cont
   // Downloading from the home page must still give the OLD snapshot.
   await page.goto('/');
   const downloadPromise = page.waitForEvent('download', { timeout: 30_000 });
-  await page.locator(`[data-testid="resume-card-${resumeId}"]`).locator('[data-testid="resume-download-button"]').click();
+  await page
+    .locator(`[data-testid="resume-card-${resumeId}"]`)
+    .locator('[data-testid="resume-download-button"]')
+    .click();
   const homeDownload = await downloadPromise;
   const homeText = await extractPdfText(await fileAsBase64(homeDownload));
   expect(homeText).toContain(oldMarker);

@@ -1,12 +1,19 @@
 import { expect, test } from '@playwright/test';
-import { createResumeViaUi, findExperienceId, getResumeDetail, login, renderResumeText, waitForSaved } from './support';
+import {
+  createResumeViaUi,
+  findExperienceId,
+  getResumeDetail,
+  login,
+  renderResumeText,
+  waitForSaved,
+} from './support';
 
 /**
  * spec.md: "Changing the order or selecting / deselecting content should be
  * saved only to the currently opened resume." This is the per-resume half of
  * the single most important conceptual distinction in the app.
  */
-test('deselecting content on one resume does not affect other resumes, and drops off that resume\'s PDF', async ({
+test("deselecting content on one resume does not affect other resumes, and drops off that resume's PDF", async ({
   page,
 }) => {
   await login(page);

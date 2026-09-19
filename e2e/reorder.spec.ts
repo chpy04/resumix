@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { createResumeViaUi, dragRowAbove, findExperienceId, getResumeDetail, login, waitForSaved } from './support';
+import {
+  createResumeViaUi,
+  dragRowAbove,
+  findExperienceId,
+  getResumeDetail,
+  login,
+  waitForSaved,
+} from './support';
 
 /**
  * spec.md: "Changing the order... should be saved only to the currently
@@ -17,7 +24,9 @@ test('drag-and-drop reordering an experience persists across a reload', async ({
   const viaSeparationsId = findExperienceId(detail, 'Via Separations (NExT Consulting)');
 
   // Seeded order is [Via Separations, Northeastern Electric Racing, Unicode].
-  const experiencesSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Experiences', exact: true }) });
+  const experiencesSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Experiences', exact: true }) });
   const companyInputs = experiencesSection.locator('[data-testid^="content-row-"] input').first();
   await expect(companyInputs).toBeVisible();
 
@@ -38,19 +47,25 @@ test('drag-and-drop reordering an experience persists across a reload', async ({
   // Drag "Unicode" (last) above "Via Separations..." (first).
   await dragRowAbove(page, unicodeId, viaSeparationsId);
 
-  await expect.poll(currentOrder).toEqual(['Unicode', 'Via Separations (NExT Consulting)', 'Northeastern Electric Racing']);
+  await expect
+    .poll(currentOrder)
+    .toEqual(['Unicode', 'Via Separations (NExT Consulting)', 'Northeastern Electric Racing']);
   await waitForSaved(page);
 
   // The reorder is an immediate (0ms-debounce) autosave — confirm the server
   // actually has the new order before reloading, so a flaky UI-only result
   // can't slip through as a false pass.
-  await expect.poll(async () => (await getResumeDetail(page, resumeId)).selections.experiences).toEqual([
-    unicodeId,
-    viaSeparationsId,
-    detail.library.experiences.find((e) => e.company === 'Northeastern Electric Racing')!.id,
-  ]);
+  await expect
+    .poll(async () => (await getResumeDetail(page, resumeId)).selections.experiences)
+    .toEqual([
+      unicodeId,
+      viaSeparationsId,
+      detail.library.experiences.find((e) => e.company === 'Northeastern Electric Racing')!.id,
+    ]);
 
   await page.reload();
   await expect(page.getByRole('tab', { name: /content/i })).toBeVisible();
-  await expect.poll(currentOrder).toEqual(['Unicode', 'Via Separations (NExT Consulting)', 'Northeastern Electric Racing']);
+  await expect
+    .poll(currentOrder)
+    .toEqual(['Unicode', 'Via Separations (NExT Consulting)', 'Northeastern Electric Racing']);
 });

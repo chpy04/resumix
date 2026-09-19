@@ -26,7 +26,10 @@ export async function login(page: Page): Promise<void> {
  */
 export async function createResumeViaUi(page: Page, companyName: string): Promise<string> {
   await page.goto('/');
-  await page.getByText(/new resume/i).first().click();
+  await page
+    .getByText(/new resume/i)
+    .first()
+    .click();
   await page.getByPlaceholder('Company name').fill(companyName);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page).toHaveURL(/\/resume\//, { timeout: 15_000 });
@@ -80,7 +83,9 @@ async function apiRequest<T>(
   );
   const typed = result as ApiResult<T>;
   if (typed.status >= 400) {
-    throw new Error(`${init.method ?? 'GET'} ${path} -> ${typed.status}: ${JSON.stringify(typed.body)}`);
+    throw new Error(
+      `${init.method ?? 'GET'} ${path} -> ${typed.status}: ${JSON.stringify(typed.body)}`,
+    );
   }
   return typed.body;
 }
@@ -96,8 +101,16 @@ export interface ResumeDetailLike {
     skills: Record<string, string[]>;
   };
   library: {
-    experiences: { id: string; company: string; bullets: { id: string; content: string; isArchived: boolean }[] }[];
-    projects: { id: string; name: string; bullets: { id: string; content: string; isArchived: boolean }[] }[];
+    experiences: {
+      id: string;
+      company: string;
+      bullets: { id: string; content: string; isArchived: boolean }[];
+    }[];
+    projects: {
+      id: string;
+      name: string;
+      bullets: { id: string; content: string; isArchived: boolean }[];
+    }[];
     skillRows: { id: string; name: string; skills: { id: string; name: string }[] }[];
   };
 }
@@ -111,7 +124,10 @@ export function getResumeDetail(page: Page, resumeId: string): Promise<ResumeDet
  *  populating the home grid for a search test) — the actual "create clones
  *  Default" behavior is covered end to end by create-clone.spec.ts. */
 export async function createResumeViaApi(page: Page, name: string): Promise<string> {
-  const created = await apiRequest<{ id: string }>(page, '/api/resumes', { method: 'POST', body: { name } });
+  const created = await apiRequest<{ id: string }>(page, '/api/resumes', {
+    method: 'POST',
+    body: { name },
+  });
   return created.id;
 }
 
@@ -193,7 +209,9 @@ export async function dragRowAbove(page: Page, sourceId: string, targetId: strin
   // and the row's own content (e.g. "content-row-<id>") as siblings, so the
   // handle has to be found from the shared `SortableRow` wrapper, not from
   // inside the content row itself.
-  const sourceHandle = page.locator(`[data-testid="drag-row-${sourceId}"]`).getByRole('button', { name: 'Drag to reorder' });
+  const sourceHandle = page
+    .locator(`[data-testid="drag-row-${sourceId}"]`)
+    .getByRole('button', { name: 'Drag to reorder' });
   const targetRow = page.locator(`[data-testid="drag-row-${targetId}"]`);
 
   const sourceBox = await sourceHandle.boundingBox();

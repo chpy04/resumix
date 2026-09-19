@@ -62,13 +62,13 @@ export default function SkillsSection({
   }
 
   return (
-    <section className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]">
-      <header className="flex items-center justify-between border-b border-[var(--color-line)] px-3 py-2">
-        <h2 className="text-sm font-semibold text-[var(--color-ink)]">{title}</h2>
+    <section className="rounded-lg border border-line bg-surface">
+      <header className="flex items-center justify-between border-b border-line px-3 py-2">
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
         <button
           type="button"
           onClick={() => setAdding((v) => !v)}
-          className="rounded border border-[var(--color-line)] px-2 py-1 text-xs text-[var(--color-ink-dim)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          className="rounded border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
         >
           {adding ? 'Cancel' : '+ Add row'}
         </button>
@@ -85,11 +85,15 @@ export default function SkillsSection({
       ) : null}
 
       {orderedIds.length === 0 ? (
-        <p className="px-3 py-4 text-xs text-[var(--color-ink-dim)]">
+        <p className="px-3 py-4 text-xs text-ink-dim">
           No rows yet{showArchived ? '' : ' (or all are archived)'}.
         </p>
       ) : (
-        <SortableList ids={orderedIds} onReorder={handleReorder} className="flex flex-col gap-1 p-2">
+        <SortableList
+          ids={orderedIds}
+          onReorder={handleReorder}
+          className="flex flex-col gap-1 p-2"
+        >
           {ordered.map((row) => (
             <SortableRow key={row.id} id={row.id}>
               <SkillRowCard
@@ -178,33 +182,41 @@ function SkillRowCard({
   return (
     <div
       className={`rounded-md border px-2 py-1.5 ${
-        selected ? 'border-[var(--color-accent)]/40 bg-[var(--color-surface-2)]' : 'border-[var(--color-line)]'
+        selected ? 'border-accent/40 bg-surface-2' : 'border-line'
       } ${row.isArchived ? 'opacity-70' : ''}`}
     >
       <div className="flex items-center gap-2">
-        <SelectToggle checked={selected} onChange={onToggleSelected} label={`Include ${row.name} on this resume`} />
+        <SelectToggle
+          checked={selected}
+          onChange={onToggleSelected}
+          label={`Include ${row.name} on this resume`}
+        />
         <input
           value={row.name}
           onChange={(event) => onFieldChange('name', event.target.value)}
           placeholder="Row name (e.g. Languages)"
-          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-[var(--color-ink)] outline-none hover:border-[var(--color-line)] focus:border-[var(--color-accent)]"
+          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-ink outline-none hover:border-line focus:border-accent"
         />
         <input
           value={row.separator}
           onChange={(event) => onFieldChange('separator', event.target.value)}
           title="Separator joining this row's skills, e.g. ', '"
-          className="w-16 min-w-0 shrink-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[var(--color-ink-dim)] outline-none hover:border-[var(--color-line)] focus:border-[var(--color-accent)]"
+          className="w-16 min-w-0 shrink-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-ink-dim outline-none hover:border-line focus:border-accent"
         />
         <GlobalEditBadge />
         {row.isArchived ? <ArchivedBadge /> : null}
         <ArchiveButton isArchived={row.isArchived} onClick={onArchive} />
       </div>
 
-      <div className="mt-2 border-t border-[var(--color-line)] pt-2 pl-7">
+      <div className="mt-2 border-t border-line pt-2 pl-7">
         {orderedIds.length === 0 ? (
-          <p className="text-[11px] text-[var(--color-ink-dim)]">No skills yet.</p>
+          <p className="text-[11px] text-ink-dim">No skills yet.</p>
         ) : (
-          <SortableList ids={orderedIds} onReorder={handleReorder} className="flex flex-wrap gap-1.5">
+          <SortableList
+            ids={orderedIds}
+            onReorder={handleReorder}
+            className="flex flex-wrap gap-1.5"
+          >
             {ordered.map((skill) => (
               <SkillChip
                 key={skill.id}
@@ -225,29 +237,29 @@ function SkillRowCard({
               onChange={(event) => setSkillName(event.target.value)}
               autoFocus
               placeholder="Skill name"
-              className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-xs text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+              className="min-w-0 flex-1 rounded border border-line bg-surface-2 px-1.5 py-0.5 text-xs text-ink outline-none focus:border-accent"
             />
             <button
               type="submit"
               disabled={submitting}
-              className="rounded bg-[var(--color-accent)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--color-canvas)] disabled:opacity-50"
+              className="rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium text-canvas disabled:opacity-50"
             >
               Add
             </button>
             <button
               type="button"
               onClick={() => setAddingSkill(false)}
-              className="text-[11px] text-[var(--color-ink-dim)] hover:text-[var(--color-ink)]"
+              className="text-[11px] text-ink-dim hover:text-ink"
             >
               Cancel
             </button>
-            {skillError ? <span className="text-[11px] text-red-400">{skillError}</span> : null}
+            {skillError ? <span className="text-[11px] text-danger">{skillError}</span> : null}
           </form>
         ) : (
           <button
             type="button"
             onClick={() => setAddingSkill(true)}
-            className="mt-1.5 text-[11px] text-[var(--color-ink-dim)] transition-colors hover:text-[var(--color-accent)]"
+            className="mt-1.5 text-[11px] text-ink-dim transition-colors hover:text-accent"
           >
             + Add skill
           </button>
@@ -271,24 +283,30 @@ function SkillChip({
   onArchive: () => void;
 }) {
   return (
-    <SortableRow id={skill.id} className={`!gap-1 rounded border px-1 py-0.5 ${
-      selected ? 'border-[var(--color-accent)]/40 bg-[var(--color-surface-2)]' : 'border-[var(--color-line)]'
-    } ${skill.isArchived ? 'opacity-70' : ''}`}
+    <SortableRow
+      id={skill.id}
+      className={`!gap-1 rounded border px-1 py-0.5 ${
+        selected ? 'border-accent/40 bg-surface-2' : 'border-line'
+      } ${skill.isArchived ? 'opacity-70' : ''}`}
     >
       <div className="flex items-center gap-1">
-        <SelectToggle checked={selected} onChange={onToggle} label={`Include ${skill.name} on this resume`} />
+        <SelectToggle
+          checked={selected}
+          onChange={onToggle}
+          label={`Include ${skill.name} on this resume`}
+        />
         <input
           value={skill.name}
           onChange={(event) => onNameChange(event.target.value)}
           size={Math.max(4, skill.name.length)}
-          className="min-w-0 rounded border border-transparent bg-transparent px-0.5 text-xs text-[var(--color-ink)] outline-none hover:border-[var(--color-line)] focus:border-[var(--color-accent)]"
+          className="min-w-0 rounded border border-transparent bg-transparent px-0.5 text-xs text-ink outline-none hover:border-line focus:border-accent"
         />
         {skill.isArchived ? <ArchivedBadge /> : null}
         <button
           type="button"
           onClick={onArchive}
           title={skill.isArchived ? 'Unarchive (global)' : 'Archive (global)'}
-          className="text-[10px] text-[var(--color-ink-dim)] hover:text-[var(--color-accent)]"
+          className="text-[10px] text-ink-dim hover:text-accent"
         >
           {skill.isArchived ? '⟲' : '✕'}
         </button>
@@ -324,23 +342,26 @@ function CreateRowForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
+    <form
+      onSubmit={handleSubmit}
+      className="flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-2"
+    >
       <input
         value={name}
         onChange={(event) => setName(event.target.value)}
         placeholder="Row name (e.g. Languages)"
         autoFocus
-        className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+        className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 text-xs text-ink outline-none focus:border-accent"
       />
-      {error ? <span className="text-xs text-red-400">{error}</span> : null}
+      {error ? <span className="text-xs text-danger">{error}</span> : null}
       <button
         type="submit"
         disabled={submitting}
-        className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs font-medium text-[var(--color-canvas)] disabled:opacity-50"
+        className="rounded bg-accent px-2 py-1 text-xs font-medium text-canvas disabled:opacity-50"
       >
         {submitting ? 'Adding…' : 'Add row'}
       </button>
-      <button type="button" onClick={onCancel} className="text-xs text-[var(--color-ink-dim)] hover:text-[var(--color-ink)]">
+      <button type="button" onClick={onCancel} className="text-xs text-ink-dim hover:text-ink">
         Cancel
       </button>
     </form>

@@ -1,0 +1,48 @@
+# Unit + query-integration tests. Needs Postgres: without DATABASE_URL the 16
+# lib/queries suites self-skip and the run still reports green, so this job
+# asserts the count as well as the exit code.
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  node-test:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://resumix:resumix@localhost:5433/resumix
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+
+      # Only the database; no latex sidecar, so no TeX Live image to build.
+      - run: docker compose up -d --wait db
+      - run: npm run db:migrate
+      - run: npm run db:seed -- --force
+
+      # `shell: bash` is load-bearing: it runs with `-o pipefail`, which the
+      # default shell does not, so a failing `npm test` piped into `tee` would
+      # otherwise be reported as a pass.
+      - name: Run tests
+        shell: bash
+        run: npm test 2>&1 | tee test-output.txt
+
+      - name: Assert no tests silently skipped
+        shell: bash
+        run: |
+          skipped=$(sed -n 's/^.* skipped \([0-9][0-9]*\)$/\1/p' test-output.txt | tail -1)
+          if [ -z "$skipped" ]; then
+            echo "::error::No 'skipped' summary line in the test output. The node:test"
+            echo "::error::reporter format changed, so this assertion is vacuous — fix it."
+            exit 1
+          fi
+          echo "skipped=$skipped"
+          if [ "$skipped" -ne 0 ]; then
+            echo "::error::$skipped test(s) skipped. The lib/queries suites self-skip"
+            echo "::error::without DATABASE_URL, which would make this job green on a"
+            echo "::error::subset of the suite."
+            exit 1
+          fi

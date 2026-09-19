@@ -44,9 +44,7 @@ export const template = pgTable(
     isArchived: boolean('is_archived').notNull().default(false),
     ...timestamps,
   },
-  (t) => [
-    uniqueIndex('ux_template_one_default').on(t.isDefault).where(eq(t.isDefault, true)),
-  ],
+  (t) => [uniqueIndex('ux_template_one_default').on(t.isDefault).where(eq(t.isDefault, true))],
 );
 
 export const experience = pgTable('experience', {
@@ -302,52 +300,3 @@ export const resumeRelations = relations(resume, ({ one, many }) => ({
 export const resumePdfRelations = relations(resumePdf, ({ one }) => ({
   resume: one(resume, { fields: [resumePdf.resumeId], references: [resume.id] }),
 }));
-
-// ---------------------------------------------------------------------------
-// Inferred types
-// ---------------------------------------------------------------------------
-
-export type TemplateRecord = typeof template.$inferSelect;
-export type NewTemplateRecord = typeof template.$inferInsert;
-
-export type ExperienceRecord = typeof experience.$inferSelect;
-export type NewExperienceRecord = typeof experience.$inferInsert;
-
-export type ExperienceBulletRecord = typeof experienceBullet.$inferSelect;
-export type NewExperienceBulletRecord = typeof experienceBullet.$inferInsert;
-
-export type ProjectRecord = typeof project.$inferSelect;
-export type NewProjectRecord = typeof project.$inferInsert;
-
-export type ProjectBulletRecord = typeof projectBullet.$inferSelect;
-export type NewProjectBulletRecord = typeof projectBullet.$inferInsert;
-
-export type TechnicalSkillRowRecord = typeof technicalSkillRow.$inferSelect;
-export type NewTechnicalSkillRowRecord = typeof technicalSkillRow.$inferInsert;
-
-export type TechnicalSkillRecord = typeof technicalSkill.$inferSelect;
-export type NewTechnicalSkillRecord = typeof technicalSkill.$inferInsert;
-
-export type ResumeRecord = typeof resume.$inferSelect;
-export type NewResumeRecord = typeof resume.$inferInsert;
-
-export type ResumeExperienceRecord = typeof resumeExperience.$inferSelect;
-export type NewResumeExperienceRecord = typeof resumeExperience.$inferInsert;
-
-export type ResumeExperienceBulletRecord = typeof resumeExperienceBullet.$inferSelect;
-export type NewResumeExperienceBulletRecord = typeof resumeExperienceBullet.$inferInsert;
-
-export type ResumeProjectRecord = typeof resumeProject.$inferSelect;
-export type NewResumeProjectRecord = typeof resumeProject.$inferInsert;
-
-export type ResumeProjectBulletRecord = typeof resumeProjectBullet.$inferSelect;
-export type NewResumeProjectBulletRecord = typeof resumeProjectBullet.$inferInsert;
-
-export type ResumeTechnicalSkillRowRecord = typeof resumeTechnicalSkillRow.$inferSelect;
-export type NewResumeTechnicalSkillRowRecord = typeof resumeTechnicalSkillRow.$inferInsert;
-
-export type ResumeTechnicalSkillRecord = typeof resumeTechnicalSkill.$inferSelect;
-export type NewResumeTechnicalSkillRecord = typeof resumeTechnicalSkill.$inferInsert;
-
-export type ResumePdfRecord = typeof resumePdf.$inferSelect;
-export type NewResumePdfRecord = typeof resumePdf.$inferInsert;

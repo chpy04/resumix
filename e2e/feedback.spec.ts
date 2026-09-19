@@ -35,7 +35,9 @@ async function stubFeedbackApi(page: Page): Promise<() => string> {
   return () => captured;
 }
 
-test('a bug report carries the description, the current URL, and the screenshot', async ({ page }) => {
+test('a bug report carries the description, the current URL, and the screenshot', async ({
+  page,
+}) => {
   await login(page);
   const body = await stubFeedbackApi(page);
 

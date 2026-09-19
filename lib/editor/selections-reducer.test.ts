@@ -98,7 +98,10 @@ test('reorderNested overwrites only the given parent', () => {
 
 test('replace swaps the entire state', () => {
   const loaded: Selections = { ...EMPTY_SELECTIONS, experiences: ['x'] };
-  const next = selectionsReducer(withExperiences(['a', 'b']), { type: 'replace', selections: loaded });
+  const next = selectionsReducer(withExperiences(['a', 'b']), {
+    type: 'replace',
+    selections: loaded,
+  });
   assert.equal(next, loaded);
 });
 
@@ -108,7 +111,10 @@ test('affectedSlice names the top-level key for every mutating action, and null 
     [{ type: 'toggleTop', slice: 'experiences', id: 'a' }, 'experiences'],
     [{ type: 'reorderTop', slice: 'projects', order: [] }, 'projects'],
     [{ type: 'toggleNested', slice: 'skills', parentId: 'r1', id: 's1' }, 'skills'],
-    [{ type: 'reorderNested', slice: 'experienceBullets', parentId: 'e1', order: [] }, 'experienceBullets'],
+    [
+      { type: 'reorderNested', slice: 'experienceBullets', parentId: 'e1', order: [] },
+      'experienceBullets',
+    ],
   ];
   for (const [action, expected] of cases) {
     assert.equal(affectedSlice(action), expected);

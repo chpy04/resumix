@@ -1,0 +1,33 @@
+name: Build and start the latex sidecar
+description: >
+  Brings up Postgres and the TeX Live sidecar from docker-compose.yml, the same
+  definition used locally, so CI and a developer's machine run identical
+  services. The sidecar image is ~690MB and its `apt-get install texlive-*`
+  layer dominates the build, so it is cached across runs by the Dockerfile's
+  content — a cold build is minutes, a warm one is seconds.
+
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+
+    - name: Build the sidecar image (layer-cached)
+      uses: docker/build-push-action@v6
+      with:
+        context: ./services/latex
+        tags: resumix-latex:ci
+        load: true
+        cache-from: type=gha,scope=latex
+        cache-to: type=gha,mode=max,scope=latex
+
+    - name: Start postgres and the sidecar
+      shell: bash
+      env:
+        LATEX_IMAGE: resumix-latex:ci
+      # --no-build: the sidecar image was just built above, with the layer
+      # cache. --wait blocks on the healthchecks both services declare.
+      run: docker compose up -d --no-build --wait db latex
+
+    - name: Show service state
+      shell: bash
+      run: docker compose ps

@@ -43,7 +43,11 @@ export function renderResume({
   // Conditionals first: a section whose token is empty is dropped whole, so the
   // template's `\begin{itemize}` never survives without an `\item` (a fatal
   // LaTeX error, not a cosmetic one).
-  const tex = substituteTokens(resolveConditionals(templateContent, values, warnings), values, warnings);
+  const tex = substituteTokens(
+    resolveConditionals(templateContent, values, warnings),
+    values,
+    warnings,
+  );
 
   return { tex, warnings };
 }

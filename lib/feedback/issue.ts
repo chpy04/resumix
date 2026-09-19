@@ -92,7 +92,12 @@ export function issueBody(input: FeedbackIssueInput): string {
   if (input.screenshotUrl) {
     sections.push('', '### Screenshot', '', `![screenshot](${encodeParens(input.screenshotUrl)})`);
   } else if (input.screenshotError) {
-    sections.push('', '### Screenshot', '', `_A screenshot was attached but could not be uploaded: ${collapseWhitespace(input.screenshotError)}_`);
+    sections.push(
+      '',
+      '### Screenshot',
+      '',
+      `_A screenshot was attached but could not be uploaded: ${collapseWhitespace(input.screenshotError)}_`,
+    );
   }
 
   sections.push(

@@ -16,6 +16,10 @@ services:
       retries: 10
 
   latex:
+    # CI builds this image separately (with a layer cache) and passes its tag
+    # in via LATEX_IMAGE, then runs `up --no-build`. Locally the tag is just
+    # what `docker compose build` writes to.
+    image: ${LATEX_IMAGE:-resumix-latex:local}
     build: ./services/latex
     environment:
       # Empty locally; set it (and LATEX_SERVICE_TOKEN in .env) to require auth.
@@ -23,7 +27,13 @@ services:
     ports:
       - '8080:8080'
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
