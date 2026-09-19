@@ -8,7 +8,24 @@
  */
 
 import { authedFetch } from '@/lib/auth-client';
-import type { ResumeSummary } from '@/lib/types';
+import type {
+  Bullet,
+  Experience,
+  Project,
+  ResumeDetail,
+  ResumeSummary,
+  Selections,
+  Skill,
+  SkillRow,
+  Template,
+} from '@/lib/types';
+
+const JSON_HEADERS = { 'content-type': 'application/json' } as const;
+
+/** `POST /api/resumes/:id/pdf` — see docs/agents/t6.md Deviations #2. */
+export type SaveResumePdfResult =
+  | { ok: true; filename: string; createdAt: string }
+  | { ok: false; pages: number | null; errors: string[]; warnings: string[]; log: string };
 
 /** Thrown for any non-2xx response. Carries the server's `{ error }` message when present. */
 export class ApiError extends Error {
@@ -60,6 +77,179 @@ export function createResume(name: string): Promise<ResumeSummary> {
 /** `DELETE /api/resumes/:id` — 400s server-side if this is the default resume. */
 export function deleteResume(id: string): Promise<void> {
   return requestJson<void>(`/api/resumes/${id}`, { method: 'DELETE' });
+}
+
+/** `GET /api/resumes/:id` — the whole editor payload in one round trip (D-012). */
+export function getResumeDetail(id: string): Promise<ResumeDetail> {
+  return requestJson<ResumeDetail>(`/api/resumes/${id}`);
+}
+
+/** `PATCH /api/resumes/:id` — renaming a resume or swapping its template. */
+export function updateResume(id: string, patch: { name?: string; templateId?: string }): Promise<ResumeSummary> {
+  return requestJson<ResumeSummary>(`/api/resumes/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * `PUT /api/resumes/:id/selections` — the autosave target for ordering and
+ * on/off selection. Only send the slice(s) that changed; each slice is
+ * replaced wholesale, so a nested slice's value must be its *entire*
+ * current map, not just the parent that changed (see
+ * `lib/editor/selections-reducer.ts`).
+ */
+export function updateSelections(id: string, patch: Partial<Selections>): Promise<Selections> {
+  return requestJson<Selections>(`/api/resumes/${id}/selections`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * `POST /api/resumes/:id/pdf` — renders, compiles, and stores a snapshot.
+ * Check `.ok` before reading `.filename`; a LaTeX failure is `200 { ok: false, ... }`,
+ * never a thrown `ApiError` (see docs/agents/t6.md Deviations #2).
+ */
+export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
+  return requestJson<SaveResumePdfResult>(`/api/resumes/${id}/pdf`, { method: 'POST' });
+}
+
+// ---------------------------------------------------------------------------
+// Library (global content) — creating/updating hits these unconditionally;
+// callers are responsible for making clear in the UI that this is a global
+// edit, not scoped to the currently open resume (see spec.md's "single most
+// important conceptual point").
+// ---------------------------------------------------------------------------
+
+export function createExperience(data: {
+  company: string;
+  title: string;
+  dateRange: string;
+  location: string;
+}): Promise<Experience> {
+  return requestJson<Experience>('/api/experiences', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateExperience(
+  id: string,
+  patch: Partial<{ company: string; title: string; dateRange: string; location: string; isArchived: boolean }>,
+): Promise<Experience> {
+  return requestJson<Experience>(`/api/experiences/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+export function createExperienceBullet(experienceId: string, content: string): Promise<Bullet> {
+  return requestJson<Bullet>(`/api/experiences/${experienceId}/bullets`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function updateExperienceBullet(
+  id: string,
+  patch: Partial<{ content: string; isArchived: boolean }>,
+): Promise<Bullet> {
+  return requestJson<Bullet>(`/api/experience-bullets/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+export function createProject(data: { name: string; technologies: string; dateRange: string }): Promise<Project> {
+  return requestJson<Project>('/api/projects', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateProject(
+  id: string,
+  patch: Partial<{ name: string; technologies: string; dateRange: string; isArchived: boolean }>,
+): Promise<Project> {
+  return requestJson<Project>(`/api/projects/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+export function createProjectBullet(projectId: string, content: string): Promise<Bullet> {
+  return requestJson<Bullet>(`/api/projects/${projectId}/bullets`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function updateProjectBullet(
+  id: string,
+  patch: Partial<{ content: string; isArchived: boolean }>,
+): Promise<Bullet> {
+  return requestJson<Bullet>(`/api/project-bullets/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+export function createSkillRow(data: { name: string; top: boolean; separator?: string }): Promise<SkillRow> {
+  return requestJson<SkillRow>('/api/skill-rows', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateSkillRow(
+  id: string,
+  patch: Partial<{ name: string; top: boolean; separator: string; isArchived: boolean }>,
+): Promise<SkillRow> {
+  return requestJson<SkillRow>(`/api/skill-rows/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+export function createSkill(skillRowId: string, name: string): Promise<Skill> {
+  return requestJson<Skill>(`/api/skill-rows/${skillRowId}/skills`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function updateSkill(id: string, patch: Partial<{ name: string; isArchived: boolean }>): Promise<Skill> {
+  return requestJson<Skill>(`/api/skills/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/** `PATCH /api/templates/:id` — global; T9 owns the Template tab UI that calls this. */
+export function updateTemplate(
+  id: string,
+  patch: Partial<{ name: string; content: string; isArchived: boolean }>,
+): Promise<Template> {
+  return requestJson<Template>(`/api/templates/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
 }
 
 /**
