@@ -1,6 +1,6 @@
 # Project state
 
-_Last updated: 2026-09-18 — end of Wave 0._
+_Last updated: 2026-09-18 — Wave 1 complete, Wave 2 in flight._
 
 **Read this first.** If you are picking this project up cold, read this file, then
 `docs/ARCHITECTURE.md`, then the contract docs (`SCHEMA.md`, `API.md`,
@@ -9,15 +9,25 @@ _Last updated: 2026-09-18 — end of Wave 0._
 
 ## Where we are
 
-Wave 0 (foundation) is complete and on `main`:
+Waves 0 and 1 are complete and merged to `main`:
 
-- Next.js 15 / React 19 / TypeScript / Tailwind v4 skeleton that typechecks.
-- `docker-compose.yml` with `db` (postgres:17 on host port **5433**) and `latex`.
-- `lib/types.ts` — the shared wire types every other task compiles against.
-- `.env.example`, `drizzle.config.ts`, `package.json` scripts.
-- All contract docs written and frozen for Wave 1.
+- **Foundation** — Next.js 15 / React 19 / TS / Tailwind v4 skeleton, `docker-compose.yml`
+  (`db` on host port **5433**, `latex` on 8080), `lib/types.ts`, contract docs.
+- **T1 database** — all 15 tables, hand-written `drizzle/0000_init.sql`, idempotent
+  `scripts/migrate.ts`. Composite PKs and partial unique indexes verified against a live DB.
+- **T2 latex service** — `services/latex/` Debian + TeX Live image, zero-dependency
+  `node:http` server, non-root, `-no-shell-escape`, 20s timeout, bounded concurrency.
+  Verified: the real V1 resume compiles to a 1-page PDF in ~380ms.
+- **T3 render engine** — pure `renderResume()`, `<<TOKEN>>` substitution, `DEFAULT_TEMPLATE`
+  derived from the V1 resume. 17 tests including the V1 round-trip.
+- **T4 auth** — Web Crypto HMAC token (Edge-safe), timing-safe compares, fail-closed on
+  missing env, middleware over `/api/*`, no-flash `AuthGate`. 11 tests.
+- **Amendment D-013** — `technical_skill_row.separator` (migration `0001`). The renderer had
+  hardcoded `', '`; the real resume joins Additional Information rows with `' $|$ '`, so the
+  smoke test could not pass. The T3 test had been rewriting the reference file's pipes into
+  commas to compensate; that adjustment was removed and the round-trip now compares verbatim.
 
-Nothing is functional yet: no schema, no API, no renderer, no UI.
+There is still no API and no UI, so the app does not run end to end yet.
 
 ## What is in flight
 
