@@ -144,3 +144,29 @@ export const patchTemplateSchema = z
     isArchived: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
+
+// ---------------------------------------------------------------------------
+// Feedback (in-app "Give feedback" widget → GitHub issue)
+// ---------------------------------------------------------------------------
+
+/** Only http(s): the page URL is echoed into markdown, so `javascript:` and
+ *  friends have no business being there. */
+const pageUrl = z.string().refine(
+  (value) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  },
+  { message: 'must be an http(s) URL' },
+);
+
+export const feedbackSchema = z.object({
+  kind: z.enum(['bug', 'feature']),
+  description: nonEmpty.max(10_000),
+  url: pageUrl,
+  viewport: z.string().max(40).optional(),
+  userAgent: z.string().max(500).optional(),
+});
