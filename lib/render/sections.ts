@@ -123,7 +123,9 @@ export function renderSkills(
     for (const skillId of skillIds) {
       const skill = row.skills.find((s) => s.id === skillId);
       if (!skill) {
-        warnings.push(`skillRows/${id}: no skill with id "${skillId}" (dangling selection, skipped)`);
+        warnings.push(
+          `skillRows/${id}: no skill with id "${skillId}" (dangling selection, skipped)`,
+        );
         continue;
       }
       names.push(skill.name);

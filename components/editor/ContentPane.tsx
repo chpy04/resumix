@@ -6,23 +6,53 @@ import ItemBulletSection, { type FieldSpec } from './ItemBulletSection';
 import SkillsSection from './SkillsSection';
 
 const experienceFields: FieldSpec<Experience>[] = [
-  { key: 'company', label: 'Company', getValue: (e) => e.company, primary: true, placeholder: 'Company' },
+  {
+    key: 'company',
+    label: 'Company',
+    getValue: (e) => e.company,
+    primary: true,
+    placeholder: 'Company',
+  },
   { key: 'title', label: 'Title', getValue: (e) => e.title, placeholder: 'Title' },
-  { key: 'dateRange', label: 'Dates', getValue: (e) => e.dateRange, placeholder: 'Jan 2024 – Present' },
+  {
+    key: 'dateRange',
+    label: 'Dates',
+    getValue: (e) => e.dateRange,
+    placeholder: 'Jan 2024 – Present',
+  },
   { key: 'location', label: 'Location', getValue: (e) => e.location, placeholder: 'City, ST' },
 ];
 
 const projectFields: FieldSpec<Project>[] = [
-  { key: 'name', label: 'Name', getValue: (p) => p.name, primary: true, placeholder: 'Project name' },
-  { key: 'technologies', label: 'Technologies', getValue: (p) => p.technologies, placeholder: 'React, Postgres, ...' },
+  {
+    key: 'name',
+    label: 'Name',
+    getValue: (p) => p.name,
+    primary: true,
+    placeholder: 'Project name',
+  },
+  {
+    key: 'technologies',
+    label: 'Technologies',
+    getValue: (p) => p.technologies,
+    placeholder: 'React, Postgres, ...',
+  },
   { key: 'dateRange', label: 'Dates', getValue: (p) => p.dateRange, placeholder: 'Spring 2024' },
 ];
 
 export interface ContentPaneCallbacks {
   onToggleTop: (slice: 'experiences' | 'projects' | 'skillRows', id: string) => void;
   onReorderTop: (slice: 'experiences' | 'projects' | 'skillRows', order: string[]) => void;
-  onToggleNested: (slice: 'experienceBullets' | 'projectBullets' | 'skills', parentId: string, id: string) => void;
-  onReorderNested: (slice: 'experienceBullets' | 'projectBullets' | 'skills', parentId: string, order: string[]) => void;
+  onToggleNested: (
+    slice: 'experienceBullets' | 'projectBullets' | 'skills',
+    parentId: string,
+    id: string,
+  ) => void;
+  onReorderNested: (
+    slice: 'experienceBullets' | 'projectBullets' | 'skills',
+    parentId: string,
+    order: string[],
+  ) => void;
 
   onExperienceFieldChange: (id: string, key: string, value: string) => void;
   onArchiveExperience: (id: string, isArchived: boolean) => void;
@@ -63,17 +93,18 @@ export default function ContentPane({ library, selections, callbacks }: ContentP
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto pr-1">
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2">
-        <p className="text-xs text-[var(--color-ink-dim)]">
-          Checkboxes and drag order save to <span className="text-[var(--color-ink)]">this resume only</span>. Editing
-          text, adding, or archiving (⊕) changes it <span className="text-[var(--color-ink)]">everywhere</span>.
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2">
+        <p className="text-xs text-ink-dim">
+          Checkboxes and drag order save to <span className="text-ink">this resume only</span>.
+          Editing text, adding, or archiving (⊕) changes it{' '}
+          <span className="text-ink">everywhere</span>.
         </p>
-        <label className="flex shrink-0 items-center gap-1.5 text-xs text-[var(--color-ink-dim)]">
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-ink-dim">
           <input
             type="checkbox"
             checked={showArchived}
             onChange={(event) => setShowArchived(event.target.checked)}
-            className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            className="h-3.5 w-3.5 accent-accent"
           />
           Show archived
         </label>
@@ -90,8 +121,12 @@ export default function ContentPane({ library, selections, callbacks }: ContentP
         showArchived={showArchived}
         onToggleItem={(id) => callbacks.onToggleTop('experiences', id)}
         onReorderItems={(order) => callbacks.onReorderTop('experiences', order)}
-        onToggleBullet={(parentId, id) => callbacks.onToggleNested('experienceBullets', parentId, id)}
-        onReorderBullets={(parentId, order) => callbacks.onReorderNested('experienceBullets', parentId, order)}
+        onToggleBullet={(parentId, id) =>
+          callbacks.onToggleNested('experienceBullets', parentId, id)
+        }
+        onReorderBullets={(parentId, order) =>
+          callbacks.onReorderNested('experienceBullets', parentId, order)
+        }
         onFieldChange={callbacks.onExperienceFieldChange}
         onArchiveItem={callbacks.onArchiveExperience}
         onCreateItem={callbacks.onCreateExperience}
@@ -112,7 +147,9 @@ export default function ContentPane({ library, selections, callbacks }: ContentP
         onToggleItem={(id) => callbacks.onToggleTop('projects', id)}
         onReorderItems={(order) => callbacks.onReorderTop('projects', order)}
         onToggleBullet={(parentId, id) => callbacks.onToggleNested('projectBullets', parentId, id)}
-        onReorderBullets={(parentId, order) => callbacks.onReorderNested('projectBullets', parentId, order)}
+        onReorderBullets={(parentId, order) =>
+          callbacks.onReorderNested('projectBullets', parentId, order)
+        }
         onFieldChange={callbacks.onProjectFieldChange}
         onArchiveItem={callbacks.onArchiveProject}
         onCreateItem={callbacks.onCreateProject}

@@ -15,7 +15,13 @@ interface NewResumeDialogProps {
  * per spec — it needs to look and behave like the rest of the app (dark
  * theme, focus trap, Escape to close).
  */
-export default function NewResumeDialog({ open, submitting, error, onSubmit, onClose }: NewResumeDialogProps) {
+export default function NewResumeDialog({
+  open,
+  submitting,
+  error,
+  onSubmit,
+  onClose,
+}: NewResumeDialogProps) {
   const [name, setName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -64,12 +70,12 @@ export default function NewResumeDialog({ open, submitting, error, onSubmit, onC
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-resume-title"
-        className="w-full max-w-sm rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-6 shadow-2xl"
+        className="w-full max-w-sm rounded-lg border border-line bg-surface p-6 shadow-2xl"
       >
-        <h2 id="new-resume-title" className="text-base font-semibold text-[var(--color-ink)]">
+        <h2 id="new-resume-title" className="text-base font-semibold text-ink">
           New resume
         </h2>
-        <p className="mt-1 text-sm text-[var(--color-ink-dim)]">
+        <p className="mt-1 text-sm text-ink-dim">
           What company is this for? Starts from your Default resume.
         </p>
 
@@ -81,24 +87,24 @@ export default function NewResumeDialog({ open, submitting, error, onSubmit, onC
             onChange={(event) => setName(event.target.value)}
             placeholder="Company name"
             disabled={submitting}
-            className="w-full rounded-md border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)] disabled:opacity-50"
+            className="w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
           />
 
-          {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
+          {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
 
           <div className="mt-5 flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-md border border-[var(--color-line)] px-3 py-1.5 text-sm text-[var(--color-ink)] transition-colors hover:bg-[var(--color-surface-2)] disabled:opacity-50"
+              className="rounded-md border border-line px-3 py-1.5 text-sm text-ink transition-colors hover:bg-surface-2 disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting || name.trim().length === 0}
-              className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-canvas)] transition-opacity disabled:opacity-50"
+              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:opacity-50"
             >
               {submitting ? 'Creating…' : 'Create'}
             </button>

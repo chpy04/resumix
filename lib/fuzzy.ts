@@ -39,7 +39,10 @@ function isWordChar(char: string): boolean {
  * "resume-name" should prefer matching "name", not the "r" in "resume" plus
  * an incidental "n").
  */
-export function fuzzyScore(query: string, target: string): { score: number; positions: number[] } | null {
+export function fuzzyScore(
+  query: string,
+  target: string,
+): { score: number; positions: number[] } | null {
   if (query.length === 0) return { score: 0, positions: [] };
   if (target.length === 0) return null;
 
@@ -140,7 +143,11 @@ export function fuzzyScore(query: string, target: string): { score: number; posi
  * searchable string from each item. Returns matches sorted best-first. An
  * empty query returns every item, in original order, with score 0.
  */
-export function fuzzyFilter<T>(items: T[], query: string, getText: (item: T) => string): FuzzyMatch[] {
+export function fuzzyFilter<T>(
+  items: T[],
+  query: string,
+  getText: (item: T) => string,
+): FuzzyMatch[] {
   const trimmed = query.trim();
   if (trimmed.length === 0) {
     return items.map((_, index) => ({ index, score: 0, positions: [] }));

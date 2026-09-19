@@ -73,7 +73,10 @@ export default function ResumeGrid() {
   }, []);
 
   const resumes = state.status === 'ready' ? state.resumes : [];
-  const defaultResume = useMemo(() => resumes.find((resume) => resume.isDefault) ?? null, [resumes]);
+  const defaultResume = useMemo(
+    () => resumes.find((resume) => resume.isDefault) ?? null,
+    [resumes],
+  );
   const otherResumes = useMemo(
     () => resumes.filter((resume) => resume.id !== defaultResume?.id),
     [resumes, defaultResume],
@@ -101,8 +104,8 @@ export default function ResumeGrid() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--color-ink)]">Resumix</h1>
-          <p className="mt-1 text-sm text-[var(--color-ink-dim)]">
+          <h1 className="text-2xl font-semibold text-ink">Resumix</h1>
+          <p className="mt-1 text-sm text-ink-dim">
             Pick a resume to keep editing, or start a new one for a company.
           </p>
         </div>
@@ -112,9 +115,9 @@ export default function ResumeGrid() {
       {state.status === 'loading' ? <GridSkeleton /> : null}
 
       {state.status === 'error' ? (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-6 text-sm text-red-300">
+        <div className="rounded-lg border border-danger-line/50 bg-danger-surface/30 p-6 text-sm text-danger-ink">
           <p className="font-medium">Couldn&apos;t load your resumes.</p>
-          <p className="mt-1 text-red-400/80">{state.message}</p>
+          <p className="mt-1 text-danger/80">{state.message}</p>
           <button
             type="button"
             onClick={() => {
@@ -128,7 +131,7 @@ export default function ResumeGrid() {
                   }),
                 );
             }}
-            className="mt-4 rounded-md border border-red-800 px-3 py-1.5 text-sm text-red-200 transition-colors hover:bg-red-900/30"
+            className="mt-4 rounded-md border border-danger-line-strong px-3 py-1.5 text-sm text-danger-ink-strong transition-colors hover:bg-danger-line/30"
           >
             Retry
           </button>
@@ -146,13 +149,13 @@ export default function ResumeGrid() {
           </div>
 
           {resumes.length === 0 ? (
-            <p className="mt-10 text-sm text-[var(--color-ink-dim)]">
+            <p className="mt-10 text-sm text-ink-dim">
               No resumes yet. Click the new resume card to create your first one.
             </p>
           ) : null}
 
           {resumes.length > 0 && query.trim().length > 0 && visibleResumes.length === 0 ? (
-            <p className="mt-10 text-sm text-[var(--color-ink-dim)]">No resumes match &quot;{query}&quot;.</p>
+            <p className="mt-10 text-sm text-ink-dim">No resumes match &quot;{query}&quot;.</p>
           ) : null}
         </>
       ) : null}
@@ -174,12 +177,12 @@ export default function ResumeGrid() {
 
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" aria-hidden="true">
+    <div
+      className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+      aria-hidden="true"
+    >
       {Array.from({ length: 10 }).map((_, index) => (
-        <div
-          key={index}
-          className="h-36 animate-pulse rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]"
-        />
+        <div key={index} className="h-36 animate-pulse rounded-lg border border-line bg-surface" />
       ))}
     </div>
   );

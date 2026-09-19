@@ -40,12 +40,12 @@ export default function EditorHeader({
   const [localName, setLocalName] = useState(resumeName);
 
   return (
-    <header className="flex flex-col gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
+    <header className="flex flex-col gap-3 border-b border-line bg-surface px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/"
-            className="shrink-0 rounded-md border border-[var(--color-line)] px-2 py-1 text-xs text-[var(--color-ink-dim)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
           >
             ← Resumes
           </Link>
@@ -56,19 +56,19 @@ export default function EditorHeader({
               onResumeNameChange(event.target.value);
             }}
             aria-label="Resume name"
-            className="min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-base font-semibold text-[var(--color-ink)] outline-none hover:border-[var(--color-line)] focus:border-[var(--color-accent)]"
+            className="min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-base font-semibold text-ink outline-none hover:border-line focus:border-accent"
           />
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
           <SaveStatusBadge status={saveStatus} onRetry={onRetry} />
-          {downloadError ? <span className="text-xs text-red-400">{downloadError}</span> : null}
+          {downloadError ? <span className="text-xs text-danger">{downloadError}</span> : null}
           <button
             type="button"
             onClick={onDownload}
             disabled={downloading}
             title="Renders the current template + selections, saves a snapshot, and downloads it"
-            className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-canvas)] transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
           >
             {downloading ? 'Saving PDF…' : 'Save PDF'}
           </button>
@@ -87,7 +87,15 @@ export default function EditorHeader({
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -95,9 +103,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       aria-selected={active}
       onClick={onClick}
       className={`rounded-t-md border-b-2 px-3 py-1.5 text-sm transition-colors ${
-        active
-          ? 'border-[var(--color-accent)] text-[var(--color-ink)]'
-          : 'border-transparent text-[var(--color-ink-dim)] hover:text-[var(--color-ink)]'
+        active ? 'border-accent text-ink' : 'border-transparent text-ink-dim hover:text-ink'
       }`}
     >
       {children}

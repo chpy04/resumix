@@ -17,7 +17,9 @@ interface SortableRowProps {
  * `listeners`/`attributes` themselves.
  */
 export default function SortableRow({ id, children, className }: SortableRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),

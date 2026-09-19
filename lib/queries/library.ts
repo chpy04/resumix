@@ -17,9 +17,7 @@ import {
 import type { Bullet, Experience, Library, Project, Skill, SkillRow } from '../types.ts';
 import { listTemplates } from './templates.ts';
 
-function bulletsByParent<TRow extends { id: string; isArchived: boolean }>(
-  bullets: (Bullet & { parentId: string })[],
-): Map<string, Bullet[]> {
+function bulletsByParent(bullets: (Bullet & { parentId: string })[]): Map<string, Bullet[]> {
   const map = new Map<string, Bullet[]>();
   for (const bullet of bullets) {
     const list = map.get(bullet.parentId) ?? [];

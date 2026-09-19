@@ -18,6 +18,7 @@ know rather than things to fix.
 ## Fixed in this pass
 
 ### LOW — `PDF_NAME_PREFIX` reached the `Content-Disposition` header unsanitized
+
 `lib/filename.ts` normalized the company portion of the filename but interpolated the
 prefix verbatim, and `app/api/resumes/[id]/pdf/route.ts` interpolated the stored filename
 straight into `attachment; filename="..."`. The prefix is operator-supplied, not
@@ -35,7 +36,7 @@ would truncate the header and produce a wrong download filename.
   by a later unrelated success (`combineStatuses` prioritizes `saving` > `error` > `saved`).
 - **Selections replace** (`lib/queries/selections.ts`). Delete-then-insert per slice inside
   one transaction; every id is validated to exist, and nested ids are validated to belong to
-  the parent they are nested under, *before* any write. Confirmed live:
+  the parent they are nested under, _before_ any write. Confirmed live:
   a dangling id returns `400 unknown experience id(s): …`, and a bullet placed under the
   wrong experience returns `400 … does not belong to experience …`.
 - **`sort_order` scoping.** Nested slices index per parent, matching `docs/SCHEMA.md`.
@@ -55,6 +56,7 @@ would truncate the header and produce a wrong download filename.
 ## Sharp edges — known, not defects
 
 ### MEDIUM (design) — a partial nested-slice map silently deselects the other parents
+
 `replaceExperienceBullets` (and its project/skill twins) deletes **all** of the resume's
 rows for that slice and reinserts only what the request contained. Sending
 `{"experienceBullets": {"exp-1": [...]}}` therefore wipes every other experience's bullet
@@ -64,11 +66,13 @@ trap for any future caller that assumes a patch-style merge. Worth a guard or a
 `?mode=merge` variant if a second client is ever written.
 
 ### LOW — the latex service's `/health` is unauthenticated by design
+
 Needed so Fly/Docker health checks work without distributing the token. It returns a
 constant and touches nothing, so the exposure is that an unauthenticated caller can learn
 the service exists.
 
-### LOW — `combineStatuses` reports `'saved'` if *any* channel has ever saved
+### LOW — `combineStatuses` reports `'saved'` if _any_ channel has ever saved
+
 With several independent queues, a channel sitting at `'idle'` is invisible once another has
 saved. Correct for the indicator's purpose ("is there unsaved work or a failure?") but it is
 not a per-channel status.

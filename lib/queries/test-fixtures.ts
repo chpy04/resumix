@@ -31,7 +31,10 @@ export function testTag(): string {
   return randomUUID().slice(0, 8);
 }
 
-export async function insertExperience(tag: string, overrides: Partial<{ isArchived: boolean }> = {}) {
+export async function insertExperience(
+  tag: string,
+  overrides: Partial<{ isArchived: boolean }> = {},
+) {
   const [row] = await db
     .insert(experience)
     .values({
@@ -95,7 +98,8 @@ export async function insertSkill(technicalSkillRowId: string, name: string) {
 
 export async function getDefaultResumeRow() {
   const [row] = await db.select().from(resume).where(eq(resume.isDefault, true)).limit(1);
-  if (!row) throw new Error('no default resume/template seeded — run scripts/migrate.ts and seed one');
+  if (!row)
+    throw new Error('no default resume/template seeded — run scripts/migrate.ts and seed one');
   return row;
 }
 

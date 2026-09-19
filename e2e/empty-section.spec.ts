@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createResumeViaUi, login } from './support.ts';
+import { createResumeViaUi, login } from './support';
 
 /**
  * Regression: deselecting every item in a section used to abort the compile with

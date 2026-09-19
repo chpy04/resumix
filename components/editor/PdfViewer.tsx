@@ -41,9 +41,9 @@ export default function PdfViewer({ fileUrl, width }: PdfViewerProps) {
       file={fileUrl}
       onLoadSuccess={({ numPages: n }) => setNumPages(n)}
       onLoadError={(error) => setPageError(error.message)}
-      loading={<div className="p-4 text-xs text-[var(--color-ink-dim)]">Loading PDF…</div>}
+      loading={<div className="p-4 text-xs text-ink-dim">Loading PDF…</div>}
       error={
-        <div className="p-4 text-xs text-red-400">
+        <div className="p-4 text-xs text-danger">
           Could not display this PDF{pageError ? `: ${pageError}` : '.'}
         </div>
       }

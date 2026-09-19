@@ -41,11 +41,11 @@ const TemplateEditor = forwardRef<HTMLTextAreaElement, TemplateEditorProps>(func
   }
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border border-[var(--color-line)] bg-[var(--color-canvas)] font-mono text-[12.5px] leading-relaxed">
+    <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border border-line bg-canvas font-mono text-[12.5px] leading-relaxed">
       <div
         ref={gutterRef}
         aria-hidden="true"
-        className="select-none overflow-hidden border-r border-[var(--color-line)] px-2 py-2 text-right text-[var(--color-ink-dim)]"
+        className="select-none overflow-hidden border-r border-line px-2 py-2 text-right text-ink-dim"
         style={{ transform: `translateY(-${scrollTop}px)` }}
       >
         {Array.from({ length: lineCount }, (_, index) => (
@@ -64,7 +64,7 @@ const TemplateEditor = forwardRef<HTMLTextAreaElement, TemplateEditorProps>(func
         // `whitespace-pre` (no wrapping) keeps one source line == one visual
         // line, which is what lets the gutter's row-per-`\n` count stay
         // aligned with the textarea's own scroll position above.
-        className="min-h-0 flex-1 resize-none overflow-auto bg-transparent px-3 py-2 whitespace-pre text-[var(--color-ink)] outline-none"
+        className="min-h-0 flex-1 resize-none overflow-auto bg-transparent px-3 py-2 whitespace-pre text-ink outline-none"
       />
     </div>
   );

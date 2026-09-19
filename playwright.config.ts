@@ -19,8 +19,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command:
-      'node --experimental-strip-types scripts/seed.ts --force && npx next dev --port 3100',
+    command: 'node --experimental-strip-types scripts/seed.ts --force && npx next dev --port 3100',
     url: 'http://localhost:3100/login',
     reuseExistingServer: false,
     timeout: 120_000,

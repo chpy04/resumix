@@ -18,7 +18,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 function emptySelections(): Selections {
-  return { experiences: [], experienceBullets: {}, projects: [], projectBullets: {}, skillRows: [], skills: {} };
+  return {
+    experiences: [],
+    experienceBullets: {},
+    projects: [],
+    projectBullets: {},
+    skillRows: [],
+    skills: {},
+  };
 }
 
 function emptyLibrary(): Library {
@@ -32,8 +39,24 @@ function emptyLibrary(): Library {
 test('experiences render in Selections order, not library order', () => {
   const library = emptyLibrary();
   library.experiences = [
-    { id: 'b', company: 'Company B', title: 'Title B', dateRange: '2020', location: 'X', isArchived: false, bullets: [] },
-    { id: 'a', company: 'Company A', title: 'Title A', dateRange: '2021', location: 'Y', isArchived: false, bullets: [] },
+    {
+      id: 'b',
+      company: 'Company B',
+      title: 'Title B',
+      dateRange: '2020',
+      location: 'X',
+      isArchived: false,
+      bullets: [],
+    },
+    {
+      id: 'a',
+      company: 'Company A',
+      title: 'Title A',
+      dateRange: '2021',
+      location: 'Y',
+      isArchived: false,
+      bullets: [],
+    },
   ];
   const selections = emptySelections();
   selections.experiences = ['a', 'b']; // reversed relative to library array order
@@ -41,14 +64,33 @@ test('experiences render in Selections order, not library order', () => {
   const warnings: string[] = [];
   const out = renderExperiences(library, selections, warnings);
 
-  assert.ok(out.indexOf('Title A') < out.indexOf('Title B'), 'Selections order should win over library array order');
+  assert.ok(
+    out.indexOf('Title A') < out.indexOf('Title B'),
+    'Selections order should win over library array order',
+  );
 });
 
 test('an experience absent from Selections does not render', () => {
   const library = emptyLibrary();
   library.experiences = [
-    { id: 'a', company: 'Company A', title: 'Kept', dateRange: '2021', location: 'Y', isArchived: false, bullets: [] },
-    { id: 'b', company: 'Company B', title: 'Dropped', dateRange: '2020', location: 'X', isArchived: false, bullets: [] },
+    {
+      id: 'a',
+      company: 'Company A',
+      title: 'Kept',
+      dateRange: '2021',
+      location: 'Y',
+      isArchived: false,
+      bullets: [],
+    },
+    {
+      id: 'b',
+      company: 'Company B',
+      title: 'Dropped',
+      dateRange: '2020',
+      location: 'X',
+      isArchived: false,
+      bullets: [],
+    },
   ];
   const selections = emptySelections();
   selections.experiences = ['a'];
@@ -220,7 +262,11 @@ test('renderResume never throws end-to-end when Selections reference stale ids',
   selections.skillRows = ['ghost'];
 
   assert.doesNotThrow(() => {
-    const { warnings } = renderResume({ templateContent: '<<EXPERIENCES>><<PROJECTS>><<SKILLS_TOP>><<SKILLS_BOTTOM>>', library, selections });
+    const { warnings } = renderResume({
+      templateContent: '<<EXPERIENCES>><<PROJECTS>><<SKILLS_TOP>><<SKILLS_BOTTOM>>',
+      library,
+      selections,
+    });
     assert.ok(warnings.length >= 3);
   });
 });
@@ -257,8 +303,22 @@ test('an unknown token repeated in the template only warns once', () => {
 test('a selected skill row appears in exactly one of SKILLS_TOP / SKILLS_BOTTOM, per its own top flag', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'top-row', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
-    { id: 'bottom-row', name: 'Interests', top: false, separator: ', ', isArchived: false, skills: [{ id: 's2', name: 'Skiing', isArchived: false }] },
+    {
+      id: 'top-row',
+      name: 'Languages',
+      top: true,
+      separator: ', ',
+      isArchived: false,
+      skills: [{ id: 's1', name: 'Rust', isArchived: false }],
+    },
+    {
+      id: 'bottom-row',
+      name: 'Interests',
+      top: false,
+      separator: ', ',
+      isArchived: false,
+      skills: [{ id: 's2', name: 'Skiing', isArchived: false }],
+    },
   ];
   const selections = emptySelections();
   selections.skillRows = ['top-row', 'bottom-row'];
@@ -276,7 +336,14 @@ test('a selected skill row appears in exactly one of SKILLS_TOP / SKILLS_BOTTOM,
 test('a skill row with zero selected skills is skipped entirely, with a warning', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'empty-row', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
+    {
+      id: 'empty-row',
+      name: 'Languages',
+      top: true,
+      separator: ', ',
+      isArchived: false,
+      skills: [{ id: 's1', name: 'Rust', isArchived: false }],
+    },
   ];
   const selections = emptySelections();
   selections.skillRows = ['empty-row'];
@@ -316,8 +383,22 @@ test('a dangling skill id within a row is skipped with a warning; the rest of th
 test('multiple selected rows in the same section join with " \\\\\\n" and no trailing separator', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'r1', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
-    { id: 'r2', name: 'Tools', top: true, separator: ', ', isArchived: false, skills: [{ id: 's2', name: 'Git', isArchived: false }] },
+    {
+      id: 'r1',
+      name: 'Languages',
+      top: true,
+      separator: ', ',
+      isArchived: false,
+      skills: [{ id: 's1', name: 'Rust', isArchived: false }],
+    },
+    {
+      id: 'r2',
+      name: 'Tools',
+      top: true,
+      separator: ', ',
+      isArchived: false,
+      skills: [{ id: 's2', name: 'Git', isArchived: false }],
+    },
   ];
   const selections = emptySelections();
   selections.skillRows = ['r1', 'r2'];
@@ -328,7 +409,6 @@ test('multiple selected rows in the same section join with " \\\\\\n" and no tra
 
   assert.equal(top, '\\textbf{Languages}{: Rust} \\\\\n\\textbf{Tools}{: Git}');
 });
-
 
 // ---------------------------------------------------------------------------
 // The v1 round trip: the project's smoke test.
@@ -345,170 +425,274 @@ const v1Library: Library = {
   experiences: [
     {
       id: 'exp-1',
-      company: "Via Separations (NExT Consulting)",
-      title: "Software Engineer",
-      dateRange: "July 2025---December 2025",
-      location: "Boston, MA",
+      company: 'Via Separations (NExT Consulting)',
+      title: 'Software Engineer',
+      dateRange: 'July 2025---December 2025',
+      location: 'Boston, MA',
       isArchived: false,
       bullets: [
-        { id: 'exp-1-b1', content: "Designed and implemented a production Warehouse Management System for \\textbf{250+} users using \\textbf{Python} / \\textbf{React}, to track and manage biotech inventory across multiple facilities,  improving accuracy from \\textbf{50\\%} to \\textbf{95\\%} for \\textbf{10k+} items", isArchived: false },
-        { id: 'exp-1-b2', content: "Architected PostgreSQL schema with temporal row versioning and genealogy tracking for complete traceability across \\textbf{100k+} rows. Utlized SQL Triggers, computed columns, and optimized queries to achieve \\textbf{2x} faster performance", isArchived: false },
-        { id: 'exp-1-b3', content: "Implemented Entity-Attribute-Value (EAV) model to flexibly store \\textbf{1000+} custom attributes for biotech products", isArchived: false },
-        { id: 'exp-1-b4', content: "Integrated with \\textbf{Quickbase API} to automatically fullfill purchase orders, increasing inventory intake speed by \\textbf{40\\%}", isArchived: false },
+        {
+          id: 'exp-1-b1',
+          content:
+            'Designed and implemented a production Warehouse Management System for \\textbf{250+} users using \\textbf{Python} / \\textbf{React}, to track and manage biotech inventory across multiple facilities,  improving accuracy from \\textbf{50\\%} to \\textbf{95\\%} for \\textbf{10k+} items',
+          isArchived: false,
+        },
+        {
+          id: 'exp-1-b2',
+          content:
+            'Architected PostgreSQL schema with temporal row versioning and genealogy tracking for complete traceability across \\textbf{100k+} rows. Utlized SQL Triggers, computed columns, and optimized queries to achieve \\textbf{2x} faster performance',
+          isArchived: false,
+        },
+        {
+          id: 'exp-1-b3',
+          content:
+            'Implemented Entity-Attribute-Value (EAV) model to flexibly store \\textbf{1000+} custom attributes for biotech products',
+          isArchived: false,
+        },
+        {
+          id: 'exp-1-b4',
+          content:
+            'Integrated with \\textbf{Quickbase API} to automatically fullfill purchase orders, increasing inventory intake speed by \\textbf{40\\%}',
+          isArchived: false,
+        },
       ],
     },
     {
       id: 'exp-2',
-      company: "Northeastern Electric Racing",
-      title: "Head of Web Development",
-      dateRange: "January 2024---Present",
-      location: "Boston, MA",
+      company: 'Northeastern Electric Racing',
+      title: 'Head of Web Development',
+      dateRange: 'January 2024---Present',
+      location: 'Boston, MA',
       isArchived: false,
       bullets: [
-        { id: 'exp-2-b1', content: "Manage all development and technical operations on an \\href{https://finishlinebyner.com/}{\\underline{Enterprise Resource Planning (ERP) system}} serving \\textbf{400+} club members, overseeing deployments on \\textbf{AWS}, codebase architecture, and feature roadmap execution", isArchived: false },
-        { id: 'exp-2-b2', content: "Lead \\textbf{9} tech leads and \\textbf{60+} developers to implement multiple concurrent features each semester. Run weekly meetings, perform code reviews, provide technical help, and teach web dev onboarding class for \\textbf{30+} novice developers ", isArchived: false },
-        { id: 'exp-2-b3', content: "Designed and implemented full AWS infrastructure with \\textbf{Terraform}, automated deployments, reduced costs by \\textbf{30\\%}", isArchived: false },
-        { id: 'exp-2-b4', content: "Implemented a file review system where users can upload, view, markup, and approve drawings for CAD parts", isArchived: false },
-        { id: 'exp-2-b5', content: "Refactored and optimized \\textbf{100+} endpoints and added indexing on database causing up to \\textbf{5x} faster page load times", isArchived: false },
+        {
+          id: 'exp-2-b1',
+          content:
+            'Manage all development and technical operations on an \\href{https://finishlinebyner.com/}{\\underline{Enterprise Resource Planning (ERP) system}} serving \\textbf{400+} club members, overseeing deployments on \\textbf{AWS}, codebase architecture, and feature roadmap execution',
+          isArchived: false,
+        },
+        {
+          id: 'exp-2-b2',
+          content:
+            'Lead \\textbf{9} tech leads and \\textbf{60+} developers to implement multiple concurrent features each semester. Run weekly meetings, perform code reviews, provide technical help, and teach web dev onboarding class for \\textbf{30+} novice developers ',
+          isArchived: false,
+        },
+        {
+          id: 'exp-2-b3',
+          content:
+            'Designed and implemented full AWS infrastructure with \\textbf{Terraform}, automated deployments, reduced costs by \\textbf{30\\%}',
+          isArchived: false,
+        },
+        {
+          id: 'exp-2-b4',
+          content:
+            'Implemented a file review system where users can upload, view, markup, and approve drawings for CAD parts',
+          isArchived: false,
+        },
+        {
+          id: 'exp-2-b5',
+          content:
+            'Refactored and optimized \\textbf{100+} endpoints and added indexing on database causing up to \\textbf{5x} faster page load times',
+          isArchived: false,
+        },
       ],
     },
     {
       id: 'exp-3',
-      company: "Unicode",
-      title: "Software Engineer",
-      dateRange: "August 2022---Present",
-      location: "Virtual",
+      company: 'Unicode',
+      title: 'Software Engineer',
+      dateRange: 'August 2022---Present',
+      location: 'Virtual',
       isArchived: false,
       bullets: [
-        { id: 'exp-3-b1', content: "Developed backend for the \\href{https://aac.unicode.org/adopt/}{\\underline{Adopt A Character}} site in \\textbf{Svelte}, involving schema design, payment processing, and integration with internal and external databases. Generated \\textbf{\\$40,000} revenue in the first \\textbf{2.5 months} of deployment", isArchived: false },
-        { id: 'exp-3-b2', content: "Implemented backend flow with \\textbf{PouchDB} / \\textbf{Typescript} to check availability, process payments, and add adoptions", isArchived: false },
-        { id: 'exp-3-b3', content: "Created Admin page to streamline adoption approval and automate social media posts \\& sending thank you emails", isArchived: false },
-        { id: 'exp-3-b4', content: "Integrated with stripe payment and external accounting tool \\textbf{API} \\& \\textbf{Webhooks} to maintain data consistency", isArchived: false },
-        { id: 'exp-3-b5', content: "Facilitated conversion of CLDR site with \\textbf{130+} pages into a static site, automated conversion with Python", isArchived: false },
+        {
+          id: 'exp-3-b1',
+          content:
+            'Developed backend for the \\href{https://aac.unicode.org/adopt/}{\\underline{Adopt A Character}} site in \\textbf{Svelte}, involving schema design, payment processing, and integration with internal and external databases. Generated \\textbf{\\$40,000} revenue in the first \\textbf{2.5 months} of deployment',
+          isArchived: false,
+        },
+        {
+          id: 'exp-3-b2',
+          content:
+            'Implemented backend flow with \\textbf{PouchDB} / \\textbf{Typescript} to check availability, process payments, and add adoptions',
+          isArchived: false,
+        },
+        {
+          id: 'exp-3-b3',
+          content:
+            'Created Admin page to streamline adoption approval and automate social media posts \\& sending thank you emails',
+          isArchived: false,
+        },
+        {
+          id: 'exp-3-b4',
+          content:
+            'Integrated with stripe payment and external accounting tool \\textbf{API} \\& \\textbf{Webhooks} to maintain data consistency',
+          isArchived: false,
+        },
+        {
+          id: 'exp-3-b5',
+          content:
+            'Facilitated conversion of CLDR site with \\textbf{130+} pages into a static site, automated conversion with Python',
+          isArchived: false,
+        },
       ],
     },
   ],
   projects: [
     {
       id: 'proj-1',
-      name: "Mentor Matcher",
-      technologies: "React, Django",
-      dateRange: "August 2025",
+      name: 'Mentor Matcher',
+      technologies: 'React, Django',
+      dateRange: 'August 2025',
       isArchived: false,
       bullets: [
-        { id: 'proj-1-b1', content: "Full stack staff mentorship matching application in \\textbf{React} and \\textbf{Django} with a customizable form and algorithm", isArchived: false },
-        { id: 'proj-1-b2', content: "Utilized custom 3-stage matching algorithm to compare matches and compute optimal match pairings for whole cohort", isArchived: false },
+        {
+          id: 'proj-1-b1',
+          content:
+            'Full stack staff mentorship matching application in \\textbf{React} and \\textbf{Django} with a customizable form and algorithm',
+          isArchived: false,
+        },
+        {
+          id: 'proj-1-b2',
+          content:
+            'Utilized custom 3-stage matching algorithm to compare matches and compute optimal match pairings for whole cohort',
+          isArchived: false,
+        },
       ],
     },
     {
       id: 'proj-2',
-      name: "Bit board Chess Engine",
-      technologies: "C, GO, Web Sockets ",
-      dateRange: "June 2025",
+      name: 'Bit board Chess Engine',
+      technologies: 'C, GO, Web Sockets ',
+      dateRange: 'June 2025',
       isArchived: false,
       bullets: [
-        { id: 'proj-2-b1', content: "Created bit board chess engine in \\textbf{C} with alpha beta pruning, iterative deepening, and search extensions", isArchived: false },
-        { id: 'proj-2-b2', content: "Deployed engine in full-stack web app using \\textbf{React}, \\textbf{Web Sockets}, and \\textbf{Golang} to interface with the engine ", isArchived: false },
+        {
+          id: 'proj-2-b1',
+          content:
+            'Created bit board chess engine in \\textbf{C} with alpha beta pruning, iterative deepening, and search extensions',
+          isArchived: false,
+        },
+        {
+          id: 'proj-2-b2',
+          content:
+            'Deployed engine in full-stack web app using \\textbf{React}, \\textbf{Web Sockets}, and \\textbf{Golang} to interface with the engine ',
+          isArchived: false,
+        },
       ],
     },
     {
       id: 'proj-3',
-      name: "Alpine Skiing Image Processor",
-      technologies: "Python, Yolov8, PyQt5",
-      dateRange: "January 2025",
+      name: 'Alpine Skiing Image Processor',
+      technologies: 'Python, Yolov8, PyQt5',
+      dateRange: 'January 2025',
       isArchived: false,
       bullets: [
-        { id: 'proj-3-b1', content: "Trained \\textbf{computer vision model} on custom dataset to automatically recognize bib numbers of ski racers in photos", isArchived: false },
-        { id: 'proj-3-b2', content: "Developed user interface for bulk processing \\textbf{400+} photos / week, generating \\textbf{\\$600+} in sales revenue ", isArchived: false },
+        {
+          id: 'proj-3-b1',
+          content:
+            'Trained \\textbf{computer vision model} on custom dataset to automatically recognize bib numbers of ski racers in photos',
+          isArchived: false,
+        },
+        {
+          id: 'proj-3-b2',
+          content:
+            'Developed user interface for bulk processing \\textbf{400+} photos / week, generating \\textbf{\\$600+} in sales revenue ',
+          isArchived: false,
+        },
       ],
     },
   ],
   skillRows: [
     {
       id: 'skillrow-top-1',
-      name: "Languages",
+      name: 'Languages',
       top: true,
       separator: ', ',
       isArchived: false,
       skills: [
-        { id: 'skillrow-top-1-s1', name: "JavaScript", isArchived: false },
-        { id: 'skillrow-top-1-s2', name: "Typescript", isArchived: false },
-        { id: 'skillrow-top-1-s3', name: "Python", isArchived: false },
-        { id: 'skillrow-top-1-s4', name: "Java", isArchived: false },
-        { id: 'skillrow-top-1-s5', name: "Rust", isArchived: false },
-        { id: 'skillrow-top-1-s6', name: "C", isArchived: false },
-        { id: 'skillrow-top-1-s7', name: "C++", isArchived: false },
-        { id: 'skillrow-top-1-s8', name: "SQL", isArchived: false },
-        { id: 'skillrow-top-1-s9', name: "Terraform", isArchived: false },
-        { id: 'skillrow-top-1-s10', name: "HTML", isArchived: false },
-        { id: 'skillrow-top-1-s11', name: "CSS", isArchived: false },
+        { id: 'skillrow-top-1-s1', name: 'JavaScript', isArchived: false },
+        { id: 'skillrow-top-1-s2', name: 'Typescript', isArchived: false },
+        { id: 'skillrow-top-1-s3', name: 'Python', isArchived: false },
+        { id: 'skillrow-top-1-s4', name: 'Java', isArchived: false },
+        { id: 'skillrow-top-1-s5', name: 'Rust', isArchived: false },
+        { id: 'skillrow-top-1-s6', name: 'C', isArchived: false },
+        { id: 'skillrow-top-1-s7', name: 'C++', isArchived: false },
+        { id: 'skillrow-top-1-s8', name: 'SQL', isArchived: false },
+        { id: 'skillrow-top-1-s9', name: 'Terraform', isArchived: false },
+        { id: 'skillrow-top-1-s10', name: 'HTML', isArchived: false },
+        { id: 'skillrow-top-1-s11', name: 'CSS', isArchived: false },
         // Trailing space transcribed verbatim from the reference file ("Racket } \\"): D-008 is
         // content-verbatim, so a stray space the original author typed is part of the data.
-        { id: 'skillrow-top-1-s12', name: "Racket ", isArchived: false },
+        { id: 'skillrow-top-1-s12', name: 'Racket ', isArchived: false },
       ],
     },
     {
       id: 'skillrow-top-2',
-      name: "Frameworks \\& Tools",
+      name: 'Frameworks \\& Tools',
       top: true,
       separator: ', ',
       isArchived: false,
       skills: [
-        { id: 'skillrow-top-2-s1', name: "Git", isArchived: false },
-        { id: 'skillrow-top-2-s2', name: "Docker", isArchived: false },
-        { id: 'skillrow-top-2-s3', name: "React", isArchived: false },
-        { id: 'skillrow-top-2-s4', name: "Node", isArchived: false },
-        { id: 'skillrow-top-2-s5', name: "Express", isArchived: false },
-        { id: 'skillrow-top-2-s6', name: "Prisma", isArchived: false },
-        { id: 'skillrow-top-2-s7', name: "FastAPI", isArchived: false },
-        { id: 'skillrow-top-2-s8', name: "SQLAlchemy", isArchived: false },
-        { id: 'skillrow-top-2-s9', name: "Django", isArchived: false },
-        { id: 'skillrow-top-2-s10', name: "FreeRTOS", isArchived: false },
+        { id: 'skillrow-top-2-s1', name: 'Git', isArchived: false },
+        { id: 'skillrow-top-2-s2', name: 'Docker', isArchived: false },
+        { id: 'skillrow-top-2-s3', name: 'React', isArchived: false },
+        { id: 'skillrow-top-2-s4', name: 'Node', isArchived: false },
+        { id: 'skillrow-top-2-s5', name: 'Express', isArchived: false },
+        { id: 'skillrow-top-2-s6', name: 'Prisma', isArchived: false },
+        { id: 'skillrow-top-2-s7', name: 'FastAPI', isArchived: false },
+        { id: 'skillrow-top-2-s8', name: 'SQLAlchemy', isArchived: false },
+        { id: 'skillrow-top-2-s9', name: 'Django', isArchived: false },
+        { id: 'skillrow-top-2-s10', name: 'FreeRTOS', isArchived: false },
       ],
     },
     {
       id: 'skillrow-top-3',
-      name: "Cloud Technologies",
+      name: 'Cloud Technologies',
       top: true,
       separator: ', ',
       isArchived: false,
       skills: [
-        { id: 'skillrow-top-3-s1', name: "Github Actions", isArchived: false },
-        { id: 'skillrow-top-3-s2', name: "AWS (EB, ECS, EC2, S3, RDS, Amplify, DynamoDB)", isArchived: false },
-        { id: 'skillrow-top-3-s3', name: "Netlify", isArchived: false },
+        { id: 'skillrow-top-3-s1', name: 'Github Actions', isArchived: false },
+        {
+          id: 'skillrow-top-3-s2',
+          name: 'AWS (EB, ECS, EC2, S3, RDS, Amplify, DynamoDB)',
+          isArchived: false,
+        },
+        { id: 'skillrow-top-3-s3', name: 'Netlify', isArchived: false },
         // Same trailing-space transcription as "Racket " above.
-        { id: 'skillrow-top-3-s4', name: "Vercel ", isArchived: false },
+        { id: 'skillrow-top-3-s4', name: 'Vercel ', isArchived: false },
       ],
     },
     {
       id: 'skillrow-bottom-1',
-      name: "Interests",
+      name: 'Interests',
       top: false,
       separator: ' $|$ ',
       isArchived: false,
       skills: [
-        { id: 'skillrow-bottom-1-s1', name: "Skiing", isArchived: false },
-        { id: 'skillrow-bottom-1-s2', name: "Ski Racing", isArchived: false },
-        { id: 'skillrow-bottom-1-s3', name: "Mountain Biking", isArchived: false },
-        { id: 'skillrow-bottom-1-s4', name: "Rock Climbing", isArchived: false },
-        { id: 'skillrow-bottom-1-s5', name: "Hiking", isArchived: false },
-        { id: 'skillrow-bottom-1-s6', name: "Car Racing", isArchived: false },
-        { id: 'skillrow-bottom-1-s7', name: "Cats", isArchived: false },
-        { id: 'skillrow-bottom-1-s8', name: "Weightlifting", isArchived: false },
-        { id: 'skillrow-bottom-1-s9', name: "Cooking", isArchived: false },
+        { id: 'skillrow-bottom-1-s1', name: 'Skiing', isArchived: false },
+        { id: 'skillrow-bottom-1-s2', name: 'Ski Racing', isArchived: false },
+        { id: 'skillrow-bottom-1-s3', name: 'Mountain Biking', isArchived: false },
+        { id: 'skillrow-bottom-1-s4', name: 'Rock Climbing', isArchived: false },
+        { id: 'skillrow-bottom-1-s5', name: 'Hiking', isArchived: false },
+        { id: 'skillrow-bottom-1-s6', name: 'Car Racing', isArchived: false },
+        { id: 'skillrow-bottom-1-s7', name: 'Cats', isArchived: false },
+        { id: 'skillrow-bottom-1-s8', name: 'Weightlifting', isArchived: false },
+        { id: 'skillrow-bottom-1-s9', name: 'Cooking', isArchived: false },
       ],
     },
     {
       id: 'skillrow-bottom-2',
-      name: "Accolades",
+      name: 'Accolades',
       top: false,
       separator: ' $|$ ',
       isArchived: false,
       skills: [
-        { id: 'skillrow-bottom-2-s1', name: "Deans List all semesters", isArchived: false },
-        { id: 'skillrow-bottom-2-s2', name: "Red Cross CPR \\& First Aid", isArchived: false },
-        { id: 'skillrow-bottom-2-s3', name: "Bill Taylor Essay Contest Winner", isArchived: false },
-        { id: 'skillrow-bottom-2-s4', name: "Cum Laude", isArchived: false },
+        { id: 'skillrow-bottom-2-s1', name: 'Deans List all semesters', isArchived: false },
+        { id: 'skillrow-bottom-2-s2', name: 'Red Cross CPR \\& First Aid', isArchived: false },
+        { id: 'skillrow-bottom-2-s3', name: 'Bill Taylor Essay Contest Winner', isArchived: false },
+        { id: 'skillrow-bottom-2-s4', name: 'Cum Laude', isArchived: false },
       ],
     },
   ],
@@ -528,13 +712,63 @@ const v1Selections: Selections = {
     'proj-2': ['proj-2-b1', 'proj-2-b2'],
     'proj-3': ['proj-3-b1', 'proj-3-b2'],
   },
-  skillRows: ['skillrow-top-1', 'skillrow-top-2', 'skillrow-top-3', 'skillrow-bottom-1', 'skillrow-bottom-2'],
+  skillRows: [
+    'skillrow-top-1',
+    'skillrow-top-2',
+    'skillrow-top-3',
+    'skillrow-bottom-1',
+    'skillrow-bottom-2',
+  ],
   skills: {
-    'skillrow-top-1': ['skillrow-top-1-s1', 'skillrow-top-1-s2', 'skillrow-top-1-s3', 'skillrow-top-1-s4', 'skillrow-top-1-s5', 'skillrow-top-1-s6', 'skillrow-top-1-s7', 'skillrow-top-1-s8', 'skillrow-top-1-s9', 'skillrow-top-1-s10', 'skillrow-top-1-s11', 'skillrow-top-1-s12'],
-    'skillrow-top-2': ['skillrow-top-2-s1', 'skillrow-top-2-s2', 'skillrow-top-2-s3', 'skillrow-top-2-s4', 'skillrow-top-2-s5', 'skillrow-top-2-s6', 'skillrow-top-2-s7', 'skillrow-top-2-s8', 'skillrow-top-2-s9', 'skillrow-top-2-s10'],
-    'skillrow-top-3': ['skillrow-top-3-s1', 'skillrow-top-3-s2', 'skillrow-top-3-s3', 'skillrow-top-3-s4'],
-    'skillrow-bottom-1': ['skillrow-bottom-1-s1', 'skillrow-bottom-1-s2', 'skillrow-bottom-1-s3', 'skillrow-bottom-1-s4', 'skillrow-bottom-1-s5', 'skillrow-bottom-1-s6', 'skillrow-bottom-1-s7', 'skillrow-bottom-1-s8', 'skillrow-bottom-1-s9'],
-    'skillrow-bottom-2': ['skillrow-bottom-2-s1', 'skillrow-bottom-2-s2', 'skillrow-bottom-2-s3', 'skillrow-bottom-2-s4'],
+    'skillrow-top-1': [
+      'skillrow-top-1-s1',
+      'skillrow-top-1-s2',
+      'skillrow-top-1-s3',
+      'skillrow-top-1-s4',
+      'skillrow-top-1-s5',
+      'skillrow-top-1-s6',
+      'skillrow-top-1-s7',
+      'skillrow-top-1-s8',
+      'skillrow-top-1-s9',
+      'skillrow-top-1-s10',
+      'skillrow-top-1-s11',
+      'skillrow-top-1-s12',
+    ],
+    'skillrow-top-2': [
+      'skillrow-top-2-s1',
+      'skillrow-top-2-s2',
+      'skillrow-top-2-s3',
+      'skillrow-top-2-s4',
+      'skillrow-top-2-s5',
+      'skillrow-top-2-s6',
+      'skillrow-top-2-s7',
+      'skillrow-top-2-s8',
+      'skillrow-top-2-s9',
+      'skillrow-top-2-s10',
+    ],
+    'skillrow-top-3': [
+      'skillrow-top-3-s1',
+      'skillrow-top-3-s2',
+      'skillrow-top-3-s3',
+      'skillrow-top-3-s4',
+    ],
+    'skillrow-bottom-1': [
+      'skillrow-bottom-1-s1',
+      'skillrow-bottom-1-s2',
+      'skillrow-bottom-1-s3',
+      'skillrow-bottom-1-s4',
+      'skillrow-bottom-1-s5',
+      'skillrow-bottom-1-s6',
+      'skillrow-bottom-1-s7',
+      'skillrow-bottom-1-s8',
+      'skillrow-bottom-1-s9',
+    ],
+    'skillrow-bottom-2': [
+      'skillrow-bottom-2-s1',
+      'skillrow-bottom-2-s2',
+      'skillrow-bottom-2-s3',
+      'skillrow-bottom-2-s4',
+    ],
   },
 };
 
@@ -568,7 +802,11 @@ test('round trip: default template + full v1 fixture reproduces docs/reference/v
   mkdirSync(scratchDir, { recursive: true });
   writeFileSync(renderedOutputPath, tex);
 
-  assert.deepEqual(warnings, [], `expected a clean render of the full v1 fixture, got warnings: ${JSON.stringify(warnings)}`);
+  assert.deepEqual(
+    warnings,
+    [],
+    `expected a clean render of the full v1 fixture, got warnings: ${JSON.stringify(warnings)}`,
+  );
 
   // The reference hand-template contains one commented-out placeholder bullet
   // inside Experience #1's item list (a LaTeX comment the original author left
@@ -579,8 +817,11 @@ test('round trip: default template + full v1 fixture reproduces docs/reference/v
   // documented divergence in this round trip.
   const documentedDivergence =
     '  % \\resumeItem{Built \\textbf{AWS} infrastructure (EC2, RDS, S3) using \\textbf{Terraform} and automated deployments with \\textbf{CI/CD pipeline}}\n';
-  assert.ok(referenceRaw.includes(documentedDivergence), 'expected reference file to still contain the documented divergence line -- has v1-resume.tex changed?');
-  let referenceAdjusted = referenceRaw.replace(documentedDivergence, '');
+  assert.ok(
+    referenceRaw.includes(documentedDivergence),
+    'expected reference file to still contain the documented divergence line -- has v1-resume.tex changed?',
+  );
+  const referenceAdjusted = referenceRaw.replace(documentedDivergence, '');
 
   // The Additional Information rows in the reference resume separate values with
   // " $|$ " while the Technical Skills rows use ", ". That is why
@@ -620,7 +861,14 @@ test('round trip: default template + full v1 fixture reproduces docs/reference/v
 test('a section with content keeps its <<IF>> block body', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'r', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's', name: 'Rust', isArchived: false }] },
+    {
+      id: 'r',
+      name: 'Languages',
+      top: true,
+      separator: ', ',
+      isArchived: false,
+      skills: [{ id: 's', name: 'Rust', isArchived: false }],
+    },
   ];
   const selections = emptySelections();
   selections.skillRows = ['r'];
@@ -638,7 +886,8 @@ test('a section with content keeps its <<IF>> block body', () => {
 
 test('an empty section drops the whole <<IF>> block, heading included', () => {
   const { tex } = renderResume({
-    templateContent: 'BEFORE<<IF:PROJECTS>>\\section{Projects}\\begin{itemize}<<PROJECTS>>\\end{itemize}<<ENDIF>>AFTER',
+    templateContent:
+      'BEFORE<<IF:PROJECTS>>\\section{Projects}\\begin{itemize}<<PROJECTS>>\\end{itemize}<<ENDIF>>AFTER',
     library: emptyLibrary(),
     selections: emptySelections(),
   });
@@ -672,8 +921,17 @@ test('the default template survives every section being deselected', () => {
   // is left without an \item. (The \newcommand definitions in the preamble
   // legitimately contain a bare \begin{itemize}; only *usages* matter, and the
   // real proof is the compile check in scripts/smoke.ts.)
-  for (const heading of ['\\section{Technical Skills}', '\\section{Experience}', '\\section{Projects}', '\\section{Additional Information}']) {
-    assert.doesNotMatch(tex, new RegExp(heading.replace(/[\\{}]/g, '\\$&')), `${heading} should be dropped`);
+  for (const heading of [
+    '\\section{Technical Skills}',
+    '\\section{Experience}',
+    '\\section{Projects}',
+    '\\section{Additional Information}',
+  ]) {
+    assert.doesNotMatch(
+      tex,
+      new RegExp(heading.replace(/[\\{}]/g, '\\$&')),
+      `${heading} should be dropped`,
+    );
   }
   assert.match(tex, /\\begin\{document\}/);
   assert.match(tex, /\\end\{document\}/);
@@ -686,5 +944,8 @@ test('an unmatched <<ENDIF>> is reported rather than silently mis-rendering', ()
     library: emptyLibrary(),
     selections: emptySelections(),
   });
-  assert.ok(warnings.some((w) => w.includes('unmatched')), warnings.join('; '));
+  assert.ok(
+    warnings.some((w) => w.includes('unmatched')),
+    warnings.join('; '),
+  );
 });

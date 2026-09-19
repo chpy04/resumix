@@ -54,10 +54,7 @@ test('buildResumeFilename uses the default prefix from the env var', () => {
   const previous = process.env.PDF_NAME_PREFIX;
   process.env.PDF_NAME_PREFIX = 'Chris_Pyle';
   try {
-    assert.equal(
-      buildResumeFilename('google cloud'),
-      'Chris_Pyle_Google_Cloud_Resume.pdf',
-    );
+    assert.equal(buildResumeFilename('google cloud'), 'Chris_Pyle_Google_Cloud_Resume.pdf');
   } finally {
     if (previous === undefined) delete process.env.PDF_NAME_PREFIX;
     else process.env.PDF_NAME_PREFIX = previous;
@@ -76,8 +73,5 @@ test('buildResumeFilename falls back to Chris_Pyle when the env var is unset', (
 });
 
 test('buildResumeFilename accepts an explicit prefix override', () => {
-  assert.equal(
-    buildResumeFilename('Google Cloud', 'Jane_Doe'),
-    'Jane_Doe_Google_Cloud_Resume.pdf',
-  );
+  assert.equal(buildResumeFilename('Google Cloud', 'Jane_Doe'), 'Jane_Doe_Google_Cloud_Resume.pdf');
 });

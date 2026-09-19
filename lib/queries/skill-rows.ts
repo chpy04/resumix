@@ -1,8 +1,19 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { technicalSkill, technicalSkillRow } from '../db/schema.ts';
-import type { SkillRow } from '../types.ts';
+import type { Skill, SkillRow } from '../types.ts';
 import { NotFoundError } from './errors.ts';
+
+function toWire(row: typeof technicalSkillRow.$inferSelect, skills: Skill[]): SkillRow {
+  return {
+    id: row.id,
+    name: row.name,
+    top: row.top,
+    separator: row.separator,
+    isArchived: row.isArchived,
+    skills,
+  };
+}
 
 export async function createSkillRow(data: {
   name: string;
@@ -14,7 +25,7 @@ export async function createSkillRow(data: {
     .values(data.separator !== undefined ? data : { name: data.name, top: data.top })
     .returning();
   if (!row) throw new Error('failed to create skill row');
-  return { ...row, skills: [] };
+  return toWire(row, []);
 }
 
 export async function updateSkillRow(
@@ -29,12 +40,16 @@ export async function updateSkillRow(
   if (!row) throw new NotFoundError(`skill row ${id} not found`);
 
   const skills = await db
-    .select()
+    .select({
+      id: technicalSkill.id,
+      name: technicalSkill.name,
+      isArchived: technicalSkill.isArchived,
+    })
     .from(technicalSkill)
     .where(eq(technicalSkill.technicalSkillRowId, id))
     .orderBy(asc(technicalSkill.createdAt));
 
-  return { ...row, skills };
+  return toWire(row, skills);
 }
 
 export async function getSkillRowById(id: string): Promise<{ id: string } | null> {

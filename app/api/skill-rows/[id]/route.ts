@@ -1,10 +1,6 @@
-import { parseJsonBody, withApiErrors } from '@/lib/http';
+import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { updateSkillRow } from '@/lib/queries/skill-rows';
 import { patchSkillRowSchema } from '@/lib/validation';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 export async function PATCH(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {

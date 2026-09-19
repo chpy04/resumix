@@ -1,7 +1,12 @@
 'use client';
 
 import { useCallback, useReducer, useRef } from 'react';
-import { combineStatuses, createAutosave, type AutosaveController, type SaveStatus } from '@/lib/editor/autosave';
+import {
+  combineStatuses,
+  createAutosave,
+  type AutosaveController,
+  type SaveStatus,
+} from '@/lib/editor/autosave';
 
 interface Entry<T> {
   controller: AutosaveController<T>;
@@ -24,7 +29,7 @@ export function useAutosaveRegistry() {
   const [, forceRender] = useReducer((n: number) => n + 1, 0);
 
   const getController = useCallback(
-    <T,>(key: string, save: (value: T) => Promise<void>, debounceMs = 0): AutosaveController<T> => {
+    <T>(key: string, save: (value: T) => Promise<void>, debounceMs = 0): AutosaveController<T> => {
       const existing = entries.current.get(key) as Entry<T> | undefined;
       if (existing) {
         existing.saveRef.current = save;

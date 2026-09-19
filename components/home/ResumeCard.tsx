@@ -11,7 +11,11 @@ interface ResumeCardProps {
   isDefault?: boolean;
 }
 
-const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -64,25 +68,25 @@ export default function ResumeCard({ resume, isDefault = false }: ResumeCardProp
       }}
       className={`group relative flex h-36 cursor-pointer flex-col justify-between rounded-lg border p-4 text-left transition-colors focus:outline-none ${
         isDefault
-          ? 'border-[var(--color-accent)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-2)]/80'
-          : 'border-[var(--color-line)] bg-[var(--color-surface)] hover:border-[var(--color-accent)] hover:bg-[var(--color-surface-2)]'
+          ? 'border-accent bg-surface-2 hover:bg-surface-2/80'
+          : 'border-line bg-surface hover:border-accent hover:bg-surface-2'
       }`}
     >
       <div className="min-w-0">
         {isDefault ? (
-          <span className="mb-1 inline-block rounded bg-[var(--color-accent)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--color-canvas)] uppercase">
+          <span className="mb-1 inline-block rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-canvas uppercase">
             Default
           </span>
         ) : null}
-        <h3 className="truncate text-sm font-semibold text-[var(--color-ink)]" title={resume.name}>
+        <h3 className="truncate text-sm font-semibold text-ink" title={resume.name}>
           {resume.name}
         </h3>
-        <p className="mt-1 text-xs text-[var(--color-ink-dim)]">Created {formatDate(resume.createdAt)}</p>
+        <p className="mt-1 text-xs text-ink-dim">Created {formatDate(resume.createdAt)}</p>
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-[var(--color-ink-dim)]">
-          {downloadError ? <span className="text-red-400">{downloadError}</span> : null}
+        <span className="text-xs text-ink-dim">
+          {downloadError ? <span className="text-danger">{downloadError}</span> : null}
         </span>
         <button
           type="button"
@@ -94,10 +98,15 @@ export default function ResumeCard({ resume, isDefault = false }: ResumeCardProp
               ? `Download ${resume.latestPdf!.filename}`
               : 'No saved PDF yet — open this resume and save once to enable downloads.'
           }
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--color-line)] text-[var(--color-ink-dim)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--color-line)] disabled:hover:text-[var(--color-ink-dim)]"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-line text-ink-dim transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-ink-dim"
         >
           {downloading ? (
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 animate-spin">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="h-3.5 w-3.5 animate-spin"
+            >
               <circle
                 cx="12"
                 cy="12"

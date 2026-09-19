@@ -1,14 +1,10 @@
 import { compileTex, LatexServiceError } from '@/lib/latex';
-import { withApiErrors, errorResponse } from '@/lib/http';
+import { errorResponse, type RouteContext, withApiErrors } from '@/lib/http';
 import { buildResumeFilename, sanitizeForHeader } from '@/lib/filename';
 import { NotFoundError } from '@/lib/queries/errors';
 import { renderResumeById } from '@/lib/queries/render';
 import { getResumeRow } from '@/lib/queries/resumes';
 import { getLatestResumePdfSnapshot, saveResumePdfSnapshot } from '@/lib/storage';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 /**
  * Renders, compiles, and stores a `resume_pdf` snapshot. A LaTeX compile

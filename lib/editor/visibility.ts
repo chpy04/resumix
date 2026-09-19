@@ -18,7 +18,11 @@ export interface Archivable {
 /** An archived item is visible only if the "show archived" toggle is on,
  *  or it's currently selected on this resume — it must never silently
  *  disappear from a resume that still references it. */
-export function isVisible(item: Archivable, selectedIds: ReadonlySet<string>, showArchived: boolean): boolean {
+export function isVisible(
+  item: Archivable,
+  selectedIds: ReadonlySet<string>,
+  showArchived: boolean,
+): boolean {
   if (!item.isArchived) return true;
   return showArchived || selectedIds.has(item.id);
 }
@@ -45,7 +49,10 @@ export function visibleItems<T extends Archivable>(
  * resulting order is ever sent back to the server (see
  * `extractSelectedOrder`); unselected items have no persisted order.
  */
-export function orderForDisplay<T extends { id: string }>(items: readonly T[], selectedOrder: readonly string[]): T[] {
+export function orderForDisplay<T extends { id: string }>(
+  items: readonly T[],
+  selectedOrder: readonly string[],
+): T[] {
   const byId = new Map(items.map((item) => [item.id, item]));
   const seen = new Set<string>();
   const ordered: T[] = [];
@@ -72,7 +79,10 @@ export function orderForDisplay<T extends { id: string }>(items: readonly T[], s
  * unselected ids mixed together), extracts just the selected ids in their
  * new relative order — the value that actually gets saved.
  */
-export function extractSelectedOrder(fullOrderedIds: readonly string[], selectedIds: readonly string[]): string[] {
+export function extractSelectedOrder(
+  fullOrderedIds: readonly string[],
+  selectedIds: readonly string[],
+): string[] {
   const selectedSet = new Set(selectedIds);
   return fullOrderedIds.filter((id) => selectedSet.has(id));
 }

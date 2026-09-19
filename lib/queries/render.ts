@@ -28,10 +28,7 @@ export async function renderResumeById(
     templateContent = template.content;
   }
 
-  const [selections, library] = await Promise.all([
-    getSelections(resumeId),
-    assembleLibrary(true),
-  ]);
+  const [selections, library] = await Promise.all([getSelections(resumeId), assembleLibrary(true)]);
 
   return renderResume({ templateContent, library, selections });
 }

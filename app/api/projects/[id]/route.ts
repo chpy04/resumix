@@ -1,10 +1,6 @@
-import { parseJsonBody, withApiErrors } from '@/lib/http';
+import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { updateProject } from '@/lib/queries/projects';
 import { patchProjectSchema } from '@/lib/validation';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 export async function PATCH(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {

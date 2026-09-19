@@ -88,7 +88,7 @@ reports live in `docs/agents/<task-id>.md`.
 
 ## How the pieces fit
 
-A resume never stores text. It stores *which* content ids it picked and in what
+A resume never stores text. It stores _which_ content ids it picked and in what
 order (bridge tables, composite PK, `sort_order`). Editing a bullet is therefore
 global and instantly changes every resume that picked it — that is intentional.
 Rendering = load selections → substitute into the template's `<<TOKENS>>` →
@@ -109,6 +109,6 @@ later template/content edits do not retroactively change an already-saved resume
 - No multi-template UI; the schema supports it, the UI assumes one default.
 - PDF storage is `bytea`; swap point is `lib/storage.ts` if it ever outgrows that.
 - **Serverless pooling (T11).** `lib/db/index.ts` calls `postgres(url)` with defaults. On
-  Vercel + Supabase's Supavisor *transaction* pooler this must become
+  Vercel + Supabase's Supavisor _transaction_ pooler this must become
   `postgres(url, { max: 1, prepare: false })` — transaction pooling does not support
   prepared statements. Harmless locally; a production footgun.

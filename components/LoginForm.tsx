@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { login } from '@/lib/api-client';
 import { setToken } from '@/lib/auth-client';
 
 interface LoginFormProps {
@@ -31,20 +32,14 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
     setSubmitting(true);
     setError(null);
     try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-
-      if (!response.ok) {
+      const token = await login(password);
+      if (token === null) {
         setError('Wrong password.');
         setPassword('');
         return;
       }
 
-      const data = (await response.json()) as { token: string };
-      setToken(data.token);
+      setToken(token);
       onSuccess?.();
     } catch {
       setError('Could not reach the server. Try again.');
@@ -54,13 +49,13 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] p-6">
+    <main className="flex min-h-screen items-center justify-center bg-canvas p-6">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-8 shadow-lg"
+        className="w-full max-w-sm rounded-lg border border-line bg-surface p-8 shadow-lg"
       >
-        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Resumix</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-dim)]">Enter the password to continue.</p>
+        <h1 className="text-lg font-semibold text-ink">Resumix</h1>
+        <p className="mt-1 text-sm text-ink-dim">Enter the password to continue.</p>
 
         <input
           type="password"
@@ -72,15 +67,15 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
           }}
           placeholder="Password"
           disabled={submitting}
-          className="mt-6 w-full rounded-md border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)] disabled:opacity-50"
+          className="mt-6 w-full rounded-md border border-line bg-surface-2 px-3 py-2 text-ink outline-none focus:border-accent disabled:opacity-50"
         />
 
-        {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
+        {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
 
         <button
           type="submit"
           disabled={submitting || password.length === 0}
-          className="mt-4 w-full rounded-md bg-[var(--color-accent)] px-3 py-2 font-medium text-[var(--color-canvas)] transition-opacity disabled:opacity-50"
+          className="mt-4 w-full rounded-md bg-accent px-3 py-2 font-medium text-canvas transition-opacity disabled:opacity-50"
         >
           {submitting ? 'Checking…' : 'Enter'}
         </button>

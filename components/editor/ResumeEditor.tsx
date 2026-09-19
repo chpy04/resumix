@@ -22,7 +22,11 @@ import {
   updateSkillRow,
   updateTemplate,
 } from '@/lib/api-client';
-import { affectedSlice, selectionsReducer, type SelectionsAction } from '@/lib/editor/selections-reducer';
+import {
+  affectedSlice,
+  selectionsReducer,
+  type SelectionsAction,
+} from '@/lib/editor/selections-reducer';
 import { EMPTY_SELECTIONS, type Library, type Selections, type Template } from '@/lib/types';
 import ContentPane, { type ContentPaneCallbacks } from './ContentPane';
 import EditorHeader, { type EditorTab } from './EditorHeader';
@@ -115,7 +119,10 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
       if (!slice) return;
       const controller = autosave.getController<SliceValue>(
         `selections:${slice}`,
-        (value) => updateSelections(resumeId, { [slice]: value } as Partial<Selections>).then(() => undefined),
+        (value) =>
+          updateSelections(resumeId, { [slice]: value } as Partial<Selections>).then(
+            () => undefined,
+          ),
         0,
       );
       controller.schedule(next[slice]);
@@ -126,7 +133,8 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
   const contentCallbacks: ContentPaneCallbacks = {
     onToggleTop: (slice, id) => dispatchAndSaveSelection({ type: 'toggleTop', slice, id }),
     onReorderTop: (slice, order) => dispatchAndSaveSelection({ type: 'reorderTop', slice, order }),
-    onToggleNested: (slice, parentId, id) => dispatchAndSaveSelection({ type: 'toggleNested', slice, parentId, id }),
+    onToggleNested: (slice, parentId, id) =>
+      dispatchAndSaveSelection({ type: 'toggleNested', slice, parentId, id }),
     onReorderNested: (slice, parentId, order) =>
       dispatchAndSaveSelection({ type: 'reorderNested', slice, parentId, order }),
 
@@ -139,17 +147,17 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
               ...prev,
               library: {
                 ...prev.library,
-                experiences: prev.library.experiences.map((e) => (e.id === id ? { ...e, [key]: value } : e)),
+                experiences: prev.library.experiences.map((e) =>
+                  e.id === id ? { ...e, [key]: value } : e,
+                ),
               },
             },
       );
       const draft = experienceFieldDraft(id, key, value);
       autosave
-        .getController<Record<string, string>>(
-          `experience:${id}`,
-          (patch) => updateExperience(id, patch).then(() => undefined),
-          500,
-        )
+        .getController<
+          Record<string, string>
+        >(`experience:${id}`, (patch) => updateExperience(id, patch).then(() => undefined), 500)
         .schedule(draft);
     },
     onArchiveExperience: (id, isArchived) => {
@@ -160,7 +168,9 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
               ...prev,
               library: {
                 ...prev.library,
-                experiences: prev.library.experiences.map((e) => (e.id === id ? { ...e, isArchived } : e)),
+                experiences: prev.library.experiences.map((e) =>
+                  e.id === id ? { ...e, isArchived } : e,
+                ),
               },
             },
       );
@@ -182,7 +192,10 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
       setState((prev) =>
         prev.status !== 'ready'
           ? prev
-          : { ...prev, library: { ...prev.library, experiences: [...prev.library.experiences, created] } },
+          : {
+              ...prev,
+              library: { ...prev.library, experiences: [...prev.library.experiences, created] },
+            },
       );
     },
     onCreateExperienceBullet: async (experienceId, content) => {
@@ -257,17 +270,17 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
               ...prev,
               library: {
                 ...prev.library,
-                projects: prev.library.projects.map((p) => (p.id === id ? { ...p, [key]: value } : p)),
+                projects: prev.library.projects.map((p) =>
+                  p.id === id ? { ...p, [key]: value } : p,
+                ),
               },
             },
       );
       const draft = projectFieldDraft(id, key, value);
       autosave
-        .getController<Record<string, string>>(
-          `project:${id}`,
-          (patch) => updateProject(id, patch).then(() => undefined),
-          500,
-        )
+        .getController<
+          Record<string, string>
+        >(`project:${id}`, (patch) => updateProject(id, patch).then(() => undefined), 500)
         .schedule(draft);
     },
     onArchiveProject: (id, isArchived) => {
@@ -278,7 +291,9 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
               ...prev,
               library: {
                 ...prev.library,
-                projects: prev.library.projects.map((p) => (p.id === id ? { ...p, isArchived } : p)),
+                projects: prev.library.projects.map((p) =>
+                  p.id === id ? { ...p, isArchived } : p,
+                ),
               },
             },
       );
@@ -299,7 +314,10 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
       setState((prev) =>
         prev.status !== 'ready'
           ? prev
-          : { ...prev, library: { ...prev.library, projects: [...prev.library.projects, created] } },
+          : {
+              ...prev,
+              library: { ...prev.library, projects: [...prev.library.projects, created] },
+            },
       );
     },
     onCreateProjectBullet: async (projectId, content) => {
@@ -374,17 +392,17 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
               ...prev,
               library: {
                 ...prev.library,
-                skillRows: prev.library.skillRows.map((r) => (r.id === rowId ? { ...r, [key]: value } : r)),
+                skillRows: prev.library.skillRows.map((r) =>
+                  r.id === rowId ? { ...r, [key]: value } : r,
+                ),
               },
             },
       );
       const draft = skillRowFieldDraft(rowId, key, value);
       autosave
-        .getController<Record<string, string>>(
-          `skill-row:${rowId}`,
-          (patch) => updateSkillRow(rowId, patch).then(() => undefined),
-          500,
-        )
+        .getController<
+          Record<string, string>
+        >(`skill-row:${rowId}`, (patch) => updateSkillRow(rowId, patch).then(() => undefined), 500)
         .schedule(draft);
     },
     onArchiveSkillRow: (rowId, isArchived) => {
@@ -395,7 +413,9 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
               ...prev,
               library: {
                 ...prev.library,
-                skillRows: prev.library.skillRows.map((r) => (r.id === rowId ? { ...r, isArchived } : r)),
+                skillRows: prev.library.skillRows.map((r) =>
+                  r.id === rowId ? { ...r, isArchived } : r,
+                ),
               },
             },
       );
@@ -412,7 +432,10 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
       setState((prev) =>
         prev.status !== 'ready'
           ? prev
-          : { ...prev, library: { ...prev.library, skillRows: [...prev.library.skillRows, created] } },
+          : {
+              ...prev,
+              library: { ...prev.library, skillRows: [...prev.library.skillRows, created] },
+            },
       );
     },
     onCreateSkill: async (rowId, name) => {
@@ -447,7 +470,11 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
             },
       );
       autosave
-        .getController<string>(`skill:${skillId}`, (value) => updateSkill(skillId, { name: value }).then(() => undefined), 500)
+        .getController<string>(
+          `skill:${skillId}`,
+          (value) => updateSkill(skillId, { name: value }).then(() => undefined),
+          500,
+        )
         .schedule(name);
     },
     onArchiveSkill: (skillId, isArchived) => {
@@ -479,7 +506,11 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
     (name: string) => {
       setState((prev) => (prev.status !== 'ready' ? prev : { ...prev, resumeName: name }));
       autosave
-        .getController<string>('resume:name', (value) => updateResume(resumeId, { name: value }).then(() => undefined), 500)
+        .getController<string>(
+          'resume:name',
+          (value) => updateResume(resumeId, { name: value }).then(() => undefined),
+          500,
+        )
         .schedule(name);
     },
     [autosave.getController, resumeId],
@@ -552,7 +583,7 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
 
   if (state.status === 'loading') {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-[var(--color-ink-dim)]">
+      <div className="flex h-screen items-center justify-center text-sm text-ink-dim">
         Loading resume…
       </div>
     );
@@ -561,13 +592,13 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
   if (state.status === 'error') {
     return (
       <div className="flex h-screen items-center justify-center p-6">
-        <div className="max-w-sm rounded-lg border border-red-900/50 bg-red-950/30 p-6 text-sm text-red-300">
+        <div className="max-w-sm rounded-lg border border-danger-line/50 bg-danger-surface/30 p-6 text-sm text-danger-ink">
           <p className="font-medium">Couldn&apos;t load this resume.</p>
-          <p className="mt-1 text-red-400/80">{state.message}</p>
+          <p className="mt-1 text-danger/80">{state.message}</p>
           <button
             type="button"
             onClick={() => void loadResume()}
-            className="mt-4 rounded-md border border-red-800 px-3 py-1.5 text-sm text-red-200 transition-colors hover:bg-red-900/30"
+            className="mt-4 rounded-md border border-danger-line-strong px-3 py-1.5 text-sm text-danger-ink-strong transition-colors hover:bg-danger-line/30"
           >
             Retry
           </button>
@@ -577,7 +608,7 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--color-canvas)]">
+    <div className="flex h-screen flex-col bg-canvas">
       <EditorHeader
         resumeName={state.resumeName}
         onResumeNameChange={onResumeNameChange}
@@ -593,7 +624,11 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
       <div ref={containerRef} className="flex min-h-0 flex-1">
         <div style={{ width: `${splitPercent}%` }} className="min-h-0 overflow-hidden p-3">
           {tab === 'content' ? (
-            <ContentPane library={state.library} selections={selections} callbacks={contentCallbacks} />
+            <ContentPane
+              library={state.library}
+              selections={selections}
+              callbacks={contentCallbacks}
+            />
           ) : (
             <TemplateTab
               template={state.template}
@@ -611,7 +646,7 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
             draggingRef.current = true;
             document.body.style.cursor = 'col-resize';
           }}
-          className="w-1 shrink-0 cursor-col-resize bg-[var(--color-line)] transition-colors hover:bg-[var(--color-accent)]"
+          className="w-1 shrink-0 cursor-col-resize bg-line transition-colors hover:bg-accent"
         />
 
         <div style={{ width: `${100 - splitPercent}%` }} className="min-h-0 overflow-hidden p-3">

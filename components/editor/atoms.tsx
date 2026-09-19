@@ -24,12 +24,18 @@ export function SelectToggle({ checked, onChange, label }: SelectToggleProps) {
       onClick={onChange}
       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
         checked
-          ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-canvas)]'
-          : 'border-[var(--color-line)] bg-transparent text-transparent hover:border-[var(--color-accent)]'
+          ? 'border-accent bg-accent text-canvas'
+          : 'border-line bg-transparent text-transparent hover:border-accent'
       }`}
     >
       <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="h-3 w-3">
-        <path d="M3 8.5L6.2 11.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M3 8.5L6.2 11.5L13 4.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </button>
   );
@@ -38,12 +44,16 @@ export function SelectToggle({ checked, onChange, label }: SelectToggleProps) {
 /** Marks an affordance as a global content edit, per the task's most
  *  important conceptual rule: reordering/selecting is per-resume, but
  *  editing/archiving/creating content changes it for every resume. */
-export function GlobalEditBadge({ label = 'Edits here apply to every resume' }: { label?: string }) {
+export function GlobalEditBadge({
+  label = 'Edits here apply to every resume',
+}: {
+  label?: string;
+}) {
   return (
     <span
       title={label}
       aria-label={label}
-      className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-[var(--color-line)] text-[9px] text-[var(--color-ink-dim)]"
+      className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-line text-[9px] text-ink-dim"
     >
       ⊕
     </span>
@@ -52,7 +62,7 @@ export function GlobalEditBadge({ label = 'Edits here apply to every resume' }: 
 
 export function ArchivedBadge() {
   return (
-    <span className="inline-block shrink-0 rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] tracking-wide text-[var(--color-ink-dim)] uppercase">
+    <span className="inline-block shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] tracking-wide text-ink-dim uppercase">
       Archived
     </span>
   );
@@ -71,7 +81,7 @@ export function ArchiveButton({ isArchived, onClick, title }: ArchiveButtonProps
       type="button"
       onClick={onClick}
       title={title ?? (isArchived ? 'Unarchive (global)' : 'Archive (global) — there is no delete')}
-      className="shrink-0 rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[10px] text-[var(--color-ink-dim)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+      className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent hover:text-accent"
     >
       {isArchived ? 'Unarchive' : 'Archive'}
     </button>
@@ -91,7 +101,7 @@ export function ExpandChevron({ expanded, onClick, label }: ChevronProps) {
       onClick={onClick}
       aria-expanded={expanded}
       aria-label={label}
-      className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-ink-dim)] transition-colors hover:text-[var(--color-ink)]"
+      className="flex h-5 w-5 shrink-0 items-center justify-center text-ink-dim transition-colors hover:text-ink"
     >
       <svg
         aria-hidden="true"
@@ -99,7 +109,13 @@ export function ExpandChevron({ expanded, onClick, label }: ChevronProps) {
         fill="none"
         className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
       >
-        <path d="M5 3L11 8L5 13" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M5 3L11 8L5 13"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </button>
   );

@@ -16,7 +16,8 @@ template → POST the `.tex` to a sidecar TeX Live container
 snapshotted into `resume_pdf` so a resume's downloaded bytes never silently
 change when content/templates are edited later. Full detail:
 `docs/ARCHITECTURE.md`. Deployment target: Supabase (Postgres) + Vercel (app)
-+ Fly.io (latex sidecar) — see `docs/DEPLOYMENT.md`.
+
+- Fly.io (latex sidecar) — see `docs/DEPLOYMENT.md`.
 
 ## Contracts — authoritative, not suggestions
 

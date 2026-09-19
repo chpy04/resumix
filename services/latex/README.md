@@ -29,7 +29,7 @@ same HTTP contract with a much smaller, dependency-free image and no
 - Every request gets its own `mkdtemp` working directory; it's removed
   (`fs.rm -rf`) in a `finally`, including on error/timeout.
 - Runs `pdflatex -interaction=nonstopmode -halt-on-error -file-line-error
-  -no-shell-escape`, with `SOURCE_DATE_EPOCH=0` / `FORCE_SOURCE_DATE=1` so
+-no-shell-escape`, with `SOURCE_DATE_EPOCH=0` / `FORCE_SOURCE_DATE=1` so
   identical `.tex` input produces byte-identical PDF output.
 - Reads the `.log` file (not stdout) to parse the page count
   (`Output written on ... (N pages, ...)`) and errors (lines starting with
@@ -47,13 +47,13 @@ same HTTP contract with a much smaller, dependency-free image and no
 
 Env vars (all optional, sane defaults baked in):
 
-| var | default | meaning |
-|---|---|---|
-| `PORT` | `8080` | listen port |
-| `LATEX_MAX_BODY_BYTES` | `2097152` (2MB) | request body cap |
-| `LATEX_COMPILE_TIMEOUT_MS` | `20000` | hard per-compile timeout |
-| `LATEX_MAX_CONCURRENCY` | `2` | concurrent `pdflatex` processes |
-| `LATEX_MAX_QUEUE` | `8` | requests allowed to wait for a slot |
+| var                        | default         | meaning                             |
+| -------------------------- | --------------- | ----------------------------------- |
+| `PORT`                     | `8080`          | listen port                         |
+| `LATEX_MAX_BODY_BYTES`     | `2097152` (2MB) | request body cap                    |
+| `LATEX_COMPILE_TIMEOUT_MS` | `20000`         | hard per-compile timeout            |
+| `LATEX_MAX_CONCURRENCY`    | `2`             | concurrent `pdflatex` processes     |
+| `LATEX_MAX_QUEUE`          | `8`             | requests allowed to wait for a slot |
 
 ## Security
 
@@ -119,7 +119,7 @@ fly deploy
 
 **Correction (T11):** an earlier version of this section said to keep this
 app fully private, reachable only over Fly's `6PN`/`.internal` networking.
-That's only true if the Next.js app *also* runs on Fly. This project's actual
+That's only true if the Next.js app _also_ runs on Fly. This project's actual
 target (`spec.md`) is **Vercel** for the Next.js app, and Vercel serverless
 functions are a different cloud — they cannot join Fly's private WireGuard
 mesh, so `LATEX_SERVICE_URL` must be this app's **public** Fly URL
