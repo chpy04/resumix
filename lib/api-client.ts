@@ -10,6 +10,7 @@
 import { authedFetch } from '@/lib/auth-client';
 import type {
   Bullet,
+  SessionInfo,
   Experience,
   Project,
   RenderResult,
@@ -59,6 +60,15 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   // 204 No Content has no body to parse.
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/**
+ * `GET /api/session` — who the server thinks we are, and which auth mode it
+ * is running. Throws `ApiError` with status 401 when there is no session,
+ * which is `AuthGate`'s cue to show the login screen.
+ */
+export function getSession(): Promise<SessionInfo> {
+  return requestJson<SessionInfo>('/api/session');
 }
 
 /** `GET /api/resumes` — default first, then most-recently-created first. */

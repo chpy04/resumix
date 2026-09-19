@@ -18,3 +18,14 @@ export class BadRequestError extends Error {
     this.name = 'BadRequestError';
   }
 }
+
+/** No usable session could be resolved for the request — maps to 401.
+ * Distinct from `NotFoundError` on purpose: asking for another user's
+ * resume must look exactly like asking for one that does not exist, so
+ * ownership is never leaked by the status code (see `lib/session.ts`). */
+export class UnauthorizedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}

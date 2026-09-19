@@ -3,6 +3,21 @@
  * Drizzle maps between them. See docs/API.md.
  */
 
+/** The authenticated account. Everything else in this file belongs to exactly
+ *  one of these. No password/credential fields — auth is external. */
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+}
+
+/** `GET /api/session` — who the browser is talking as, and how it got there. */
+export interface SessionInfo {
+  user: User;
+  /** 'dev' means the app auto-logged in as the seeded user; see lib/auth-mode.ts. */
+  mode: 'dev' | 'password' | 'supabase';
+}
+
 export interface Bullet {
   id: string;
   content: string;

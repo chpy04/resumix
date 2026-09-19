@@ -2,38 +2,70 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import LoginForm from '@/components/LoginForm';
-import { AUTH_EXPIRED_EVENT, getToken } from '@/lib/auth-client';
+import { getSession } from '@/lib/api-client';
+import { AUTH_EXPIRED_EVENT } from '@/lib/auth-client';
 
 type Status = 'checking' | 'authenticated' | 'unauthenticated';
 
 /**
- * Gates its children behind the password screen. Only checks that *a* token
- * is stored, not that it is still valid — that would require shipping
- * `AUTH_SECRET` to the browser, which defeats the point. Real enforcement
- * happens server-side in `middleware.ts`; if a stored token is expired or
- * tampered with, the first `authedFetch` call gets a 401, which clears the
- * token and dispatches `AUTH_EXPIRED_EVENT`, dropping back to this screen.
+ * Gates its children behind the login screen.
+ *
+ * It asks the server who the caller is (`GET /api/session`) rather than
+ * looking for a token in `localStorage`. That matters now that there is
+ * more than one way to be logged in: in `dev` auth mode there is no token
+ * at all — the server answers with the seeded user — and a stale token from
+ * a previous auth mode would otherwise look like a valid session until the
+ * first real request failed.
+ *
+ * A failed session check is the signal to show the password form. If a
+ * session later expires mid-use, `authedFetch` dispatches
+ * `AUTH_EXPIRED_EVENT` and we drop back here without a full page reload.
  */
 export default function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('checking');
 
   useEffect(() => {
-    setStatus(getToken() ? 'authenticated' : 'unauthenticated');
+    let cancelled = false;
+
+    async function check(): Promise<void> {
+      try {
+        await getSession();
+        if (!cancelled) setStatus('authenticated');
+      } catch {
+        if (!cancelled) setStatus('unauthenticated');
+      }
+    }
+
+    void check();
 
     function handleExpired(): void {
       setStatus('unauthenticated');
     }
 
     window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
-    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+    };
   }, []);
 
-  // Render nothing until the stored token has been checked, so an
+  // Render nothing until the session has been checked, so an
   // already-authenticated user never sees a flash of the login screen.
   if (status === 'checking') return null;
 
   if (status === 'unauthenticated') {
-    return <LoginForm onSuccess={() => setStatus('authenticated')} />;
+    // Re-ask the server after a successful login rather than assuming: the
+    // freshly-minted token still has to resolve to a real user.
+    return (
+      <LoginForm
+        onSuccess={() => {
+          void getSession().then(
+            () => setStatus('authenticated'),
+            () => setStatus('unauthenticated'),
+          );
+        }}
+      />
+    );
   }
 
   return <>{children}</>;

@@ -1,6 +1,20 @@
-import { login } from '@/lib/auth';
+import { getAuthMode } from '@/lib/auth-mode';
+import { loginWithPassword } from '@/lib/session';
 
+/**
+ * The password gate. Only meaningful in `password` mode — `dev` needs no
+ * login, and `supabase` mode authenticates in the browser against Supabase,
+ * never against this route.
+ */
 export async function POST(request: Request): Promise<Response> {
+  const mode = getAuthMode();
+  if (mode !== 'password') {
+    return Response.json(
+      { error: `password login is not available in "${mode}" auth mode` },
+      { status: 400 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -17,7 +31,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'password is required' }, { status: 400 });
   }
 
-  const token = await login(password);
+  const token = await loginWithPassword(password);
   if (!token) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
