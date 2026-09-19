@@ -130,9 +130,6 @@ These are properties of the system as it stands, not a to-do list.
 - **Nothing shows which user is signed in.** Invisible with one seeded user.
 - **PDFs are `bytea`.** `lib/storage.ts` is the swap point if that outgrows
   the database (D-003).
-- **Four `react-hooks/exhaustive-deps` warnings** stand (two `autosave` deps in
-  `ResumeEditor`, two in `ResumeGrid`). They are real; fixing them changes
-  editor behaviour and needs e2e coverage of its own.
 
 ## Ports
 
