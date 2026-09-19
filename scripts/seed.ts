@@ -95,6 +95,15 @@ async function main() {
       await sql.unsafe(`truncate table ${ALL_SEEDED_TABLES.join(', ')} restart identity cascade`);
     }
 
+    // Library order is creation order, and `created_at` defaults to `now()`,
+    // which Postgres evaluates once per *transaction* — so every row the seed
+    // writes would otherwise share one timestamp and the library would come
+    // back in id order rather than the order these lists are written in
+    // (D-030). One monotonic stamp per row keeps the authored order.
+    let tick = 0;
+    const seededAt = Date.now();
+    const nextCreatedAt = (): Date => new Date(seededAt + tick++);
+
     const summary = await db.transaction(async (tx) => {
       // Everything below hangs off this row. Nothing in the database is
       // ownerless (docs/SCHEMA.md), so the user has to exist first.
@@ -130,6 +139,7 @@ async function main() {
               dateRange: exp.dateRange,
               location: exp.location,
               userId: user.id,
+              createdAt: nextCreatedAt(),
             })
             .returning({ id: schema.experience.id }),
         );
@@ -139,7 +149,7 @@ async function main() {
           const brow = one(
             await tx
               .insert(schema.experienceBullet)
-              .values({ experienceId: row.id, content: bullet.content })
+              .values({ experienceId: row.id, content: bullet.content, createdAt: nextCreatedAt() })
               .returning({ id: schema.experienceBullet.id }),
           );
           bulletIds.push(brow.id);
@@ -158,6 +168,7 @@ async function main() {
               technologies: proj.technologies,
               dateRange: proj.dateRange,
               userId: user.id,
+              createdAt: nextCreatedAt(),
             })
             .returning({ id: schema.project.id }),
         );
@@ -167,7 +178,7 @@ async function main() {
           const brow = one(
             await tx
               .insert(schema.projectBullet)
-              .values({ projectId: row.id, content: bullet.content })
+              .values({ projectId: row.id, content: bullet.content, createdAt: nextCreatedAt() })
               .returning({ id: schema.projectBullet.id }),
           );
           bulletIds.push(brow.id);
@@ -186,6 +197,7 @@ async function main() {
               top: row.top,
               separator: row.separator,
               userId: user.id,
+              createdAt: nextCreatedAt(),
             })
             .returning({ id: schema.technicalSkillRow.id }),
         );
@@ -195,7 +207,11 @@ async function main() {
           const skillRecord = one(
             await tx
               .insert(schema.technicalSkill)
-              .values({ technicalSkillRowId: rowRecord.id, name: skill.name })
+              .values({
+                technicalSkillRowId: rowRecord.id,
+                name: skill.name,
+                createdAt: nextCreatedAt(),
+              })
               .returning({ id: schema.technicalSkill.id }),
           );
           skillIds.push(skillRecord.id);
