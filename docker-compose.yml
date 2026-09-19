@@ -16,6 +16,10 @@ services:
       retries: 10
 
   latex:
+    # CI builds this image separately (with a layer cache) and passes its tag
+    # in via LATEX_IMAGE, then runs `up --no-build`. Locally the tag is just
+    # what `docker compose build` writes to.
+    image: ${LATEX_IMAGE:-resumix-latex:local}
     build: ./services/latex
     environment:
       # Empty locally; set it (and LATEX_SERVICE_TOKEN in .env) to require auth.

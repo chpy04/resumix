@@ -99,8 +99,10 @@ contributions from accumulating drift. See D-017.
 - **`npm run verify`** runs the whole gate in a working order — notably a
   reseed before `smoke`, because a Playwright run leaves edited content in
   the database and the round-trip diff then fails spuriously.
-- **CI.** `.github/workflows/ci.yml` runs the gate on every push and PR, in
-  two jobs (fast checks; then Postgres + LaTeX sidecar for smoke and e2e).
+- **CI.** Seven parallel workflows under `.github/workflows/` (format, lint,
+  typecheck, build, test, smoke, e2e) run on every push and PR, so each
+  failure class reports separately and as early as it can. Shared setup is in
+  composite actions; the TeX Live image is layer-cached across runs.
 - **Contract drift fixed.** Three query modules were spreading raw DB rows
   into responses typed as the wire shape, shipping `created_at`/`updated_at`
   past `docs/API.md`; they now map through `toWire()` like the other four.

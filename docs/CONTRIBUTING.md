@@ -27,9 +27,31 @@ Run all of it, not a subset:
   `smoke` straight after `test:e2e` will fail the round-trip diff for
   reasons unrelated to your change.
 
-CI (`.github/workflows/ci.yml`) runs the same thing in two jobs: a fast
-`check` job, and an `integration` job that brings up Postgres and the LaTeX
-sidecar via docker-compose.
+CI runs the same gate, split into seven independent workflows that start in
+parallel so each failure mode reports separately and as early as it can:
+
+| workflow    | runs               | needs                    |
+| ----------- | ------------------ | ------------------------ |
+| `format`    | `prettier --check` | —                        |
+| `lint`      | `eslint`           | —                        |
+| `typecheck` | `tsc --noEmit`     | —                        |
+| `build`     | `next build`       | —                        |
+| `test`      | `node --test`      | Postgres                 |
+| `smoke`     | the V1 round trip  | Postgres + LaTeX sidecar |
+| `e2e`       | Playwright         | Postgres + LaTeX sidecar |
+
+Shared setup lives in composite actions under `.github/actions/`, so the Node
+version and install flags are declared once. The sidecar image is ~690MB and
+its `apt-get install texlive-*` layer dominates the build, so it is cached
+across runs keyed on the Dockerfile; `docker-compose.yml` takes a
+`LATEX_IMAGE` override so CI can build once with that cache and then
+`up --no-build`, while local development just builds normally.
+
+Two things in those workflows are load-bearing and easy to undo by accident:
+`build` deliberately runs with **no** `DATABASE_URL`, which is what makes it
+the regression test for the lazy DB client (D-014); and `test` asserts the
+skipped-test count is zero, because the `lib/queries` suites self-skip
+without a database and the job would otherwise pass on a subset.
 
 ## Formatting and linting
 

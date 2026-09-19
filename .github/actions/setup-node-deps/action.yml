@@ -1,0 +1,14 @@
+name: Set up Node and install dependencies
+description: >
+  Node + a cached `npm ci`. Every workflow starts with this, so the Node
+  version and install flags live in exactly one place.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+    - run: npm ci
+      shell: bash

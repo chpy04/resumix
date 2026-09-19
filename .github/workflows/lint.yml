@@ -1,0 +1,18 @@
+# ESLint. Separate from `format` because they fail for unrelated reasons:
+# formatting is cosmetic, lint here also enforces the layering invariants
+# (see eslint.config.mjs and .claude/rules/).
+name: lint
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  eslint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+      - run: npm run lint

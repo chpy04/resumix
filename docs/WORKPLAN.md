@@ -10,7 +10,7 @@ real end-to-end exercise of whatever it built. `tsc --noEmit` is **not**
 sufficient on its own: `next build` additionally validates App Router export
 signatures, and a page whose default export takes a custom prop typechecks fine
 but fails the build. That exact bug reached `main` in T4 because the gate was
-typecheck-only. CI runs the same gate — see `.github/workflows/ci.yml`.
+typecheck-only. CI runs the same gate, split across parallel workflows — see `.github/workflows/`.
 
 Contracts in `docs/SCHEMA.md`, `docs/API.md`, `docs/TEMPLATE_TOKENS.md` are frozen
 for the duration of a wave. An agent that needs a contract change must say so in
