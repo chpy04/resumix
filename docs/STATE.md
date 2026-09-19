@@ -36,8 +36,21 @@ Wave 2/3 progress:
   constraint — "I should always be able to represent my current resume" — is met.
 - **T7 home page** — resume grid, fuzzy search, per-card download of the saved snapshot.
 
-The API (T6) is the last thing standing between this and a running app; the editor
-(T8/T9) has not started.
+- **T6 API** — all 19 route handlers, `lib/queries/**`, `lib/storage.ts`, zod validation.
+  Verified live over HTTP end to end: 401 without a token; creating a resume clones the
+  Default's template and all six selection slices (3 exp / 14 bullets / 3 proj / 6 bullets /
+  5 rows / 39 skills); render → `ok, pages:1`; `POST /pdf` → `Chris_Pyle_Acme_Rocket_Labs_Resume.pdf`
+  from the input `acme ROCKET labs`; `GET /pdf` serves the snapshot with the right headers.
+  **Anti-drift verified**: after editing a bullet, a fresh render changes but the saved
+  snapshot's bytes are identical (same md5). **Archive semantics verified**: an archived
+  bullet disappears from the default library listing, reappears with `?includeArchived=1`,
+  stays selected on the resume, and still renders.
+- **D-014** — the DB client had to become lazy: `next build` evaluates route modules, so an
+  eager `postgres(DATABASE_URL)` broke the build on any machine without a database.
+
+**Current test count: 71 passing.** `npm run build` green with all 19 API routes.
+
+Remaining: the editor (T8 in flight, T9 blocked on it) and the T10/T11 integration wave.
 
 ## What is in flight
 
