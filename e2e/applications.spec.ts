@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   createApplicationViaApi,
+  dragCardOnto,
   downloadAsBase64,
   extractPdfText,
   findExperienceBullet,
@@ -123,4 +124,44 @@ test('marking an application applied moves it off the pipeline and into the tabl
   await row.getByLabel(`Status for ${company}`).selectOption('interviewing');
   await page.getByRole('tab', { name: /pipeline/i }).click();
   await expect(page.locator(`[data-testid="application-card-${applicationId}"]`)).toBeVisible();
+});
+
+/**
+ * The board is a board: cards move between columns by dragging, and the two
+ * exit zones — which only appear once a card is in the air — are how an
+ * application leaves the kanban for the Applied table (D-033).
+ */
+test('dragging a card moves it between columns, and off the board entirely', async ({ page }) => {
+  await login(page);
+
+  const company = `T-App Drag Co ${Date.now()}`;
+  const applicationId = await createApplicationViaApi(page, { company });
+  const card = `application-card-${applicationId}`;
+
+  await page.goto('/');
+  await expect(page.getByTestId('kanban-column-draft').getByTestId(card)).toBeVisible();
+
+  // Column to column: the status follows the card.
+  await dragCardOnto(page, card, 'kanban-column-interviewing');
+  await expect(page.getByTestId('kanban-column-interviewing').getByTestId(card)).toBeVisible();
+
+  // A card that has been dragged is still a card: clicking opens it.
+  await page.getByTestId(card).click();
+  await expect(page).toHaveURL(new RegExp(`/applications/${applicationId}$`));
+  await page.goBack();
+
+  // The exit zones are not on the page until something is being dragged.
+  await expect(page.getByTestId('kanban-exit-applied')).toHaveCount(0);
+
+  // ...and dropping on one takes the card off the board.
+  await dragCardOnto(page, card, 'kanban-exit-applied');
+  await expect(page.getByTestId(card)).toHaveCount(0);
+
+  await page.getByRole('tab', { name: /applied/i }).click();
+  await expect(page.locator(`[data-testid="applied-row-${applicationId}"]`)).toBeVisible();
+
+  // Reloading proves the move was persisted, not just moved in the DOM.
+  await page.reload();
+  await page.getByRole('tab', { name: /applied/i }).click();
+  await expect(page.locator(`[data-testid="applied-row-${applicationId}"]`)).toContainText(company);
 });

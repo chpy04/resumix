@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appliedApplications, groupByStatus, sortByRecency } from './board.ts';
+import { closedApplications, groupByStatus, sortByRecency, statusForDrop } from './board.ts';
 import type { ApplicationStatus, ApplicationSummary } from '../types.ts';
 
 function application(
@@ -24,30 +24,49 @@ function application(
   };
 }
 
-test('the board shows every status except applied, in pipeline order', () => {
+test('the board columns are the statuses that still want something', () => {
   const columns = groupByStatus([application('a', 'offered')]);
   assert.deepEqual(
     columns.map((column) => column.status),
-    ['draft', 'interviewing', 'offered', 'rejected'],
+    ['draft', 'interviewing', 'offered'],
   );
 });
 
-test('an applied application is off the board entirely', () => {
-  const columns = groupByStatus([application('sent', 'applied'), application('a', 'draft')]);
+test('applied and rejected applications are off the board entirely', () => {
+  const columns = groupByStatus([
+    application('sent', 'applied'),
+    application('no', 'rejected'),
+    application('a', 'draft'),
+  ]);
   const ids = columns.flatMap((column) => column.applications.map((a) => a.id));
   assert.deepEqual(ids, ['a']);
 });
 
-test('appliedApplications collects exactly those, most recent first', () => {
-  const rows = appliedApplications([
+test('closedApplications collects both exits, most recent first', () => {
+  const rows = closedApplications([
     application('older', 'applied', { appliedAt: '2026-01-01T00:00:00.000Z' }),
     application('draft', 'draft'),
-    application('newer', 'applied', { appliedAt: '2026-06-01T00:00:00.000Z' }),
+    application('newer', 'rejected', { appliedAt: '2026-06-01T00:00:00.000Z' }),
   ]);
   assert.deepEqual(
     rows.map((a) => a.id),
     ['newer', 'older'],
   );
+});
+
+test('statusForDrop returns the target status of a real move', () => {
+  assert.equal(statusForDrop('draft', 'interviewing'), 'interviewing');
+  assert.equal(statusForDrop('draft', 'applied'), 'applied');
+  assert.equal(statusForDrop('offered', 'rejected'), 'rejected');
+});
+
+test('statusForDrop ignores a drop back where the card started', () => {
+  assert.equal(statusForDrop('draft', 'draft'), null);
+});
+
+test('statusForDrop ignores anything that is not a status', () => {
+  assert.equal(statusForDrop('draft', 'board'), null);
+  assert.equal(statusForDrop('draft', ''), null);
 });
 
 test('groupByStatus keeps empty columns — an empty Interviewing is information', () => {
@@ -59,7 +78,7 @@ test('groupByStatus keeps empty columns — an empty Interviewing is information
 test('groupByStatus files each application under its own status', () => {
   const columns = groupByStatus([
     application('a', 'draft'),
-    application('b', 'rejected'),
+    application('b', 'interviewing'),
     application('c', 'draft'),
   ]);
   const byStatus = new Map(columns.map((column) => [column.status, column.applications]));
@@ -71,7 +90,7 @@ test('groupByStatus files each application under its own status', () => {
     ['a', 'c'],
   );
   assert.deepEqual(
-    byStatus.get('rejected')?.map((a) => a.id),
+    byStatus.get('interviewing')?.map((a) => a.id),
     ['b'],
   );
 });

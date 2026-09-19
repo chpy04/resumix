@@ -245,6 +245,48 @@ export async function extractPdfText(base64: string): Promise<string> {
 }
 
 /**
+ * Drags a board card onto a droppable target and drops it.
+ *
+ * The exit zones only mount once a drag is actually under way, so the target
+ * is located *after* the pointer has cleared `PointerSensor`'s 4px activation
+ * distance — looking it up before the press would find nothing.
+ */
+export async function dragCardOnto(
+  page: Page,
+  cardTestId: string,
+  targetTestId: string,
+): Promise<void> {
+  const card = page.getByTestId(cardTestId);
+  const cardBox = await card.boundingBox();
+  if (!cardBox) throw new Error(`no bounding box for ${cardTestId}`);
+
+  const startX = cardBox.x + cardBox.width / 2;
+  const startY = cardBox.y + cardBox.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY + 8, { steps: 5 });
+  await page.mouse.move(startX, startY + 16, { steps: 5 });
+
+  const target = page.getByTestId(targetTestId);
+  await expect(target).toBeVisible();
+  const targetBox = await target.boundingBox();
+  if (!targetBox) throw new Error(`no bounding box for ${targetTestId}`);
+
+  const endX = targetBox.x + targetBox.width / 2;
+  const endY = targetBox.y + targetBox.height / 2;
+  await page.mouse.move(endX, endY, { steps: 20 });
+  await page.mouse.move(endX, endY, { steps: 2 });
+  await page.mouse.up();
+
+  // dnd-kit's pointer sensor swallows clicks with a capture-phase listener on
+  // the document and removes it 50ms after the drop — so that the click which
+  // ends a drag doesn't also fire. A person cannot click inside that window;
+  // a test can, and would silently lose its next click.
+  await page.waitForTimeout(100);
+}
+
+/**
  * Simulates an `@dnd-kit` pointer drag: press on the source row's drag
  * handle, move past the 4px activation-distance constraint, hover over the
  * target row, and release. `@dnd-kit`'s `PointerSensor` is the only sensor

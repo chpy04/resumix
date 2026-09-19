@@ -64,7 +64,7 @@ export default function ApplicationCard({ application }: ApplicationCardProps) {
           handleNavigate();
         }
       }}
-      className="group flex cursor-pointer flex-col gap-2 rounded-lg border border-line bg-surface p-3 text-left transition-colors hover:border-accent hover:bg-surface-2 focus:outline-none"
+      className="group flex cursor-grab flex-col gap-2 rounded-lg border border-line bg-surface p-3 text-left transition-colors hover:border-accent hover:bg-surface-2 focus:outline-none active:cursor-grabbing"
     >
       <div className="min-w-0">
         <h3 className="truncate text-sm font-semibold text-ink" title={application.company}>

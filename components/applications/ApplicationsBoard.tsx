@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import ApplicationCard from '@/components/applications/ApplicationCard';
 import AppliedTable from '@/components/applications/AppliedTable';
+import KanbanBoard from '@/components/applications/KanbanBoard';
 import NewApplicationDialog, {
   type NewApplicationInput,
 } from '@/components/applications/NewApplicationDialog';
@@ -17,8 +17,7 @@ import {
   listResumes,
   updateApplication,
 } from '@/lib/api-client';
-import { appliedApplications, groupByStatus } from '@/lib/applications/board';
-import { statusLabel } from '@/lib/applications/status';
+import { closedApplications } from '@/lib/applications/board';
 import { fuzzyFilter } from '@/lib/fuzzy';
 import type { ApplicationStatus, ApplicationSummary, ResumeSummary } from '@/lib/types';
 
@@ -104,12 +103,8 @@ export default function ApplicationsBoard() {
     return matches.map((match) => applications[match.index]!);
   }, [applications, query]);
 
-  const columns = useMemo(() => groupByStatus(visible), [visible]);
-  const applied = useMemo(() => appliedApplications(visible), [visible]);
-  const appliedTotal = useMemo(
-    () => applications.filter((application) => application.status === 'applied').length,
-    [applications],
-  );
+  const closed = useMemo(() => closedApplications(visible), [visible]);
+  const closedTotal = useMemo(() => closedApplications(applications).length, [applications]);
 
   async function handleCreate(input: NewApplicationInput): Promise<void> {
     setCreating(true);
@@ -195,7 +190,7 @@ export default function ApplicationsBoard() {
             Pipeline
           </TabButton>
           <TabButton active={tab === 'applied'} onClick={() => setTab('applied')}>
-            Applied ({appliedTotal})
+            Applied ({closedTotal})
           </TabButton>
         </nav>
 
@@ -229,21 +224,9 @@ export default function ApplicationsBoard() {
       {state.status === 'ready' ? (
         <>
           {tab === 'pipeline' ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {columns.map((column) => (
-                <section key={column.status} className="flex flex-col gap-2">
-                  <h2 className="flex items-center justify-between border-b border-line pb-1.5 text-xs font-semibold tracking-wide text-ink-dim uppercase">
-                    {statusLabel(column.status)}
-                    <span className="text-ink-dim/70">{column.applications.length}</span>
-                  </h2>
-                  {column.applications.map((application) => (
-                    <ApplicationCard key={application.id} application={application} />
-                  ))}
-                </section>
-              ))}
-            </div>
+            <KanbanBoard applications={visible} onStatusChange={handleStatusChange} />
           ) : (
-            <AppliedTable applications={applied} onStatusChange={handleStatusChange} />
+            <AppliedTable applications={closed} onStatusChange={handleStatusChange} />
           )}
 
           {applications.length === 0 ? (
@@ -301,8 +284,8 @@ function TabButton({
 
 function BoardSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-hidden="true">
-      {Array.from({ length: 4 }).map((_, index) => (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
+      {Array.from({ length: 3 }).map((_, index) => (
         <div key={index} className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
       ))}
     </div>

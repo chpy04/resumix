@@ -27,11 +27,13 @@ function formatDate(iso: string | null): string {
 }
 
 /**
- * Everything that has been sent, as a table rather than cards.
+ * Everything that has left the board — sent and waiting, or rejected — as a
+ * table rather than cards.
  *
- * Most applications end their life here: sent, and never touched again. That
+ * Most applications end their life here and are never touched again, which
  * makes density and search the things worth optimising for, not the
- * drag-and-drop affordances the pipeline board needs.
+ * drag-and-drop affordances the pipeline needs. The status column is the way
+ * back: a reply turns a row into a card again.
  */
 export default function AppliedTable({ applications, onStatusChange }: AppliedTableProps) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -52,7 +54,8 @@ export default function AppliedTable({ applications, onStatusChange }: AppliedTa
   if (applications.length === 0) {
     return (
       <p className="text-sm text-ink-dim">
-        Nothing sent yet. Applications land here when you mark them applied.
+        Nothing here yet. Applications land in this table once they are applied or rejected — drag a
+        card onto one of those zones, or use the button on the application itself.
       </p>
     );
   }
