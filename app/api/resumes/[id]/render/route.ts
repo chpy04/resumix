@@ -1,4 +1,4 @@
-import { compileTex, LatexServiceError } from '@/lib/latex';
+import { compileTex, latexUnavailableResult, LatexServiceError } from '@/lib/latex';
 import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { renderResumeById } from '@/lib/queries/render';
 import { renderBodySchema } from '@/lib/validation';
@@ -23,14 +23,7 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
       compiled = await compileTex(tex);
     } catch (err) {
       if (err instanceof LatexServiceError) {
-        const result: RenderResult = {
-          ok: false,
-          pages: null,
-          errors: [err.message],
-          warnings,
-          log: '',
-        };
-        return Response.json(result);
+        return Response.json(latexUnavailableResult(err, warnings));
       }
       throw err;
     }

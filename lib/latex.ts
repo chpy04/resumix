@@ -2,6 +2,7 @@
  * Typed client for the sidecar latex service (services/latex). See
  * docs/API.md, "Latex service", for the frozen wire contract.
  */
+import type { RenderResult } from './types.ts';
 
 export interface LatexCompileResult {
   ok: boolean;
@@ -17,6 +18,21 @@ export interface LatexCompileResult {
 /** Thrown for anything that isn't a normal compile result: bad config,
  * network failure, timeout, or a non-2xx response from the service. */
 export class LatexServiceError extends Error {}
+
+/**
+ * The `{ ok: false }` body `/render` and `/pdf` both return when the sidecar
+ * itself could not be reached.
+ *
+ * The two failure modes stay distinct in this module — a LaTeX error is a
+ * normal result, an unreachable service throws (.claude/rules/render-latex.md)
+ * — and converge only at the HTTP boundary, because docs/API.md promises a
+ * 200 either way: the editor keeps the last good preview on screen and shows
+ * the message in `errors`. Shared so the two handlers cannot drift apart, and
+ * typed so neither can widen past `RenderResult` the way one had begun to.
+ */
+export function latexUnavailableResult(err: LatexServiceError, warnings: string[]): RenderResult {
+  return { ok: false, pages: null, errors: [err.message], warnings, log: '' };
+}
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 
