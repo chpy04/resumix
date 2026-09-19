@@ -31,9 +31,12 @@ hidden from the picker unless "show archived" is toggled on.
 `project_id` → `project(id)`, `content` text, `is_archived`.
 
 ### `technical_skill_row`
-`name` text, `top` boolean not null default true, `is_archived`.
+`name` text, `top` boolean not null default true, `is_archived`,
+`separator` text not null default `', '`.
 `top = true` → renders in the top "Technical Skills" section;
 `top = false` → renders in the bottom "Additional Information" section.
+`separator` is the string used to join this row's skills — `', '` for skill lists,
+`' $|$ '` for the interests/accolades rows (see D-013).
 
 ### `technical_skill`
 `technical_skill_row_id` → `technical_skill_row(id)`, `name` text, `is_archived`.

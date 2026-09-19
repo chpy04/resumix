@@ -55,7 +55,8 @@ Per project, `\resumeProjectHeading{name}{technologies}{dateRange}`:
 Same zero-bullet rule.
 
 ### `<<SKILLS_TOP>>` / `<<SKILLS_BOTTOM>>`
-Rows joined by ` \\\n`, each row one line, skills comma-separated:
+Rows joined by ` \\\n`, each row one line, skills joined by that row's own
+`separator` (`', '` by default, `' $|$ '` for interests/accolades):
 
 ```latex
 \textbf{Languages}{: JavaScript, Typescript, Python} \\

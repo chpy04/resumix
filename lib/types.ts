@@ -39,6 +39,8 @@ export interface SkillRow {
   name: string;
   /** true -> top "Technical Skills" section; false -> bottom "Additional Information". */
   top: boolean;
+  /** String used to join this row's skills. ', ' for skill lists, ' $|$ ' for interests. */
+  separator: string;
   isArchived: boolean;
   skills: Skill[];
 }

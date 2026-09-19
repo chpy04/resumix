@@ -100,6 +100,8 @@ export const technicalSkillRow = pgTable('technical_skill_row', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   top: boolean('top').notNull().default(true),
+  /** Joins this row's skills. ', ' for skill lists, ' $|$ ' for interests. */
+  separator: text('separator').notNull().default(', '),
   isArchived: boolean('is_archived').notNull().default(false),
   ...timestamps,
 });

@@ -132,7 +132,7 @@ export function renderSkills(
       warnings.push(`skillRows/${id}: "${row.name}" has no selected skills, row skipped`);
       continue;
     }
-    const line = `\\textbf{${row.name}}{: ${names.join(', ')}}`;
+    const line = `\\textbf{${row.name}}{: ${names.join(row.separator)}}`;
     (row.top ? topRows : bottomRows).push(line);
   }
 

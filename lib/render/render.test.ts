@@ -257,8 +257,8 @@ test('an unknown token repeated in the template only warns once', () => {
 test('a selected skill row appears in exactly one of SKILLS_TOP / SKILLS_BOTTOM, per its own top flag', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'top-row', name: 'Languages', top: true, isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
-    { id: 'bottom-row', name: 'Interests', top: false, isArchived: false, skills: [{ id: 's2', name: 'Skiing', isArchived: false }] },
+    { id: 'top-row', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
+    { id: 'bottom-row', name: 'Interests', top: false, separator: ', ', isArchived: false, skills: [{ id: 's2', name: 'Skiing', isArchived: false }] },
   ];
   const selections = emptySelections();
   selections.skillRows = ['top-row', 'bottom-row'];
@@ -276,7 +276,7 @@ test('a selected skill row appears in exactly one of SKILLS_TOP / SKILLS_BOTTOM,
 test('a skill row with zero selected skills is skipped entirely, with a warning', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'empty-row', name: 'Languages', top: true, isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
+    { id: 'empty-row', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
   ];
   const selections = emptySelections();
   selections.skillRows = ['empty-row'];
@@ -297,6 +297,7 @@ test('a dangling skill id within a row is skipped with a warning; the rest of th
       id: 'row',
       name: 'Languages',
       top: true,
+      separator: ', ',
       isArchived: false,
       skills: [{ id: 's1', name: 'Rust', isArchived: false }],
     },
@@ -315,8 +316,8 @@ test('a dangling skill id within a row is skipped with a warning; the rest of th
 test('multiple selected rows in the same section join with " \\\\\\n" and no trailing separator', () => {
   const library = emptyLibrary();
   library.skillRows = [
-    { id: 'r1', name: 'Languages', top: true, isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
-    { id: 'r2', name: 'Tools', top: true, isArchived: false, skills: [{ id: 's2', name: 'Git', isArchived: false }] },
+    { id: 'r1', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's1', name: 'Rust', isArchived: false }] },
+    { id: 'r2', name: 'Tools', top: true, separator: ', ', isArchived: false, skills: [{ id: 's2', name: 'Git', isArchived: false }] },
   ];
   const selections = emptySelections();
   selections.skillRows = ['r1', 'r2'];
@@ -427,6 +428,7 @@ const v1Library: Library = {
       id: 'skillrow-top-1',
       name: "Languages",
       top: true,
+      separator: ', ',
       isArchived: false,
       skills: [
         { id: 'skillrow-top-1-s1', name: "JavaScript", isArchived: false },
@@ -449,6 +451,7 @@ const v1Library: Library = {
       id: 'skillrow-top-2',
       name: "Frameworks \\& Tools",
       top: true,
+      separator: ', ',
       isArchived: false,
       skills: [
         { id: 'skillrow-top-2-s1', name: "Git", isArchived: false },
@@ -467,6 +470,7 @@ const v1Library: Library = {
       id: 'skillrow-top-3',
       name: "Cloud Technologies",
       top: true,
+      separator: ', ',
       isArchived: false,
       skills: [
         { id: 'skillrow-top-3-s1', name: "Github Actions", isArchived: false },
@@ -480,6 +484,7 @@ const v1Library: Library = {
       id: 'skillrow-bottom-1',
       name: "Interests",
       top: false,
+      separator: ' $|$ ',
       isArchived: false,
       skills: [
         { id: 'skillrow-bottom-1-s1', name: "Skiing", isArchived: false },
@@ -497,6 +502,7 @@ const v1Library: Library = {
       id: 'skillrow-bottom-2',
       name: "Accolades",
       top: false,
+      separator: ' $|$ ',
       isArchived: false,
       skills: [
         { id: 'skillrow-bottom-2-s1', name: "Deans List all semesters", isArchived: false },
@@ -576,30 +582,10 @@ test('round trip: default template + full v1 fixture reproduces docs/reference/v
   assert.ok(referenceRaw.includes(documentedDivergence), 'expected reference file to still contain the documented divergence line -- has v1-resume.tex changed?');
   let referenceAdjusted = referenceRaw.replace(documentedDivergence, '');
 
-  // Second documented divergence: docs/TEMPLATE_TOKENS.md specifies skills are
-  // always comma-separated within a row, for both <<SKILLS_TOP>> and
-  // <<SKILLS_BOTTOM>>. The hand-authored reference resume predates that frozen
-  // contract and instead separates the Additional Information row values with
-  // " $|$ " (the same glyph the header uses between contact links). The
-  // contract is authoritative -- "implement it exactly" -- so the renderer
-  // always emits commas; matching the reference's pipe-separated style would
-  // mean inventing a per-row separator the contract does not define. Fixing
-  // this for real means re-entering that content with the frozen format, not
-  // changing the renderer.
-  const pipeSeparatedRows: [string, string][] = [
-    [
-      'Skiing $|$ Ski Racing $|$ Mountain Biking $|$ Rock Climbing $|$ Hiking $|$ Car Racing $|$ Cats $|$ Weightlifting $|$ Cooking',
-      'Skiing, Ski Racing, Mountain Biking, Rock Climbing, Hiking, Car Racing, Cats, Weightlifting, Cooking',
-    ],
-    [
-      'Deans List all semesters $|$ Red Cross CPR \\& First Aid $|$ Bill Taylor Essay Contest Winner $|$ Cum Laude',
-      'Deans List all semesters, Red Cross CPR \\& First Aid, Bill Taylor Essay Contest Winner, Cum Laude',
-    ],
-  ];
-  for (const [pipeForm, commaForm] of pipeSeparatedRows) {
-    assert.ok(referenceAdjusted.includes(pipeForm), `expected reference file to still contain ${JSON.stringify(pipeForm)} -- has v1-resume.tex changed?`);
-    referenceAdjusted = referenceAdjusted.replace(pipeForm, commaForm);
-  }
+  // The Additional Information rows in the reference resume separate values with
+  // " $|$ " while the Technical Skills rows use ", ". That is why
+  // technical_skill_row carries a per-row `separator` (D-013) -- the fixtures below
+  // set it accordingly, and the render must match the reference byte for byte.
 
   const normalizedActual = normalizeInsignificantWhitespace(tex);
   const normalizedExpected = normalizeInsignificantWhitespace(referenceAdjusted);

@@ -15,7 +15,7 @@ The browser keeps the token in `localStorage` under `resumix.token`.
 type Experience = { id, company, title, dateRange, location, isArchived, bullets: Bullet[] }
 type Project    = { id, name, technologies, dateRange, isArchived, bullets: Bullet[] }
 type Bullet     = { id, content, isArchived }
-type SkillRow   = { id, name, top, isArchived, skills: Skill[] }
+type SkillRow   = { id, name, top, separator, isArchived, skills: Skill[] }
 type Skill      = { id, name, isArchived }
 type Template   = { id, name, content, isDefault, isArchived }
 
@@ -82,8 +82,8 @@ in the body are untouched. Idempotent — safe to call on every debounced keystr
 | PATCH | `/api/projects/:id` | `{ name?, technologies?, dateRange?, isArchived? }` |
 | POST | `/api/projects/:id/bullets` | `{ content }` |
 | PATCH | `/api/project-bullets/:id` | `{ content?, isArchived? }` |
-| POST | `/api/skill-rows` | `{ name, top }` |
-| PATCH | `/api/skill-rows/:id` | `{ name?, top?, isArchived? }` |
+| POST | `/api/skill-rows` | `{ name, top, separator? }` |
+| PATCH | `/api/skill-rows/:id` | `{ name?, top?, separator?, isArchived? }` |
 | POST | `/api/skill-rows/:id/skills` | `{ name }` |
 | PATCH | `/api/skills/:id` | `{ name?, isArchived? }` |
 | PATCH | `/api/templates/:id` | `{ name?, content?, isArchived? }` |
