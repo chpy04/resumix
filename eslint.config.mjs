@@ -12,8 +12,6 @@ import globals from 'globals';
 
 /** Relative specifier with no extension on the final segment (`./foo`). */
 const RELATIVE_WITHOUT_EXTENSION = String.raw`/^\.{1,2}\/(?:[^/]*\/)*[^./]+$/`;
-/** Relative or aliased specifier ending in `.ts`/`.tsx`. */
-const SPECIFIER_WITH_TS_EXTENSION = String.raw`/\.tsx?$/`;
 
 export default tseslint.config(
   {
@@ -65,7 +63,9 @@ export default tseslint.config(
                 'Under app/ and components/, import across directories with the `@/` alias, not a relative path. See .claude/rules/imports.md.',
             },
             {
-              group: [SPECIFIER_WITH_TS_EXTENSION],
+              // `regex`, not `group`: pattern groups are gitignore-style
+              // globs, so a regex written there silently matches nothing.
+              regex: String.raw`\.tsx?$`,
               message:
                 'Under app/ and components/, omit the file extension — webpack resolves it. See .claude/rules/imports.md.',
             },
@@ -147,13 +147,13 @@ export default tseslint.config(
       ...next.configs['core-web-vitals'].rules,
       // Components never call `fetch` directly: every request goes through
       // lib/api-client.ts, which attaches the auth token and maps 401 to a
-      // logout. See .claude/rules/client-data.md.
+      // logout. See .claude/rules/components.md.
       'no-restricted-globals': [
         'error',
         {
           name: 'fetch',
           message:
-            'Call through lib/api-client.ts instead of fetch() — it attaches the auth token and handles 401. See .claude/rules/client-data.md.',
+            'Call through lib/api-client.ts instead of fetch() — it attaches the auth token and handles 401. See .claude/rules/components.md.',
         },
       ],
     },

@@ -1,6 +1,6 @@
 # Project state
 
-_Last updated: 2026-09-19 — **feature-complete**. All twelve tasks merged, plus the empty-section fix (D-016)._
+_Last updated: 2026-09-19 — **feature-complete**, plus a standards pass (D-017)._
 
 **Read this first.** If you are picking this project up cold, read this file, then
 `docs/ARCHITECTURE.md`, then the contract docs (`SCHEMA.md`, `API.md`,
@@ -80,6 +80,51 @@ Everything in `spec.md` is implemented and verified. The app has not been deploy
 Sensible next steps, none blocking: deploy per `docs/DEPLOYMENT.md`; exercise the
 `pages > 1` warning against real two-page content; consider the partial-nested-map trap in
 `docs/REVIEW.md` if a second API client is ever written.
+
+## Standards pass (2026-09-19)
+
+A cleanup wave with no behaviour change, aimed at keeping agentic
+contributions from accumulating drift. See D-017.
+
+- **Tooling.** Prettier over the whole tree (`docs/agents/**` excluded as an
+  append-only archive) and a small ESLint flat config whose `no-restricted-*`
+  rules turn the project's invariants into build failures: `components/**`
+  and `app/**` cannot import `lib/db`, the Edge-runtime graph cannot import
+  `node:crypto`, and each tree's import style is enforced. Every rule message
+  names the file in `.claude/rules/` that explains it. `npm run lint` used to
+  be a broken interactive `next lint` stub.
+- **`npm test` was under-reporting.** It did not load `.env`, so the 16
+  `lib/queries` integration suites self-skipped and the gate passed on 94 of
+  110 tests. It now reads `.env`; expect 110 passing, 0 skipped.
+- **`npm run verify`** runs the whole gate in a working order — notably a
+  reseed before `smoke`, because a Playwright run leaves edited content in
+  the database and the round-trip diff then fails spuriously.
+- **CI.** `.github/workflows/ci.yml` runs the gate on every push and PR, in
+  two jobs (fast checks; then Postgres + LaTeX sidecar for smoke and e2e).
+- **Contract drift fixed.** Three query modules were spreading raw DB rows
+  into responses typed as the wire shape, shipping `created_at`/`updated_at`
+  past `docs/API.md`; they now map through `toWire()` like the other four.
+  `docs/API.md` gained the `templateId` field it was missing and the real
+  `POST /pdf` response shape.
+- **Consistency.** `POST /api/auth` joined the `withApiErrors` + zod
+  pipeline; `RouteContext` moved to `lib/http.ts` from 11 duplicate
+  declarations; `LoginForm`'s bare `fetch` moved into `lib/api-client.ts`, so
+  "components never call fetch" is now true and lint-enforced; 230
+  `[var(--color-x)]` arbitrary values became the Tailwind v4 utilities the
+  theme already generates, and the ad-hoc red/green shades across nine files
+  became `danger`/`success` tokens.
+- **Dead code removed**: 30 unused `*Record` type aliases, two unused query
+  exports, an unused generic parameter, a duplicate tsconfig key, three stale
+  `eslint-disable` directives.
+- **Agent config.** `CLAUDE.md` is now the always-loaded half only (what the
+  app is, four silent invariants, the gate); the per-directory conventions
+  live in `.claude/rules/*.md`, each scoped by a `paths` glob so it loads
+  only when the matching files are touched.
+
+Known, left alone deliberately: four `react-hooks/exhaustive-deps` warnings
+(two `autosave` deps in `ResumeEditor`, two in `ResumeGrid`). They are real
+observations, but fixing them changes editor behaviour and belongs in its
+own change with e2e coverage, not in a formatting pass.
 
 ## What is in flight
 

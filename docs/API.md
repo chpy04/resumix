@@ -23,6 +23,7 @@ type ResumeSummary = {
   id;
   name;
   isDefault;
+  templateId;
   createdAt;
   updatedAt;
   latestPdf: { filename; createdAt } | null;
@@ -70,10 +71,16 @@ in the body are untouched. Idempotent — safe to call on every debounced keystr
 | method | path                      | body                    | returns                                                                                                  |
 | ------ | ------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
 | POST   | `/api/resumes/:id/render` | `{ templateOverride? }` | `{ ok, pdfBase64?, pages, errors: string[], warnings: string[], log }` — **preview only, saves nothing** |
-| POST   | `/api/resumes/:id/pdf`    | —                       | `{ filename, createdAt }` — renders, stores a `resume_pdf` snapshot                                      |
+| POST   | `/api/resumes/:id/pdf`    | —                       | `{ ok: true, filename, createdAt }` — renders, stores a `resume_pdf` snapshot                            |
 | GET    | `/api/resumes/:id/pdf`    | —                       | `application/pdf` of the **latest snapshot** + `Content-Disposition: attachment`; `404` if never saved   |
 
 `templateOverride` lets the Template tab preview unsaved LaTeX without persisting it.
+
+A LaTeX compile failure is **not** an HTTP error on either POST — it is a `200`
+with `ok: false`. `POST /pdf` then returns the same failure shape `/render` does
+(`{ ok: false, pages, errors, warnings, log }`) and stores nothing, because there
+is no PDF to name or snapshot. Clients must branch on `.ok`, never on
+`response.ok` alone.
 
 ## Library (global content)
 
