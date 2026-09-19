@@ -130,7 +130,7 @@ test('retry() with nothing pending and nothing failed is a harmless no-op', asyn
 });
 
 test('scheduling a fresh value after a failure supersedes the failed one rather than losing it', async () => {
-  let calls: number[] = [];
+  const calls: number[] = [];
   let shouldFail = true;
   const statuses: SaveStatus[] = [];
   const autosave = createAutosave<number>({

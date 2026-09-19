@@ -1,0 +1,17 @@
+# Prettier only. Seconds to run, and a formatting failure should never be
+# hidden behind a slower check — that is the whole point of splitting these.
+name: format
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: format-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prettier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+      - run: npm run format:check

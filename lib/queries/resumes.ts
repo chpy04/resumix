@@ -42,13 +42,6 @@ export async function getResumeRow(id: string): Promise<ResumeRow | null> {
   return row ?? null;
 }
 
-export async function getResumeSummary(id: string): Promise<ResumeSummary | null> {
-  const row = await getResumeRow(id);
-  if (!row) return null;
-  const pdfMeta = await getLatestResumePdfMetaByResumeId([id]);
-  return toSummary(row, pdfMeta.get(id) ?? null);
-}
-
 async function getDefaultResumeRow(): Promise<ResumeRow | null> {
   const [row] = await db.select().from(resume).where(eq(resume.isDefault, true)).limit(1);
   return row ?? null;

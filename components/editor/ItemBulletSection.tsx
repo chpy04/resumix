@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import type { Bullet } from '@/lib/types';
 import { extractSelectedOrder, orderForDisplay, visibleItems } from '@/lib/editor/visibility';
-import { ArchiveButton, ArchivedBadge, ExpandChevron, GlobalEditBadge, SelectToggle } from './atoms';
+import {
+  ArchiveButton,
+  ArchivedBadge,
+  ExpandChevron,
+  GlobalEditBadge,
+  SelectToggle,
+} from './atoms';
 import SortableList from './SortableList';
 import SortableRow from './SortableRow';
 
@@ -39,7 +45,9 @@ interface ItemBulletSectionProps<TParent extends ParentWithBullets> {
   onArchiveBullet: (bulletId: string, isArchived: boolean) => void;
 }
 
-export default function ItemBulletSection<TParent extends ParentWithBullets>(props: ItemBulletSectionProps<TParent>) {
+export default function ItemBulletSection<TParent extends ParentWithBullets>(
+  props: ItemBulletSectionProps<TParent>,
+) {
   const {
     title,
     itemNoun,
@@ -83,13 +91,13 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(pro
   }
 
   return (
-    <section className="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]">
-      <header className="flex items-center justify-between border-b border-[var(--color-line)] px-3 py-2">
-        <h2 className="text-sm font-semibold text-[var(--color-ink)]">{title}</h2>
+    <section className="rounded-lg border border-line bg-surface">
+      <header className="flex items-center justify-between border-b border-line px-3 py-2">
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
         <button
           type="button"
           onClick={() => setAdding((v) => !v)}
-          className="rounded border border-[var(--color-line)] px-2 py-1 text-xs text-[var(--color-ink-dim)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          className="rounded border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
         >
           {adding ? 'Cancel' : `+ Add ${itemNoun}`}
         </button>
@@ -108,11 +116,16 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(pro
       ) : null}
 
       {orderedIds.length === 0 ? (
-        <p className="px-3 py-4 text-xs text-[var(--color-ink-dim)]">
-          No {itemNoun}s yet{showArchived ? '' : ' (or all are archived — toggle "show archived" above)'}.
+        <p className="px-3 py-4 text-xs text-ink-dim">
+          No {itemNoun}s yet
+          {showArchived ? '' : ' (or all are archived — toggle "show archived" above)'}.
         </p>
       ) : (
-        <SortableList ids={orderedIds} onReorder={handleReorder} className="flex flex-col gap-1 p-2">
+        <SortableList
+          ids={orderedIds}
+          onReorder={handleReorder}
+          className="flex flex-col gap-1 p-2"
+        >
           {ordered.map((item) => (
             <SortableRow key={item.id} id={item.id}>
               <ItemRow
@@ -181,18 +194,27 @@ function ItemRow<TParent extends ParentWithBullets>({
   onArchiveBullet,
 }: ItemRowProps<TParent>) {
   const [addingBullet, setAddingBullet] = useState(false);
-  const primaryLabel = fields.find((f) => f.primary)?.getValue(item) ?? fields[0]?.getValue(item) ?? item.id;
+  const primaryLabel =
+    fields.find((f) => f.primary)?.getValue(item) ?? fields[0]?.getValue(item) ?? item.id;
 
   return (
     <div
       data-testid={`content-row-${item.id}`}
       className={`rounded-md border px-2 py-1.5 ${
-        selected ? 'border-[var(--color-accent)]/40 bg-[var(--color-surface-2)]' : 'border-[var(--color-line)]'
+        selected ? 'border-accent/40 bg-surface-2' : 'border-line'
       } ${item.isArchived ? 'opacity-70' : ''}`}
     >
       <div className="flex items-start gap-2">
-        <SelectToggle checked={selected} onChange={onToggleSelected} label={`Include ${primaryLabel} on this resume`} />
-        <ExpandChevron expanded={expanded} onClick={onToggleExpanded} label={`Expand ${primaryLabel} bullets`} />
+        <SelectToggle
+          checked={selected}
+          onChange={onToggleSelected}
+          label={`Include ${primaryLabel} on this resume`}
+        />
+        <ExpandChevron
+          expanded={expanded}
+          onClick={onToggleExpanded}
+          label={`Expand ${primaryLabel} bullets`}
+        />
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-2 gap-y-1 sm:grid-cols-4">
           {fields.map((field) => (
@@ -201,8 +223,8 @@ function ItemRow<TParent extends ParentWithBullets>({
               value={field.getValue(item)}
               placeholder={field.placeholder}
               onChange={(event) => onFieldChange(field.key, event.target.value)}
-              className={`min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-[var(--color-ink)] outline-none hover:border-[var(--color-line)] focus:border-[var(--color-accent)] ${
-                field.primary ? 'col-span-2 font-medium sm:col-span-2' : 'text-[var(--color-ink-dim)]'
+              className={`min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-ink outline-none hover:border-line focus:border-accent ${
+                field.primary ? 'col-span-2 font-medium sm:col-span-2' : 'text-ink-dim'
               }`}
             />
           ))}
@@ -214,7 +236,7 @@ function ItemRow<TParent extends ParentWithBullets>({
       </div>
 
       {expanded ? (
-        <div className="mt-2 border-t border-[var(--color-line)] pt-2 pl-9">
+        <div className="mt-2 border-t border-line pt-2 pl-9">
           <BulletList
             bullets={item.bullets}
             selectedOrder={bulletOrder}
@@ -238,7 +260,7 @@ function ItemRow<TParent extends ParentWithBullets>({
             <button
               type="button"
               onClick={() => setAddingBullet(true)}
-              className="mt-1.5 text-xs text-[var(--color-ink-dim)] transition-colors hover:text-[var(--color-accent)]"
+              className="mt-1.5 text-xs text-ink-dim transition-colors hover:text-accent"
             >
               + Add {bulletNoun}
             </button>
@@ -282,7 +304,7 @@ function BulletList({
   }
 
   if (orderedIds.length === 0) {
-    return <p className="text-[11px] text-[var(--color-ink-dim)]">No {bulletNoun}s yet.</p>;
+    return <p className="text-[11px] text-ink-dim">No {bulletNoun}s yet.</p>;
   }
 
   return (
@@ -292,7 +314,7 @@ function BulletList({
           <div
             data-testid={`bullet-row-${bullet.id}`}
             className={`flex items-start gap-2 rounded border px-1.5 py-1 ${
-              selectedSet.has(bullet.id) ? 'border-[var(--color-accent)]/30 bg-[var(--color-surface-2)]' : 'border-[var(--color-line)]'
+              selectedSet.has(bullet.id) ? 'border-accent/30 bg-surface-2' : 'border-line'
             } ${bullet.isArchived ? 'opacity-70' : ''}`}
           >
             <SelectToggle
@@ -305,11 +327,14 @@ function BulletList({
               onChange={(event) => onContentChange(bullet.id, event.target.value)}
               rows={2}
               spellCheck={false}
-              className="min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs whitespace-pre-wrap text-[var(--color-ink)] outline-none hover:border-[var(--color-line)] focus:border-[var(--color-accent)]"
+              className="min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs whitespace-pre-wrap text-ink outline-none hover:border-line focus:border-accent"
             />
             <GlobalEditBadge />
             {bullet.isArchived ? <ArchivedBadge /> : null}
-            <ArchiveButton isArchived={bullet.isArchived} onClick={() => onArchive(bullet.id, !bullet.isArchived)} />
+            <ArchiveButton
+              isArchived={bullet.isArchived}
+              onClick={() => onArchive(bullet.id, !bullet.isArchived)}
+            />
           </div>
         </SortableRow>
       ))}
@@ -348,25 +373,28 @@ function CreateItemForm<TParent>({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-3 py-2"
+    >
       {fields.map((field) => (
         <input
           key={field.key}
           value={values[field.key] ?? ''}
           placeholder={field.placeholder ?? field.label}
           onChange={(event) => setValues((prev) => ({ ...prev, [field.key]: event.target.value }))}
-          className="min-w-0 flex-1 rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+          className="min-w-0 flex-1 rounded border border-line bg-surface px-2 py-1 text-xs text-ink outline-none focus:border-accent"
         />
       ))}
-      {error ? <span className="text-xs text-red-400">{error}</span> : null}
+      {error ? <span className="text-xs text-danger">{error}</span> : null}
       <button
         type="submit"
         disabled={submitting}
-        className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs font-medium text-[var(--color-canvas)] disabled:opacity-50"
+        className="rounded bg-accent px-2 py-1 text-xs font-medium text-canvas disabled:opacity-50"
       >
         {submitting ? 'Adding…' : `Add ${noun}`}
       </button>
-      <button type="button" onClick={onCancel} className="text-xs text-[var(--color-ink-dim)] hover:text-[var(--color-ink)]">
+      <button type="button" onClick={onCancel} className="text-xs text-ink-dim hover:text-ink">
         Cancel
       </button>
     </form>
@@ -409,21 +437,21 @@ function CreateBulletForm({
         rows={2}
         placeholder={`Raw LaTeX for the new ${noun}…`}
         spellCheck={false}
-        className="min-w-0 flex-1 resize-y rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-mono text-xs text-[var(--color-ink)] outline-none focus:border-[var(--color-accent)]"
+        className="min-w-0 flex-1 resize-y rounded border border-line bg-surface-2 px-1.5 py-1 font-mono text-xs text-ink outline-none focus:border-accent"
       />
       <div className="flex shrink-0 flex-col gap-1">
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs font-medium text-[var(--color-canvas)] disabled:opacity-50"
+          className="rounded bg-accent px-2 py-1 text-xs font-medium text-canvas disabled:opacity-50"
         >
           {submitting ? '…' : 'Add'}
         </button>
-        <button type="button" onClick={onCancel} className="text-xs text-[var(--color-ink-dim)] hover:text-[var(--color-ink)]">
+        <button type="button" onClick={onCancel} className="text-xs text-ink-dim hover:text-ink">
           Cancel
         </button>
       </div>
-      {error ? <span className="text-xs text-red-400">{error}</span> : null}
+      {error ? <span className="text-xs text-danger">{error}</span> : null}
     </form>
   );
 }

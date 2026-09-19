@@ -1,12 +1,8 @@
-import { parseJsonBody, withApiErrors } from '@/lib/http';
+import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { createExperienceBullet } from '@/lib/queries/experience-bullets';
 import { NotFoundError } from '@/lib/queries/errors';
 import { getExperienceById } from '@/lib/queries/experiences';
 import { createBulletSchema } from '@/lib/validation';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 export async function POST(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {

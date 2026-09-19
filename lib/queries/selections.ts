@@ -49,7 +49,10 @@ export async function getSelections(resumeId: string): Promise<Selections> {
           experienceId: experienceBullet.experienceId,
         })
         .from(resumeExperienceBullet)
-        .innerJoin(experienceBullet, eq(resumeExperienceBullet.experienceBulletId, experienceBullet.id))
+        .innerJoin(
+          experienceBullet,
+          eq(resumeExperienceBullet.experienceBulletId, experienceBullet.id),
+        )
         .where(eq(resumeExperienceBullet.resumeId, resumeId))
         .orderBy(asc(resumeExperienceBullet.sortOrder)),
       db
@@ -159,7 +162,11 @@ async function replaceSkillRows(tx: Tx, resumeId: string, ids: string[]): Promis
   await tx.delete(resumeTechnicalSkillRow).where(eq(resumeTechnicalSkillRow.resumeId, resumeId));
   if (ids.length === 0) return;
   await tx.insert(resumeTechnicalSkillRow).values(
-    ids.map((technicalSkillRowId, index) => ({ resumeId, technicalSkillRowId, sortOrder: index })),
+    ids.map((technicalSkillRowId, index) => ({
+      resumeId,
+      technicalSkillRowId,
+      sortOrder: index,
+    })),
   );
 }
 

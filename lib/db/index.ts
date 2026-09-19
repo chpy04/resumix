@@ -18,9 +18,8 @@ import postgres, { type Sql } from 'postgres';
 import * as schema from './schema.ts';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __resumixSql: Sql | undefined;
-  // eslint-disable-next-line no-var
+
   var __resumixDb: PostgresJsDatabase<typeof schema> | undefined;
 }
 
@@ -56,8 +55,7 @@ function getDb(): PostgresJsDatabase<typeof schema> {
 /** Lazy proxy — the pool is opened on first use, never at import. */
 export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
   get: (_t, prop, receiver) => Reflect.get(getSql(), prop, receiver),
-  apply: (_t, _thisArg, args) =>
-    (getSql() as unknown as (...a: unknown[]) => unknown)(...args),
+  apply: (_t, _thisArg, args) => (getSql() as unknown as (...a: unknown[]) => unknown)(...args),
 });
 
 /** Lazy proxy — see `sql`. */

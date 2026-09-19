@@ -1,0 +1,18 @@
+# `tsc --noEmit`. Split from `build` because it is much faster and its errors
+# are far more legible than the same problem surfacing mid-webpack. Not a
+# substitute for `build` — see that workflow.
+name: typecheck
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: typecheck-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tsc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+      - run: npm run typecheck

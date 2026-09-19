@@ -7,13 +7,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types \"lib/**/*.test.ts\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --env-file-if-exists=.env --experimental-strip-types --test \"lib/**/*.test.ts\"",
+    "test:e2e": "playwright test",
     "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types scripts/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env --experimental-strip-types scripts/seed.ts",
     "smoke": "node --env-file-if-exists=.env --experimental-strip-types scripts/smoke.ts",
-    "test:e2e": "playwright test"
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && npm run db:seed -- --force && npm run smoke && npm run test:e2e"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -28,13 +32,21 @@
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@next/eslint-plugin-next": "^15.5.25",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^24.5.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "drizzle-kit": "^0.31.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.12.0",
+    "prettier": "3.6.2",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.70.0"
   }
 }

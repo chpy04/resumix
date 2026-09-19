@@ -242,9 +242,7 @@ async function main() {
       `  experiences: ${summary.experienceCount} (${summary.experienceBulletCount} bullets)`,
     );
     console.log(`  projects: ${summary.projectCount} (${summary.projectBulletCount} bullets)`);
-    console.log(
-      `  technical skill rows: ${summary.skillRowCount} (${summary.skillCount} skills)`,
-    );
+    console.log(`  technical skill rows: ${summary.skillRowCount} (${summary.skillCount} skills)`);
     console.log(`  resume: 1 (Default, id ${summary.resumeId}), every item selected and ordered`);
   } finally {
     await sql.end();

@@ -10,7 +10,7 @@ export default function NewResumeCard({ onClick }: NewResumeCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="group flex h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--color-line)] bg-transparent text-[var(--color-ink-dim)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] focus:border-[var(--color-accent)] focus:text-[var(--color-accent)] focus:outline-none"
+      className="group flex h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line bg-transparent text-ink-dim transition-colors hover:border-accent hover:text-accent focus:border-accent focus:text-accent focus:outline-none"
     >
       <svg
         aria-hidden="true"

@@ -1,0 +1,31 @@
+# The project's acceptance bar: read the seeded Default resume back out of a
+# real Postgres, render it, diff byte-for-byte against
+# docs/reference/v1-resume.tex, and compile it through real pdflatex expecting
+# one page. "I can always represent my current resume" is the governing
+# constraint, so this gets its own check rather than hiding inside e2e.
+name: smoke
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  round-trip:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://resumix:resumix@localhost:5433/resumix
+      LATEX_SERVICE_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+      - uses: ./.github/actions/latex-sidecar
+
+      - run: npm run db:migrate
+      - run: npm run db:seed -- --force
+      - run: npm run smoke
+
+      - name: Sidecar logs on failure
+        if: failure()
+        run: docker compose logs latex

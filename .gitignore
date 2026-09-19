@@ -16,3 +16,8 @@ scripts/.scratch/
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Claude Code: rules/ and settings.json are checked in (see .claude/README.md);
+# per-machine overrides and runtime state are not.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

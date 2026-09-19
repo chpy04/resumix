@@ -38,7 +38,13 @@ test('creating a resume clones the Default resume as a starting point', async ({
     getResumeDetail(page, defaultResume!.id),
   ]);
 
-  expect(new Set(newDetail.selections.experiences)).toEqual(new Set(defaultDetail.selections.experiences));
-  expect(new Set(newDetail.selections.projects)).toEqual(new Set(defaultDetail.selections.projects));
-  expect(new Set(newDetail.selections.skillRows)).toEqual(new Set(defaultDetail.selections.skillRows));
+  expect(new Set(newDetail.selections.experiences)).toEqual(
+    new Set(defaultDetail.selections.experiences),
+  );
+  expect(new Set(newDetail.selections.projects)).toEqual(
+    new Set(defaultDetail.selections.projects),
+  );
+  expect(new Set(newDetail.selections.skillRows)).toEqual(
+    new Set(defaultDetail.selections.skillRows),
+  );
 });

@@ -23,19 +23,15 @@ function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
 }
 
 test('valid password mints a token', async () => {
-  const token = await withEnv(
-    { APP_PASSWORD: PASSWORD, AUTH_SECRET: SECRET },
-    () => login(PASSWORD),
+  const token = await withEnv({ APP_PASSWORD: PASSWORD, AUTH_SECRET: SECRET }, () =>
+    login(PASSWORD),
   );
   assert.ok(token);
   assert.match(token!, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 });
 
 test('wrong password fails login (401 at the route level)', async () => {
-  const token = await withEnv(
-    { APP_PASSWORD: PASSWORD, AUTH_SECRET: SECRET },
-    () => login('nope'),
-  );
+  const token = await withEnv({ APP_PASSWORD: PASSWORD, AUTH_SECRET: SECRET }, () => login('nope'));
   assert.equal(token, null);
 });
 
@@ -57,9 +53,9 @@ test('a tampered signature fails verification', async () => {
 test('a tampered payload fails verification', async () => {
   const token = await mintToken(SECRET);
   const [, sig] = token.split('.');
-  const forgedPayload = Buffer.from(JSON.stringify({ v: 1, iat: 0, exp: Date.now() + 1e12 })).toString(
-    'base64url',
-  );
+  const forgedPayload = Buffer.from(
+    JSON.stringify({ v: 1, iat: 0, exp: Date.now() + 1e12 }),
+  ).toString('base64url');
   const tampered = `${forgedPayload}.${sig}`;
   const ok = await verifyToken(tampered, SECRET);
   assert.equal(ok, false);
@@ -79,17 +75,15 @@ test('a token signed with a different secret fails verification', async () => {
 });
 
 test('missing APP_PASSWORD fails closed on login', async () => {
-  const token = await withEnv(
-    { APP_PASSWORD: undefined, AUTH_SECRET: SECRET },
-    () => login(PASSWORD),
+  const token = await withEnv({ APP_PASSWORD: undefined, AUTH_SECRET: SECRET }, () =>
+    login(PASSWORD),
   );
   assert.equal(token, null);
 });
 
 test('missing AUTH_SECRET fails closed on login', async () => {
-  const token = await withEnv(
-    { APP_PASSWORD: PASSWORD, AUTH_SECRET: undefined },
-    () => login(PASSWORD),
+  const token = await withEnv({ APP_PASSWORD: PASSWORD, AUTH_SECRET: undefined }, () =>
+    login(PASSWORD),
   );
   assert.equal(token, null);
 });

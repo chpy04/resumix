@@ -1,0 +1,42 @@
+# Playwright against a real dev server, a real Postgres and the real sidecar.
+# The slowest check by a distance, which is exactly why it is not bundled with
+# anything else — a formatting mistake should not wait on a browser run.
+name: e2e
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://resumix:resumix@localhost:5433/resumix
+      LATEX_SERVICE_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-deps
+      - uses: ./.github/actions/latex-sidecar
+
+      - run: npm run db:migrate
+
+      # playwright.config.ts seeds via globalSetup and starts Next itself.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+      - name: Sidecar logs on failure
+        if: failure()
+        run: docker compose logs latex

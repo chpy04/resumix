@@ -77,7 +77,9 @@ async function main() {
         .limit(1)
     )[0];
     if (!templateRow) {
-      throw new Error(`Resume ${resumeRow.id} references a missing template ${resumeRow.templateId}`);
+      throw new Error(
+        `Resume ${resumeRow.id} references a missing template ${resumeRow.templateId}`,
+      );
     }
 
     // ---- Load the full Library (every content row, archived or not) ----
@@ -210,7 +212,9 @@ async function main() {
 
     console.log(`Loaded resume "${resumeRow.name}" (${resumeRow.id})`);
     console.log(`Template: "${templateRow.name}" (${templateRow.id})`);
-    console.log(`Selections: ${selections.experiences.length} experiences, ${selections.projects.length} projects, ${selections.skillRows.length} skill rows`);
+    console.log(
+      `Selections: ${selections.experiences.length} experiences, ${selections.projects.length} projects, ${selections.skillRows.length} skill rows`,
+    );
     console.log(`Render warnings: ${warnings.length === 0 ? 'none' : JSON.stringify(warnings)}`);
 
     // ---- Compare against the reference file -----------------------------
@@ -225,14 +229,16 @@ async function main() {
     const documentedDivergence =
       '  % \\resumeItem{Built \\textbf{AWS} infrastructure (EC2, RDS, S3) using \\textbf{Terraform} and automated deployments with \\textbf{CI/CD pipeline}}\n';
     if (!referenceRaw.includes(documentedDivergence)) {
-      throw new Error('expected reference file to still contain the documented divergence line -- has v1-resume.tex changed?');
+      throw new Error(
+        'expected reference file to still contain the documented divergence line -- has v1-resume.tex changed?',
+      );
     }
     const referenceAdjusted = referenceRaw.replace(documentedDivergence, '');
 
     const normalizedActual = normalizeInsignificantWhitespace(tex);
     const normalizedExpected = normalizeInsignificantWhitespace(referenceAdjusted);
 
-    let roundTripOk = normalizedActual === normalizedExpected;
+    const roundTripOk = normalizedActual === normalizedExpected;
     if (!roundTripOk) {
       const actualPath = join(scratchDir, 'smoke-normalized-actual.tex');
       const expectedPath = join(scratchDir, 'smoke-normalized-expected.tex');
@@ -247,13 +253,17 @@ async function main() {
       console.log('--- ROUND TRIP DIFF (expected vs actual, normalized) ---');
       console.log(diffOutput);
     } else {
-      console.log('Round trip: rendered output matches docs/reference/v1-resume.tex (modulo insignificant whitespace and the documented divergence).');
+      console.log(
+        'Round trip: rendered output matches docs/reference/v1-resume.tex (modulo insignificant whitespace and the documented divergence).',
+      );
     }
 
     // ---- Compile the rendered tex ----------------------------------------
     console.log('Compiling rendered tex via the latex service...');
     const compileResult = await compileTex(tex);
-    console.log(`Compile result: ok=${compileResult.ok} pages=${compileResult.pages} durationMs=${compileResult.durationMs}`);
+    console.log(
+      `Compile result: ok=${compileResult.ok} pages=${compileResult.pages} durationMs=${compileResult.durationMs}`,
+    );
     if (!compileResult.ok) {
       console.log('Errors:', JSON.stringify(compileResult.errors, null, 2));
     }
@@ -273,27 +283,45 @@ async function main() {
       ['all experiences off', { ...selections, experiences: [], experienceBullets: {} }],
       ['all projects off', { ...selections, projects: [], projectBullets: {} }],
       ['bottom skill rows off', { ...selections, skillRows: topRowIds }],
-      ['top skill rows off', {
-        ...selections,
-        skillRows: selections.skillRows.filter((id) => !topRowIds.includes(id)),
-      }],
-      ['everything off', {
-        experiences: [], experienceBullets: {}, projects: [],
-        projectBullets: {}, skillRows: [], skills: {},
-      }],
+      [
+        'top skill rows off',
+        {
+          ...selections,
+          skillRows: selections.skillRows.filter((id) => !topRowIds.includes(id)),
+        },
+      ],
+      [
+        'everything off',
+        {
+          experiences: [],
+          experienceBullets: {},
+          projects: [],
+          projectBullets: {},
+          skillRows: [],
+          skills: {},
+        },
+      ],
     ];
     let emptyCasesOk = true;
     for (const [label, sel] of emptyCases) {
-      const rendered = renderResume({ templateContent: templateRow.content, library, selections: sel });
+      const rendered = renderResume({
+        templateContent: templateRow.content,
+        library,
+        selections: sel,
+      });
       const res = await compileTex(rendered.tex);
       if (!res.ok) emptyCasesOk = false;
-      console.log(`  ${res.ok ? 'PASS' : 'FAIL'}  ${label}${res.ok ? '' : ` -- ${res.errors[0] ?? 'no error text'}`}`);
+      console.log(
+        `  ${res.ok ? 'PASS' : 'FAIL'}  ${label}${res.ok ? '' : ` -- ${res.errors[0] ?? 'no error text'}`}`,
+      );
     }
 
     console.log('');
     console.log('=== SMOKE TEST SUMMARY ===');
     console.log(`Round trip match: ${roundTripOk ? 'PASS' : 'FAIL'}`);
-    console.log(`Compile ok + 1 page: ${compileOk ? 'PASS' : 'FAIL'} (ok=${compileResult.ok}, pages=${compileResult.pages})`);
+    console.log(
+      `Compile ok + 1 page: ${compileOk ? 'PASS' : 'FAIL'} (ok=${compileResult.ok}, pages=${compileResult.pages})`,
+    );
     console.log(`Empty-section compiles: ${emptyCasesOk ? 'PASS' : 'FAIL'}`);
 
     if (!roundTripOk || !compileOk || !emptyCasesOk) {

@@ -1,11 +1,7 @@
-import { parseJsonBody, withApiErrors } from '@/lib/http';
+import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
 import { deleteResume, getResumeDetail, updateResume } from '@/lib/queries/resumes';
 import { NotFoundError } from '@/lib/queries/errors';
 import { patchResumeSchema } from '@/lib/validation';
-
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
 
 export async function GET(_request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {

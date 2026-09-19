@@ -47,7 +47,7 @@ Before touching any dashboard:
    });
    ```
 
-   `prepare: false` exists *specifically* for this pooler. Supavisor's
+   `prepare: false` exists _specifically_ for this pooler. Supavisor's
    transaction-pooling mode hands out a physical connection per transaction and
    does not support session-scoped prepared statements — `postgres.js`'s
    default behavior (prepare every query) will fail against it. `max: 1` when
@@ -138,8 +138,8 @@ own design, they cannot read anything outside that request's temp directory,
 so the worst case is resource abuse, not a data leak.
 
 The complication: Fly's private networking (6PN / Flycast,
-`resumix-latex.internal:8080`) only reaches other apps *inside the same Fly
-organization*. Vercel is a different cloud; a Vercel serverless function
+`resumix-latex.internal:8080`) only reaches other apps _inside the same Fly
+organization_. Vercel is a different cloud; a Vercel serverless function
 cannot join Fly's WireGuard mesh, so it cannot use the fully-private address.
 **A public Fly IP is unavoidable for a Vercel → Fly call**, which is the
 opposite of what `services/latex/README.md`'s Fly section (written from T2,
@@ -174,6 +174,7 @@ possible. Mitigate it in layers instead of pretending it's fully private:
    open — acceptable on a private docker network locally, never in a deployment.
    **Treat this as mandatory for any deploy**, not optional hardening: without it
    the public Fly IP above is an open LaTeX compiler.
+
 5. If you truly need zero public exposure and can live without Vercel, the
    alternative is to co-locate: run the Next.js app itself on Fly (a real
    container, not serverless) alongside the sidecar, talking over `localhost`
@@ -188,16 +189,16 @@ possible. Mitigate it in layers instead of pretending it's fully private:
 2. Set these environment variables (Project Settings → Environment Variables),
    for both **Production** and **Preview**:
 
-   | Variable | Value | Notes |
-   |---|---|---|
-   | `DATABASE_URL` | the Supabase **pooler** string from step 1, port **6543** | not the direct :5432 string |
-   | `LATEX_SERVICE_URL` | `https://resumix-latex.fly.dev` (your Fly app's public URL) | see the Fly section above |
-   | `APP_PASSWORD` | your chosen long password | this gates the whole app |
-   | `AUTH_SECRET` | a separate long random string | signs the auth token; do not reuse `APP_PASSWORD` |
-   | `PDF_NAME_PREFIX` | e.g. `Chris_Pyle` | filename prefix for downloaded PDFs |
+   | Variable            | Value                                                       | Notes                                             |
+   | ------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
+   | `DATABASE_URL`      | the Supabase **pooler** string from step 1, port **6543**   | not the direct :5432 string                       |
+   | `LATEX_SERVICE_URL` | `https://resumix-latex.fly.dev` (your Fly app's public URL) | see the Fly section above                         |
+   | `APP_PASSWORD`      | your chosen long password                                   | this gates the whole app                          |
+   | `AUTH_SECRET`       | a separate long random string                               | signs the auth token; do not reuse `APP_PASSWORD` |
+   | `PDF_NAME_PREFIX`   | e.g. `Chris_Pyle`                                           | filename prefix for downloaded PDFs               |
 
 3. Deploy. Vercel runs `npm run build` (or `next build` directly) — this
-   should succeed even though `DATABASE_URL` for the *build* environment may
+   should succeed even though `DATABASE_URL` for the _build_ environment may
    differ from production, because `lib/db/index.ts` never opens a connection
    at module load (D-014); it only connects on the first actual query, at
    request time.
@@ -219,7 +220,7 @@ possible. Mitigate it in layers instead of pretending it's fully private:
 **`DATABASE_URL is not set` during `next build` / Vercel build step**
 Should not happen for the Next.js app itself — `lib/db/index.ts`'s client is a
 lazy Proxy (D-014) specifically so `next build` never needs a live database.
-If you see this from the *app*, check that no other code path evaluates
+If you see this from the _app_, check that no other code path evaluates
 `sql`/`db` at module scope (e.g. a top-level `await` or a constant computed
 outside a handler). If you see this from the `scripts/*.ts` CLI tools instead
 (`db:migrate`, `db:seed`, `smoke`), those genuinely require `DATABASE_URL` at
@@ -232,7 +233,7 @@ run time — pass it inline (`DATABASE_URL=... npm run db:migrate`) or make sure
 does not exist`, or similar from Supavisor.) This means something is
 connecting to the **transaction-pooling port (6543)** without
 `prepare: false`. `lib/db/index.ts` already sets this for every connection it
-opens, so this almost always means a *different* tool is using the same
+opens, so this almost always means a _different_ tool is using the same
 `DATABASE_URL` — e.g. a GUI client, `psql`, or a one-off script that
 constructs its own `postgres()`/`pg` client. Either point that tool at the
 **direct** connection string (port 5432, session mode) instead of the pooler,
@@ -240,6 +241,7 @@ or make sure it also passes the equivalent of `prepare: false`.
 
 **Unreachable latex service** (`ECONNREFUSED`, `fetch failed`, or renders
 that hang until Vercel's own timeout)
+
 1. `curl https://resumix-latex.fly.dev/health` — if this fails, the Fly app
    itself is down; check `fly status` and `fly logs`.
 2. If health is fine but compiles fail/hang, the machine may have just been

@@ -1,67 +1,120 @@
 # Contributing
 
-Short and practical. For the bigger picture, start at `docs/STATE.md`.
+Short and practical. For the bigger picture start at `docs/STATE.md`; for
+per-directory conventions see `.claude/rules/` (and `CLAUDE.md` for the
+always-applies half).
 
-## Adding a migration
-
-1. Add a new file under `drizzle/`, numbered after the last one (e.g.
-   `0002_your_change.sql`), plain SQL — no ORM migration DSL. Look at
-   `drizzle/0001_skill_row_separator.sql` for the shape of a small, real one.
-2. Update `lib/db/schema.ts` to match by hand — the SQL file and the Drizzle
-   table definitions are two independent sources of truth that must agree;
-   nothing regenerates one from the other.
-3. If the change affects the shape described in `docs/SCHEMA.md`, update that
-   doc in the same commit (see "Contracts," below).
-4. Run `npm run db:migrate` locally against `docker compose up -d db` — it
-   only applies files not yet recorded in `_migrations`, so it's safe to run
-   repeatedly as you iterate.
-5. Re-run `npm run db:seed -- --force` and `npm run smoke` to confirm the
-   round trip against the real V1 resume still holds.
-
-## Adding an API endpoint
-
-Follow the existing three-layer split (see any handler under `app/api/**` for
-a live example):
-
-1. **Validation** — add a zod schema to `lib/validation.ts` for the request
-   body, if any.
-2. **Data access** — add the query function to `lib/queries/**` (one file per
-   resource). This is the only layer that imports `lib/db`.
-3. **Route handler** — a thin `app/api/<resource>/route.ts` that calls
-   `parseJsonBody`/`withApiErrors` from `lib/http.ts`, then the query
-   function. Handlers should have almost no logic of their own.
-4. Update `docs/API.md` in the same commit (see "Contracts," below).
-5. Auth is automatic — `middleware.ts` guards every `/api/*` route except
-   `/api/auth`; you don't need to check the token yourself in the handler.
-
-## Running the smoke test
+## The merge gate
 
 ```bash
 docker compose up -d db latex
-npm run db:migrate
-npm run db:seed
+npm run verify
+```
+
+`verify` is `format:check → lint → typecheck → test → build → reseed →
+smoke → test:e2e`, in that order because each step depends on the last.
+Run all of it, not a subset:
+
+- `tsc --noEmit` is **not** sufficient. `next build` additionally validates
+  App Router export signatures and resolves the webpack config; a page whose
+  default export takes a custom prop typechecks fine and fails the build.
+  That bug reached `main` once, which is why `build` is in the gate.
+- `npm test` needs `DATABASE_URL` (it reads `.env`). Without it, the 16
+  `lib/queries` integration suites self-skip and the run still reports
+  green. Expect **110 passing, 0 skipped**.
+- `npm run smoke` reads live database state, and a Playwright run leaves
+  edited content behind — hence the reseed immediately before it. Running
+  `smoke` straight after `test:e2e` will fail the round-trip diff for
+  reasons unrelated to your change.
+
+CI runs the same gate, split into seven independent workflows that start in
+parallel so each failure mode reports separately and as early as it can:
+
+| workflow    | runs               | needs                    |
+| ----------- | ------------------ | ------------------------ |
+| `format`    | `prettier --check` | —                        |
+| `lint`      | `eslint`           | —                        |
+| `typecheck` | `tsc --noEmit`     | —                        |
+| `build`     | `next build`       | —                        |
+| `test`      | `node --test`      | Postgres                 |
+| `smoke`     | the V1 round trip  | Postgres + LaTeX sidecar |
+| `e2e`       | Playwright         | Postgres + LaTeX sidecar |
+
+Shared setup lives in composite actions under `.github/actions/`, so the Node
+version and install flags are declared once. The sidecar image is ~690MB and
+its `apt-get install texlive-*` layer dominates the build, so it is cached
+across runs keyed on the Dockerfile; `docker-compose.yml` takes a
+`LATEX_IMAGE` override so CI can build once with that cache and then
+`up --no-build`, while local development just builds normally.
+
+Two things in those workflows are load-bearing and easy to undo by accident:
+`build` deliberately runs with **no** `DATABASE_URL`, which is what makes it
+the regression test for the lazy DB client (D-014); and `test` asserts the
+skipped-test count is zero, because the `lib/queries` suites self-skip
+without a database and the job would otherwise pass on a subset.
+
+## Formatting and linting
+
+Prettier owns formatting; don't hand-format, and don't argue with it. Run
+`npm run format`.
+
+`eslint.config.mjs` is deliberately small: the recommended sets, plus
+`no-restricted-*` rules that turn the project's invariants into build
+failures rather than prose — `components/**` cannot reach `lib/db`, the
+Edge-runtime import graph cannot reach `node:crypto`, and each tree's import
+style is enforced. Every custom rule's message names the file in
+`.claude/rules/` that explains it. If you change a convention, change both
+the rule text and the lint config.
+
+## Adding a migration
+
+1. A new numbered plain-SQL file in `drizzle/` (e.g. `0003_your_change.sql`)
+   — no ORM migration DSL. `drizzle/0001_skill_row_separator.sql` is a small
+   real example.
+2. Update `lib/db/schema.ts` by hand to match. The SQL file and the Drizzle
+   definitions are two independent sources of truth; nothing generates one
+   from the other.
+3. If the change affects `docs/SCHEMA.md`, update it in the same commit.
+4. `npm run db:migrate` — only applies files not yet in `_migrations`, so
+   it's safe to re-run while iterating.
+5. `npm run db:seed -- --force && npm run smoke` to confirm the V1 round
+   trip still holds.
+
+## Adding an API endpoint
+
+Three layers, in this order (see `.claude/rules/api-routes.md`):
+
+1. **Validation** — a zod schema in `lib/validation.ts`.
+2. **Data access** — a query function in `lib/queries/<resource>.ts`. The
+   only layer that may import `lib/db`.
+3. **Route handler** — a thin `app/api/**/route.ts` using `withApiErrors`,
+   `parseJsonBody` and the shared `RouteContext` from `lib/http.ts`.
+   Handlers should have almost no logic of their own.
+
+Then update `docs/API.md` in the same commit. Auth is automatic —
+`middleware.ts` guards every `/api/*` route except `/api/auth`.
+
+## The smoke test
+
+```bash
+docker compose up -d db latex
+npm run db:migrate && npm run db:seed -- --force
 npm run smoke
 ```
 
-This is the project's acceptance bar: it reads the seeded Default resume back
-out of the database, renders it, diffs the result against
+This is the project's acceptance bar: it reads the seeded Default resume
+back out of the database, renders it, diffs the result against
 `docs/reference/v1-resume.tex`, and compiles it through the real `pdflatex`
-sidecar, asserting a byte-faithful round trip and a 1-page PDF. Any schema or
-renderer change must keep this passing.
+sidecar, asserting a byte-faithful round trip and a 1-page PDF. Any schema
+or renderer change must keep it passing.
 
 ## Contracts
 
-`docs/SCHEMA.md`, `docs/API.md`, and `docs/TEMPLATE_TOKENS.md` describe the
-database shape, the HTTP interface, and the template token syntax. They are
-**contracts**, not incidental notes — other code (and other people/agents)
-depend on them being accurate. Update them deliberately, in the same commit
-as the code change they describe, not as an afterthought. If you're working
-inside a task/wave structure where contracts are declared frozen for the
-duration (see `docs/WORKPLAN.md`), don't edit them unilaterally — call out
-the needed change instead and let it be reviewed.
-
-## Merge gate
-
-Before merging anything: `npx tsc --noEmit`, `npm test`, `npm run build`,
-`npm run smoke`, and `npx playwright test` — all five. See `CLAUDE.md` for
-why `tsc --noEmit` alone is not sufficient.
+`docs/SCHEMA.md`, `docs/API.md` and `docs/TEMPLATE_TOKENS.md` describe the
+database shape, the HTTP interface and the template token syntax. They are
+**contracts**, not incidental notes — other code, and other agents, depend on
+them being accurate. Update them deliberately, in the same commit as the
+change they describe. If reality and a contract disagree, that is a bug in
+one of them: decide which, fix it, and say so. Inside a task/wave where
+contracts are declared frozen (`docs/WORKPLAN.md`), propose the change
+rather than making it.

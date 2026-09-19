@@ -38,7 +38,10 @@ function notifyAuthExpired(): void {
  * 401 response, clears the stored token and dispatches `AUTH_EXPIRED_EVENT`
  * so the UI can drop back to the login screen.
  */
-export async function authedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+export async function authedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
   const token = getToken();
   const headers = new Headers(init.headers);
   if (token) {

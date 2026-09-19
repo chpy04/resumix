@@ -12,12 +12,12 @@ Chosen over `\Macro` (an unsubstituted one is a hard TeX error) and over `%%X%%`
 (an unsubstituted one silently vanishes into a comment). `<<` / `>>` survives to
 the PDF as visible garbage, which fails loudly but non-fatally.
 
-| Token | Expands to |
-|---|---|
-| `<<EXPERIENCES>>` | selected experiences, in `sort_order`, each with its selected bullets |
-| `<<PROJECTS>>` | selected projects, in `sort_order`, each with its selected bullets |
-| `<<SKILLS_TOP>>` | selected skill rows where `top = true`, in `sort_order` |
-| `<<SKILLS_BOTTOM>>` | selected skill rows where `top = false`, in `sort_order` |
+| Token               | Expands to                                                            |
+| ------------------- | --------------------------------------------------------------------- |
+| `<<EXPERIENCES>>`   | selected experiences, in `sort_order`, each with its selected bullets |
+| `<<PROJECTS>>`      | selected projects, in `sort_order`, each with its selected bullets    |
+| `<<SKILLS_TOP>>`    | selected skill rows where `top = true`, in `sort_order`               |
+| `<<SKILLS_BOTTOM>>` | selected skill rows where `top = false`, in `sort_order`              |
 
 Unknown tokens are left verbatim and reported as a render warning.
 A token may appear zero or more times; every occurrence is substituted.
@@ -56,6 +56,7 @@ pair, or that section will break the compile whenever you deselect all of it.
 ## Expansions
 
 ### `<<EXPERIENCES>>`
+
 Per experience, `\resumeSubheading{title}{dateRange}{company}{location}`:
 
 ```latex
@@ -73,6 +74,7 @@ is omitted entirely — an empty `itemize` is a LaTeX error. The heading still r
 and the renderer emits a warning.
 
 ### `<<PROJECTS>>`
+
 Per project, `\resumeProjectHeading{name}{technologies}{dateRange}`:
 
 ```latex
@@ -86,6 +88,7 @@ Per project, `\resumeProjectHeading{name}{technologies}{dateRange}`:
 Same zero-bullet rule.
 
 ### `<<SKILLS_TOP>>` / `<<SKILLS_BOTTOM>>`
+
 Rows joined by ` \\\n`, each row one line, skills joined by that row's own
 `separator` (`', '` by default, `' $|$ '` for interests/accolades):
 
