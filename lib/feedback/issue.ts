@@ -5,10 +5,12 @@
  *
  * The output is read by two audiences: a human skimming the issue list, and
  * an AI agent that pulls issues down and fixes them. That's why the type and
- * the page URL are the first two lines of the body rather than buried in a
+ * the route are the first two lines of the body rather than buried in a
  * details block — an agent shouldn't have to parse prose to learn which page
  * broke.
  */
+
+import { describeUserAgent } from './user-agent.ts';
 
 export type FeedbackKind = 'bug' | 'feature';
 
@@ -74,15 +76,17 @@ function truncateOnWord(value: string, max: number): string {
  * legitimately contains markdown and LaTeX snippets (same reasoning as
  * D-008: don't escape content the author meant literally).
  *
- * The *URL* is not author-typed prose, so it is emitted as a link with
- * parentheses percent-encoded; an unescaped `)` would otherwise end the
- * markdown link early and smear the rest of the URL into the body text.
+ * The submitted URL is split: the **route** leads the body, because that is
+ * the part that names a page in this codebase, and the **origin** goes in
+ * Environment next to the browser, because "was this prod or a laptop" is
+ * context about the report rather than about the page. Two reports on the
+ * same page then read as the same page.
  */
 export function issueBody(input: FeedbackIssueInput): string {
   const submittedAt = input.submittedAt ?? new Date();
   const sections: string[] = [
     `**Type:** ${KIND_TITLE[input.kind]} ${input.kind === 'bug' ? 'report' : 'request'}`,
-    `**Page:** ${markdownLink(input.url)}`,
+    `**Page:** ${codeSpan(routeOf(input.url))}`,
     '',
     '### Description',
     '',
@@ -105,9 +109,11 @@ export function issueBody(input: FeedbackIssueInput): string {
     '<details>',
     '<summary>Environment</summary>',
     '',
-    `- Submitted: ${submittedAt.toISOString()}`,
+    `- Origin: ${originOf(input.url)}`,
+    `- Browser: ${describeUserAgent(input.userAgent)}`,
     `- Viewport: ${input.viewport ?? 'unknown'}`,
-    `- User agent: \`${(input.userAgent ?? 'unknown').replace(/`/g, '')}\``,
+    `- Submitted: ${submittedAt.toISOString()}`,
+    `- User agent: ${codeSpan(input.userAgent ?? 'unknown')}`,
     '',
     '</details>',
     '',
@@ -119,9 +125,33 @@ export function issueBody(input: FeedbackIssueInput): string {
   return sections.join('\n');
 }
 
-function markdownLink(url: string): string {
-  const encoded = encodeParens(url);
-  return `[${url.replace(/[[\]]/g, '')}](${encoded})`;
+/**
+ * `https://resumix.app/resume/abc?tab=template` → `/resume/abc?tab=template`.
+ * An unparseable URL is passed through rather than dropped — a malformed
+ * value is still evidence, and the raw field is not worth losing over it.
+ */
+function routeOf(url: string): string {
+  const parsed = parseUrl(url);
+  return parsed ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
+}
+
+function originOf(url: string): string {
+  return parseUrl(url)?.origin ?? 'unknown';
+}
+
+function parseUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+/** Backticks are stripped, not escaped: nothing that lands in one of these
+ *  spans (a route, a UA string) can legitimately contain one, and an
+ *  unbalanced backtick would break the rest of the line. */
+function codeSpan(value: string): string {
+  return `\`${value.replace(/`/g, '')}\``;
 }
 
 function encodeParens(url: string): string {

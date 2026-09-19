@@ -46,17 +46,49 @@ test('labels carry both the source and the kind', () => {
   assert.deepEqual(issueLabels('feature'), ['feedback', 'enhancement']);
 });
 
-test('the body leads with the type and the page url', () => {
+test('the body leads with the type and the route, without the host', () => {
   const body = issueBody({
     kind: 'bug',
     description: 'It broke.',
-    url: 'https://resumix.app/resume/abc',
+    url: 'https://resumix.app/resume/abc?tab=template#bullets',
     submittedAt: AT,
   });
   const lines = body.split('\n');
   assert.equal(lines[0], '**Type:** Bug report');
-  assert.ok(lines[1]!.includes('https://resumix.app/resume/abc'));
+  assert.equal(lines[1], '**Page:** `/resume/abc?tab=template#bullets`');
   assert.ok(body.includes('It broke.'));
+});
+
+test('the origin goes in the environment block, so localhost and prod are told apart', () => {
+  const fromProd = issueBody({
+    kind: 'bug',
+    description: 'x',
+    url: 'https://resumix.app/resume/abc',
+    submittedAt: AT,
+  });
+  const fromLaptop = issueBody({
+    kind: 'bug',
+    description: 'x',
+    url: 'http://localhost:3000/resume/abc',
+    submittedAt: AT,
+  });
+
+  assert.ok(fromProd.includes('- Origin: https://resumix.app'));
+  assert.ok(fromLaptop.includes('- Origin: http://localhost:3000'));
+  // Same page either way — which is the point of splitting them.
+  assert.ok(fromProd.includes('**Page:** `/resume/abc`'));
+  assert.ok(fromLaptop.includes('**Page:** `/resume/abc`'));
+});
+
+test('a url that will not parse is reported raw rather than dropped', () => {
+  const body = issueBody({
+    kind: 'bug',
+    description: 'x',
+    url: 'not a url',
+    submittedAt: AT,
+  });
+  assert.ok(body.includes('**Page:** `not a url`'));
+  assert.ok(body.includes('- Origin: unknown'));
 });
 
 test('the description is passed through unescaped', () => {
@@ -70,14 +102,24 @@ test('the description is passed through unescaped', () => {
   assert.ok(body.includes('`\\textbf{Bold}` renders as **literal** text'));
 });
 
-test('parentheses in the url are encoded so the markdown link cannot break', () => {
-  const body = issueBody({
+test('a backtick cannot escape the page code span', () => {
+  // A parsed URL percent-encodes it on the way through...
+  const parsed = issueBody({
     kind: 'bug',
     description: 'x',
-    url: 'https://resumix.app/resume/a(b)c',
+    url: 'https://resumix.app/resume/a`b',
     submittedAt: AT,
   });
-  assert.ok(body.includes('(https://resumix.app/resume/a%28b%29c)'));
+  assert.ok(parsed.includes('**Page:** `/resume/a%60b`'));
+
+  // ...but an unparseable one is emitted raw, so it is stripped there.
+  const raw = issueBody({
+    kind: 'bug',
+    description: 'x',
+    url: 'a`b **bold**',
+    submittedAt: AT,
+  });
+  assert.ok(raw.includes('**Page:** `ab **bold**`'));
 });
 
 test('a screenshot url becomes an inline image', () => {
@@ -111,12 +153,23 @@ test('the environment block carries the submission context', () => {
     description: 'x',
     url: 'https://resumix.app/',
     viewport: '1512x857',
-    userAgent: 'Mozilla/5.0',
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
     submittedAt: AT,
   });
-  assert.ok(body.includes('- Submitted: 2026-09-19T15:04:05.123Z'));
+  assert.ok(body.includes('- Origin: https://resumix.app'));
+  // The readable form leads; the raw string stays below it for anything the
+  // parser gets wrong. See user-agent.test.ts.
+  assert.ok(body.includes('- Browser: Chrome 142 on macOS'));
   assert.ok(body.includes('- Viewport: 1512x857'));
-  assert.ok(body.includes('- User agent: `Mozilla/5.0`'));
+  assert.ok(body.includes('- Submitted: 2026-09-19T15:04:05.123Z'));
+  assert.ok(body.includes('- User agent: `Mozilla/5.0 (Macintosh;'));
+});
+
+test('a missing user agent says so in both forms rather than rendering empty', () => {
+  const body = issueBody({ kind: 'bug', description: 'x', url: 'https://resumix.app/' });
+  assert.ok(body.includes('- Browser: unknown'));
+  assert.ok(body.includes('- User agent: `unknown`'));
 });
 
 test('backticks in a user agent cannot escape the code span', () => {
