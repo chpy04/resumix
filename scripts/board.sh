@@ -45,7 +45,7 @@ move() {
           }
         }
       }
-    }') || die "cannot read project $PROJECT (is the token missing `project` scope?)"
+    }') || die "cannot read project $PROJECT (token may be missing the project scope)"
 
   local project_id field_id option_id
   project_id=$(jq -r '.data.user.projectV2.id' <<<"$project_json")
