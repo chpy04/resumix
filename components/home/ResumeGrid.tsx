@@ -1,0 +1,186 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ApiError, createResume, listResumes } from '@/lib/api-client';
+import { fuzzyFilter } from '@/lib/fuzzy';
+import type { ResumeSummary } from '@/lib/types';
+import NewResumeCard from '@/components/home/NewResumeCard';
+import NewResumeDialog from '@/components/home/NewResumeDialog';
+import ResumeCard from '@/components/home/ResumeCard';
+import SearchBox from '@/components/home/SearchBox';
+
+type LoadState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; resumes: ResumeSummary[] };
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
+}
+
+/** The home page's resume grid: fetches, searches, creates, and downloads. */
+export default function ResumeGrid() {
+  const router = useRouter();
+  const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [query, setQuery] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load(): Promise<void> {
+      try {
+        const resumes = await listResumes();
+        if (!cancelled) setState({ status: 'ready', resumes });
+      } catch (error) {
+        if (!cancelled) {
+          setState({
+            status: 'error',
+            message: error instanceof ApiError ? error.message : 'Could not load resumes.',
+          });
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      const isCmdK = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k';
+      if (isCmdK) {
+        event.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (event.key === '/' && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const resumes = state.status === 'ready' ? state.resumes : [];
+  const defaultResume = useMemo(() => resumes.find((resume) => resume.isDefault) ?? null, [resumes]);
+  const otherResumes = useMemo(
+    () => resumes.filter((resume) => resume.id !== defaultResume?.id),
+    [resumes, defaultResume],
+  );
+
+  const visibleResumes = useMemo(() => {
+    if (query.trim().length === 0) return otherResumes;
+    const matches = fuzzyFilter(otherResumes, query, (resume) => resume.name);
+    return matches.map((match) => otherResumes[match.index]!);
+  }, [otherResumes, query]);
+
+  async function handleCreate(companyName: string): Promise<void> {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const created = await createResume(companyName);
+      router.push(`/resume/${created.id}`);
+    } catch (error) {
+      setCreateError(error instanceof ApiError ? error.message : 'Could not create resume.');
+      setCreating(false);
+    }
+  }
+
+  return (
+    <main className="mx-auto max-w-6xl px-6 py-10">
+      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--color-ink)]">Resumix</h1>
+          <p className="mt-1 text-sm text-[var(--color-ink-dim)]">
+            Pick a resume to keep editing, or start a new one for a company.
+          </p>
+        </div>
+        <SearchBox ref={searchRef} value={query} onChange={setQuery} />
+      </header>
+
+      {state.status === 'loading' ? <GridSkeleton /> : null}
+
+      {state.status === 'error' ? (
+        <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-6 text-sm text-red-300">
+          <p className="font-medium">Couldn&apos;t load your resumes.</p>
+          <p className="mt-1 text-red-400/80">{state.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setState({ status: 'loading' });
+              void listResumes()
+                .then((loaded) => setState({ status: 'ready', resumes: loaded }))
+                .catch((error) =>
+                  setState({
+                    status: 'error',
+                    message: error instanceof ApiError ? error.message : 'Could not load resumes.',
+                  }),
+                );
+            }}
+            className="mt-4 rounded-md border border-red-800 px-3 py-1.5 text-sm text-red-200 transition-colors hover:bg-red-900/30"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+
+      {state.status === 'ready' ? (
+        <>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <NewResumeCard onClick={() => setDialogOpen(true)} />
+            {defaultResume ? <ResumeCard resume={defaultResume} isDefault /> : null}
+            {visibleResumes.map((resume) => (
+              <ResumeCard key={resume.id} resume={resume} />
+            ))}
+          </div>
+
+          {resumes.length === 0 ? (
+            <p className="mt-10 text-sm text-[var(--color-ink-dim)]">
+              No resumes yet. Click the new resume card to create your first one.
+            </p>
+          ) : null}
+
+          {resumes.length > 0 && query.trim().length > 0 && visibleResumes.length === 0 ? (
+            <p className="mt-10 text-sm text-[var(--color-ink-dim)]">No resumes match &quot;{query}&quot;.</p>
+          ) : null}
+        </>
+      ) : null}
+
+      <NewResumeDialog
+        open={dialogOpen}
+        submitting={creating}
+        error={createError}
+        onSubmit={(name) => void handleCreate(name)}
+        onClose={() => {
+          if (creating) return;
+          setDialogOpen(false);
+          setCreateError(null);
+        }}
+      />
+    </main>
+  );
+}
+
+function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" aria-hidden="true">
+      {Array.from({ length: 10 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-36 animate-pulse rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]"
+        />
+      ))}
+    </div>
+  );
+}
