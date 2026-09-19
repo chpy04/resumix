@@ -17,6 +17,7 @@
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./*"] }
   },
