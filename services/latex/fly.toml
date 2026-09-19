@@ -1,0 +1,46 @@
+# Fly.io app config for the latex compile sidecar.
+#
+# Written for `fly launch --no-deploy --name resumix-latex` / `fly deploy` from
+# this directory (services/latex/). See ../../docs/DEPLOYMENT.md for the full
+# walkthrough. This file is written-but-unexecuted: it has not been deployed,
+# only validated as syntactically correct TOML.
+#
+# A public IP is unfortunately unavoidable here: the caller is a Vercel
+# serverless function, which lives in a different cloud and cannot join Fly's
+# private 6PN/WireGuard network, so `[http_service]` below (needed anyway for
+# the scale-to-zero auto-start/auto-stop proxy path) does get a public route.
+# The latex service has no auth of its own (see README.md's Security
+# section): pdflatex can read files on the box, so exposing this publicly is
+# a real, documented trade-off, not an oversight — see
+# ../../docs/DEPLOYMENT.md's "Locking it down" section for the mitigations
+# (server-only URL, non-guessable app name, -no-shell-escape + isolated temp
+# dirs bounding the blast radius, and a shared-secret bearer token as the
+# recommended but not-yet-implemented follow-up).
+
+app = "resumix-latex"
+primary_region = "iad"           # pick a region close to wherever the Next.js app runs
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  # Tune down if a machine's memory is tight; see vm.memory below.
+  LATEX_MAX_CONCURRENCY = "2"
+  LATEX_MAX_QUEUE = "8"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"
+
+# Scale-to-zero: this sidecar only needs to exist while a compile is in
+# flight, so let Fly stop the machine when idle and start it back up on the
+# next request. The first request after a cold start pays a startup penalty
+# (a few seconds), which is an acceptable trade for a single-user app.
+[http_service]
+  internal_port = 8080
+  force_https = false
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]

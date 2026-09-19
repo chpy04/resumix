@@ -107,43 +107,26 @@ or the Fly.io private URL in prod).
 
 ## Deploying to Fly.io
 
-This is a normal single-Dockerfile Fly app; deploy it as its own Fly app
-separate from the Next.js app, and reach it over Fly's private networking
-(`.internal` DNS / 6PN) rather than the public internet.
+This is a normal single-Dockerfile Fly app; deploy it as its own Fly app,
+separate from the Next.js app. A checked-in `services/latex/fly.toml` is
+ready to use:
 
 ```sh
 cd services/latex
-fly launch --no-deploy --name resumix-latex   # creates fly.toml, pick a region close to the app
-```
-
-In the generated `fly.toml`:
-
-- set `internal_port = 8080` under `[http_service]` (or `[[services]]` on
-  older config), matching `EXPOSE 8080` in the Dockerfile;
-- **set `force_https = false` and do not rely on Fly's public HTTP
-  service for this app** — the intent is that only the Next.js app reaches
-  it, over Fly's private `6PN` network at
-  `http://resumix-latex.internal:8080` (or `http://resumix-latex.flycast:8080`
-  for a private-only load-balanced address). If you want to fully close the
-  public edge, remove the `[http_service]` block's public routing or use
-  `fly ips` to avoid allocating a public IP for this app at all.
-- give it enough memory for TeX Live + a couple of concurrent `pdflatex`
-  processes — `shared-cpu-1x` with 512MB–1GB is comfortable for single-page
-  resumes; bump `LATEX_MAX_CONCURRENCY` down if memory is tight.
-- no persistent volume is needed — everything lives in per-request temp
-  dirs that are deleted immediately after each compile.
-
-Then:
-
-```sh
+fly launch --no-deploy --name resumix-latex   # reuses the checked-in fly.toml; pick a region
 fly deploy
 ```
 
-And in the Next.js app's environment (wherever it's deployed), set:
+**Correction (T11):** an earlier version of this section said to keep this
+app fully private, reachable only over Fly's `6PN`/`.internal` networking.
+That's only true if the Next.js app *also* runs on Fly. This project's actual
+target (`spec.md`) is **Vercel** for the Next.js app, and Vercel serverless
+functions are a different cloud — they cannot join Fly's private WireGuard
+mesh, so `LATEX_SERVICE_URL` must be this app's **public** Fly URL
+(`https://resumix-latex.fly.dev`), not the `.internal`/`.flycast` address.
+See `docs/DEPLOYMENT.md`'s "Locking it down" section for the full trade-off
+(a public IP is unavoidable here) and the mitigations, given this service has
+no authentication of its own.
 
-```
-LATEX_SERVICE_URL=http://resumix-latex.internal:8080
-```
-
-(or `https://resumix-latex.flycast:8080` if using Flycast — see Fly's
-private networking docs for the current recommended internal address form).
+The full walkthrough — Supabase, this service, and Vercel, in order, with a
+troubleshooting section — lives in `docs/DEPLOYMENT.md`.
