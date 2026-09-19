@@ -42,9 +42,15 @@ export async function compileTex(
 
   let res: Response;
   try {
+    const token = process.env.LATEX_SERVICE_TOKEN;
     res = await fetch(`${baseUrl.replace(/\/$/, '')}/compile`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        // Shared secret; the sidecar rejects unauthenticated calls when it is
+        // configured with one. See docs/DEPLOYMENT.md.
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ tex }),
       signal: controller.signal,
     });

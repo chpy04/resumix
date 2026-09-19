@@ -17,6 +17,9 @@ services:
 
   latex:
     build: ./services/latex
+    environment:
+      # Empty locally; set it (and LATEX_SERVICE_TOKEN in .env) to require auth.
+      LATEX_SERVICE_TOKEN: ${LATEX_SERVICE_TOKEN:-}
     ports:
       - '8080:8080'
     healthcheck:

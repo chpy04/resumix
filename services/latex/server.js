@@ -256,10 +256,45 @@ function readBody(req) {
   });
 }
 
+/**
+ * Shared-secret gate. This service has no other authentication, and LaTeX can
+ * read files on the box it runs on, so it must never be reachable by anyone but
+ * the app. On Fly.io a Vercel caller cannot join the private 6PN mesh, so the
+ * instance needs a public IP and this token is the only thing in front of it.
+ *
+ * Unset => open, which is fine for docker-compose on localhost but is logged
+ * loudly at startup. See docs/DEPLOYMENT.md.
+ */
+const AUTH_TOKEN = process.env.LATEX_SERVICE_TOKEN || '';
+
+/** Constant-time compare, so a wrong token leaks nothing through timing. */
+function tokenMatches(presented) {
+  if (presented.length !== AUTH_TOKEN.length) return false;
+  let diff = 0;
+  for (let i = 0; i < presented.length; i++) {
+    diff |= presented.charCodeAt(i) ^ AUTH_TOKEN.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function isAuthorized(req) {
+  if (!AUTH_TOKEN) return true;
+  const header = req.headers.authorization || '';
+  const presented = header.startsWith('Bearer ') ? header.slice(7) : '';
+  return tokenMatches(presented);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
+    // /health stays open so container and platform health checks work without
+    // having to distribute the token to them.
     if (req.method === 'GET' && req.url === '/health') {
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (!isAuthorized(req)) {
+      sendJson(res, 401, { error: 'unauthorized' });
       return;
     }
 
@@ -312,4 +347,10 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`latex service listening on :${PORT}`);
+  if (!AUTH_TOKEN) {
+    console.warn(
+      '[latex] LATEX_SERVICE_TOKEN is unset — /compile is UNAUTHENTICATED. ' +
+        'Fine on a private docker network; never deploy it this way.',
+    );
+  }
 });

@@ -158,14 +158,22 @@ possible. Mitigate it in layers instead of pretending it's fully private:
    non-root user, and per-request temp dirs mean an unauthenticated caller can
    waste compute but not read app data or secrets off the box. Scale-to-zero
    caps the idle cost at $0.
-4. **The real fix, left as a follow-up (out of scope for this task — it
-   requires a small code change to `services/latex/server.js`, owned by T2,
-   and to `lib/latex.ts`, owned by T6):** add a shared-secret bearer token.
-   `server.js` checks an `Authorization: Bearer <LATEX_SERVICE_TOKEN>` header
-   and rejects with 401 if it's missing or wrong; `lib/latex.ts` sends the same
-   token from an env var set identically on both Fly (`fly secrets set
-   LATEX_SERVICE_TOKEN=...`) and Vercel. This is a ~10-line change and closes
-   the gap properly; it just isn't part of this deployment-documentation task.
+4. **Set `LATEX_SERVICE_TOKEN` — this is the actual fix, and it is implemented.**
+   `services/latex/server.js` requires `Authorization: Bearer <LATEX_SERVICE_TOKEN>`
+   on `/compile` and returns `401` without it (compared in constant time);
+   `lib/latex.ts` sends it. `/health` stays open so platform health checks work.
+   Set the **same** value in both places:
+
+   ```bash
+   TOKEN=$(openssl rand -hex 32)
+   fly secrets set LATEX_SERVICE_TOKEN="$TOKEN" --app resumix-latex
+   vercel env add LATEX_SERVICE_TOKEN production   # paste the same value
+   ```
+
+   When the variable is unset the service logs a loud startup warning and stays
+   open — acceptable on a private docker network locally, never in a deployment.
+   **Treat this as mandatory for any deploy**, not optional hardening: without it
+   the public Fly IP above is an open LaTeX compiler.
 5. If you truly need zero public exposure and can live without Vercel, the
    alternative is to co-locate: run the Next.js app itself on Fly (a real
    container, not serverless) alongside the sidecar, talking over `localhost`
