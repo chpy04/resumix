@@ -134,6 +134,34 @@ is no PDF to name or snapshot. Clients must branch on `.ok`, never on
 does _not_ auto-select it into any resume; the editor issues a follow-up
 `PUT /selections` if the user wants it on the current resume.
 
+## Feedback
+
+The only endpoint that writes somewhere other than the database.
+
+| method | path            | body                  | returns                                   |
+| ------ | --------------- | --------------------- | ----------------------------------------- |
+| POST   | `/api/feedback` | `multipart/form-data` | `201 { number, url, screenshotUploaded }` |
+
+Form fields: `kind` (`bug` \| `feature`, required), `description` (required,
+≤ 10 000 chars), `url` (required, the page being reported on — http(s) only),
+`viewport`, `userAgent`, and an optional `screenshot` file
+(`image/png` \| `jpeg` \| `gif` \| `webp`, ≤ 4 MB).
+
+Multipart rather than JSON because a base64 screenshot inside JSON would be
+~33% larger against Vercel's 4.5 MB request-body limit. The widget downscales
+anything over 1 MB before sending.
+
+Creates a GitHub issue in `GITHUB_REPO`, labelled `feedback` + `bug`/`enhancement`.
+A screenshot is committed to the orphan `FEEDBACK_ASSETS_BRANCH` branch and linked
+in the body at that commit's sha, so the image is immutable. If the screenshot
+upload fails the issue is still filed, says so in its body, and the response
+carries `screenshotUploaded: false` — the written report is never lost over an
+image.
+
+Statuses beyond the usual: **503** if `GITHUB_TOKEN`/`GITHUB_REPO` are unset
+(fails closed — feedback is never silently dropped), **502** if GitHub itself
+refuses.
+
 ## Latex service
 
 Not part of the Next.js app. `POST http://latex:8080/compile`

@@ -66,6 +66,14 @@ Wave 2/3 progress:
 - **T12 review** — `docs/REVIEW.md`. One low-severity fix (header sanitization); no critical
   or high findings in the areas examined.
 
+- **T13 feedback widget** — a floating "Give feedback" button on every gated page
+  opens a form (bug / feature request, description, drag-drop-or-paste screenshot,
+  auto-captured page URL) that files a **GitHub issue** via `POST /api/feedback`.
+  Screenshots are committed to the orphan `feedback-assets` branch and linked at
+  their commit sha. This is the push half of the feedback loop; the pull half (an
+  agent that works issues off GitHub) lives outside this repo. Needs `GITHUB_TOKEN`
+  and `GITHUB_REPO` set — without them the endpoint fails closed with a 503.
+
 ## T14 — multi-user
 
 The database is no longer single-tenant. A `users` table owns everything:

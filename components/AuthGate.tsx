@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import FeedbackWidget from '@/components/feedback/FeedbackWidget';
 import LoginForm from '@/components/LoginForm';
 import { getSession } from '@/lib/api-client';
 import { AUTH_EXPIRED_EVENT } from '@/lib/auth-client';
@@ -68,5 +69,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  // The feedback widget is mounted here rather than in the root layout so it
+  // only ever appears behind the gate — its API call needs a resolved session,
+  // and offering it on the login screen would be a button that can only fail.
+  return (
+    <>
+      {children}
+      <FeedbackWidget />
+    </>
+  );
 }

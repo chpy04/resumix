@@ -58,8 +58,12 @@ points for T9. T9 branches off T8 rather than off `main`.
 | T11 | Deployment path (Supabase / Fly.io / Vercel), README, CLAUDE.md, CONTRIBUTING.md | ✅ merged                                                                            |
 | T12 | Final review pass → `docs/REVIEW.md`                                             | ✅ done (by the PM; the review agent was killed by a cyber-safeguard false positive) |
 
-## Wave 5 — multi-user
+## Wave 5 — post-feature-complete
 
-| id  | task                                                                                                          | owns                                                              | branch                | status    |
-| --- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------- | --------- |
-| T14 | Multi-user: `users` table, per-user scoping of every query, dev/password/supabase auth modes, seeded dev user | `drizzle/0003_*`, `lib/session.ts`, `lib/auth*`, `lib/queries/**` | `feat/t14-multi-user` | ✅ merged |
+| id  | task                                                                                                          | owns                                                               | branch                     | status    |
+| --- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------- | --------- |
+| T13 | In-app feedback widget → GitHub issue                                                                         | `lib/feedback/**`, `app/api/feedback/**`, `components/feedback/**` | `feat/t13-feedback-widget` | ✅ merged |
+| T14 | Multi-user: `users` table, per-user scoping of every query, dev/password/supabase auth modes, seeded dev user | `drizzle/0003_*`, `lib/session.ts`, `lib/auth*`, `lib/queries/**`  | `feat/t14-multi-user`      | ✅ merged |
+
+T13 is the "push" half of a feedback loop whose "pull" half (an agent that
+reads issues off GitHub, fixes them, and deploys) lives outside this repo.
