@@ -18,6 +18,15 @@ const skip = !process.env.DATABASE_URL;
 let BadRequestError: typeof import('./errors.ts').BadRequestError;
 let NotFoundError: typeof import('./errors.ts').NotFoundError;
 let assembleLibrary: typeof import('./library.ts').assembleLibrary;
+let createApplication: typeof import('./applications.ts').createApplication;
+let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
+let listApplications: typeof import('./applications.ts').listApplications;
+let recordApplied: typeof import('./applications.ts').recordApplied;
+let updateApplication: typeof import('./applications.ts').updateApplication;
+let addApplicationFile: typeof import('./application-files.ts').addApplicationFile;
+let getApplicationFileBlob: typeof import('./application-files.ts').getApplicationFileBlob;
+let listApplicationFiles: typeof import('./application-files.ts').listApplicationFiles;
+let updateApplicationFile: typeof import('./application-files.ts').updateApplicationFile;
 let createResume: typeof import('./resumes.ts').createResume;
 let deleteResume: typeof import('./resumes.ts').deleteResume;
 let getResumeDetail: typeof import('./resumes.ts').getResumeDetail;
@@ -41,6 +50,10 @@ let fixtures: typeof import('./test-fixtures.ts');
 if (!skip) {
   ({ BadRequestError, NotFoundError } = await import('./errors.ts'));
   ({ assembleLibrary } = await import('./library.ts'));
+  ({ createApplication, getApplicationDetail, listApplications, recordApplied, updateApplication } =
+    await import('./applications.ts'));
+  ({ addApplicationFile, getApplicationFileBlob, listApplicationFiles, updateApplicationFile } =
+    await import('./application-files.ts'));
   ({
     createResume,
     deleteResume,
@@ -274,5 +287,91 @@ test("createResume clones your own default, never the other user's", { skip }, a
     assert.deepEqual(selections.experiences, [bobExp.id]);
   } finally {
     await fixtures.deleteResumeRow(clone.id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Applications. `application` is a root table and carries `user_id`;
+// `application_file` does not, and inherits its owner through a join — the
+// same split, and the same risk, as an experience and its bullets.
+// ---------------------------------------------------------------------------
+
+test("another user's application reads as not found", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobApplication = await createApplication(bob.id, { company: `Bob Co ${tag}` });
+  try {
+    assert.equal(await getApplicationDetail(alice.id, bobApplication.id), null);
+    await assert.rejects(
+      () => updateApplication(alice.id, bobApplication.id, { company: 'Alice Co' }),
+      NotFoundError,
+    );
+    await assert.rejects(() => recordApplied(alice.id, bobApplication.id, null), NotFoundError);
+
+    const aliceBoard = await listApplications(alice.id, true);
+    assert.ok(!aliceBoard.some((a) => a.id === bobApplication.id));
+
+    // ...and nothing was written along the way.
+    const untouched = await getApplicationDetail(bob.id, bobApplication.id);
+    assert.equal(untouched?.company, `Bob Co ${tag}`);
+    assert.equal(untouched?.status, 'draft');
+  } finally {
+    await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+test("an application cannot be pointed at another user's resume", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobResume = await fixtures.insertTestResume(bob.id, tag);
+  const aliceApplication = await createApplication(alice.id, { company: `Alice Co ${tag}` });
+  try {
+    await assert.rejects(
+      () => createApplication(alice.id, { company: 'Alice Co', resumeId: bobResume.id }),
+      BadRequestError,
+    );
+    await assert.rejects(
+      () => updateApplication(alice.id, aliceApplication.id, { resumeId: bobResume.id }),
+      BadRequestError,
+    );
+
+    const still = await getApplicationDetail(alice.id, aliceApplication.id);
+    assert.equal(still?.resumeId, null);
+  } finally {
+    await fixtures.deleteApplicationRow(aliceApplication.id);
+    await fixtures.deleteResumeRow(bobResume.id);
+  }
+});
+
+test("another user's attachments are unreachable by id", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobApplication = await createApplication(bob.id, { company: `Bob Co ${tag}` });
+  try {
+    const bobFile = await addApplicationFile(bob.id, bobApplication.id, {
+      filename: 'offer.txt',
+      contentType: 'text/plain',
+      bytes: Buffer.from("Bob's offer"),
+    });
+
+    // The bytes are the point: a file carries no user_id of its own.
+    assert.equal(await getApplicationFileBlob(alice.id, bobFile.id), null);
+    await assert.rejects(
+      () => updateApplicationFile(alice.id, bobFile.id, { isArchived: true }),
+      NotFoundError,
+    );
+    assert.deepEqual(await listApplicationFiles(alice.id, bobApplication.id), []);
+    await assert.rejects(
+      () =>
+        addApplicationFile(alice.id, bobApplication.id, {
+          filename: 'sneaky.txt',
+          contentType: 'text/plain',
+          bytes: Buffer.from('nope'),
+        }),
+      NotFoundError,
+    );
+
+    const bobsFiles = await listApplicationFiles(bob.id, bobApplication.id);
+    assert.equal(bobsFiles.length, 1);
+    assert.equal(bobsFiles[0]?.isArchived, false);
+  } finally {
+    await fixtures.deleteApplicationRow(bobApplication.id);
   }
 });

@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import { db, sql } from '../db/index.ts';
 import {
+  application,
   experience,
   experienceBullet,
   project,
@@ -153,6 +154,24 @@ export async function insertTestResume(userId: string, tag: string) {
 
 export async function deleteResumeRow(id: string): Promise<void> {
   await db.delete(resume).where(eq(resume.id, id));
+}
+
+/** Applications are archived rather than deleted in the app, but they are
+ *  visible on the board, so tests clean up after themselves like resumes do
+ *  rather than filling a shared dev database with fixtures. Delete these
+ *  *before* any resume they were sent with: the snapshot reference is
+ *  `on delete restrict` on purpose. */
+export async function insertTestApplication(userId: string, tag: string) {
+  const [row] = await db
+    .insert(application)
+    .values({ userId, company: `T-App Test Co ${tag}`, roleTitle: 'Test Engineer' })
+    .returning();
+  if (!row) throw new Error('failed to insert test application');
+  return row;
+}
+
+export async function deleteApplicationRow(id: string): Promise<void> {
+  await db.delete(application).where(eq(application.id, id));
 }
 
 /**

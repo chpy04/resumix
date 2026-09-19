@@ -23,11 +23,17 @@ export interface PdfSnapshot extends PdfSnapshotMeta {
   bytes: Buffer;
 }
 
+/** A freshly stored snapshot, which is the one case where the row's own id
+ *  matters: an application pins itself to it (docs/SCHEMA.md, `application`). */
+export interface SavedPdfSnapshot extends PdfSnapshotMeta {
+  id: string;
+}
+
 /** Stores a new snapshot. History is kept — this never overwrites a prior row. */
 export async function saveResumePdfSnapshot(
   resumeId: string,
   snapshot: NewPdfSnapshot,
-): Promise<PdfSnapshotMeta> {
+): Promise<SavedPdfSnapshot> {
   const [row] = await db
     .insert(resumePdf)
     .values({
@@ -37,12 +43,39 @@ export async function saveResumePdfSnapshot(
       byteSize: snapshot.bytes.byteLength,
       tex: snapshot.tex,
     })
-    .returning({ filename: resumePdf.filename, createdAt: resumePdf.createdAt });
+    .returning({
+      id: resumePdf.id,
+      filename: resumePdf.filename,
+      createdAt: resumePdf.createdAt,
+    });
 
   if (!row) {
     throw new Error('failed to store PDF snapshot');
   }
-  return { filename: row.filename, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, filename: row.filename, createdAt: row.createdAt.toISOString() };
+}
+
+/**
+ * One snapshot by its own id — how an application serves back the exact bytes
+ * it was sent with, rather than whatever the resume looks like now.
+ *
+ * Snapshots carry no `user_id`; ownership comes from the row that referenced
+ * this id, which the caller has already resolved against the session (see
+ * `lib/queries/applications.ts`).
+ */
+export async function getResumePdfSnapshotById(id: string): Promise<PdfSnapshot | null> {
+  const [row] = await db
+    .select({
+      filename: resumePdf.filename,
+      bytes: resumePdf.bytes,
+      createdAt: resumePdf.createdAt,
+    })
+    .from(resumePdf)
+    .where(eq(resumePdf.id, id))
+    .limit(1);
+
+  if (!row) return null;
+  return { filename: row.filename, bytes: row.bytes, createdAt: row.createdAt.toISOString() };
 }
 
 /** The most recently stored snapshot for a resume, or `null` if it has never been saved. */

@@ -11,6 +11,7 @@ import { db } from '../db/index.ts';
 import { resume } from '../db/schema.ts';
 import type { ResumeDetail, ResumeSummary } from '../types.ts';
 import { getLatestResumePdfMetaByResumeId } from '../storage.ts';
+import { countApplicationsSentWithResume } from './applications.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
 import { assembleLibrary } from './library.ts';
 import { cloneSelections, getSelections } from './selections.ts';
@@ -122,6 +123,18 @@ export async function deleteResume(userId: string, id: string): Promise<void> {
   if (!row) throw new NotFoundError(`resume ${id} not found`);
   if (row.isDefault) {
     throw new BadRequestError('cannot delete the default resume');
+  }
+
+  // `resume_pdf` cascades from `resume`, so deleting this would take the
+  // snapshots with it — including one an application points at as the record
+  // of what it actually sent. That record wins (D-031). Checked here rather
+  // than left to the foreign key so the caller gets a 400 that says why,
+  // instead of a 500 out of Postgres.
+  const sentCount = await countApplicationsSentWithResume(userId, id);
+  if (sentCount > 0) {
+    throw new BadRequestError(
+      `cannot delete a resume that ${sentCount} application(s) were sent with`,
+    );
   }
   await db.delete(resume).where(and(eq(resume.id, id), eq(resume.userId, userId)));
 }
