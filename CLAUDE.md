@@ -17,12 +17,16 @@ container → get a real `pdflatex` PDF back. Saved PDFs are snapshotted into
 `resume_pdf`, so a resume's downloaded bytes never silently change when
 content or templates are edited later.
 
-An **Application** is one job applied to: a company, a status
+An **Application** is one job applied to, and the thing the app is organised
+around — the home page is the applications board, the resume library sits
+behind it at `/resumes`. An application carries a company, a status
 (`draft`/`applied`/`interviewing`/`offered`/`rejected`), freeform notes,
-untyped attachments, and two resume references — the live `resume_id` you
-tailor before sending, and the `resume_pdf_id` snapshot pinned the moment you
-mark it applied. Two tables, deliberately: no company, event, task or contact
-tables (D-031).
+untyped attachments, and two resume references: the live `resume_id` you
+tailor, and the `resume_pdf_id` snapshot pinned when you save that resume to
+the application. Logging one clones a resume named after the company. Two
+tables, deliberately: no company, event, task or contact tables (D-031).
+`applied` is not a board column — it is a searchable table behind its own tab,
+because most applications are sent and never touched again (D-032).
 
 The consequence worth internalising: **a resume stores no text.** Editing a
 bullet is a global edit that instantly changes every resume that picked it.
@@ -82,7 +86,7 @@ one cannot:
   page default export taking a custom prop typechecks fine and fails the
   build. That bug reached `main` once.
 - `test` needs `DATABASE_URL` or 16 integration tests silently self-skip and
-  still report green. Expect **218 passing, 0 skipped**.
+  still report green. Expect **222 passing, 0 skipped**.
 - `smoke` reads live DB state and a prior Playwright run leaves edited
   content behind — hence the reseed before it.
 

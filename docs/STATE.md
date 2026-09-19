@@ -19,10 +19,13 @@ once, globally. Editing a bullet is therefore a global edit that instantly
 changes every resume that selected it. That is intentional, and it is the
 source of most reports that turn out not to be bugs.
 
-An **application** is the other half: one row per job applied to, carrying a
-status and two resume references — the live resume being tailored, and the
-immutable PDF snapshot that was actually sent (D-031). Everything else about
-it is freeform text and untyped attachments.
+An **application** is what the app is now organised around: one row per job,
+carrying a status and two resume references — the live resume being tailored,
+and the immutable PDF snapshot pinned to it (D-031). Logging one clones a
+resume named after the company, so there is always something to tailor;
+everything else about it is freeform text and untyped attachments. Marking it
+applied moves it off the board into the Applied table, where most applications
+quietly stay (D-032).
 
 Rendering is: load the selections → substitute them into the template's
 `<<TOKEN>>` placeholders → POST the `.tex` to a TeX Live sidecar → get a real
@@ -37,13 +40,17 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 ## The pieces
 
 - **Web app** — Next.js 15 / React 19 / TypeScript / Tailwind v4, App Router.
-  Home page is a resume grid with fuzzy search and per-card download of the
-  saved snapshot. `/resume/[id]` is a two-pane editor: content selection with
-  `@dnd-kit` reordering and per-slice autosave on the left, a live PDF preview
-  and a LaTeX template tab on the right. `/applications` is the board —
-  every application in a column per status — and `/applications/[id]` is its
-  detail page: fields, freeform notes, attachments, and the button that marks
-  one applied.
+  The home page is the applications board: a **Pipeline** tab with a column
+  per status that still needs something (draft, interviewing, offered,
+  rejected) and an **Applied** tab holding everything sent, as a searchable
+  table. `/applications/[id]` is one application — fields, freeform notes,
+  attachments, the linked resume and the button that marks it applied.
+  `/resumes` is the resume library (fuzzy search, per-card download of the
+  saved snapshot), and `/resume/[id]` is the two-pane editor: content
+  selection with `@dnd-kit` reordering and per-slice autosave on the left, a
+  live PDF preview and a LaTeX template tab on the right.
+  `/resume/[id]?application=<id>` is the same editor in **application mode**,
+  where back returns to the application and saving writes the PDF to it.
 - **Database** — Postgres, 17 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open

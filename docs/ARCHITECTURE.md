@@ -50,9 +50,11 @@ hand back the exact bytes a resume was last saved with.
 
 ```
 app/                     Next.js App Router
-  page.tsx               home: resume grid + fuzzy search
+  page.tsx               home: the applications board (Pipeline | Applied)
+  applications/[id]/     one application: fields, notes, files, its resume
+  resumes/page.tsx       the resume library: grid + fuzzy search
   resume/[id]/page.tsx   editor: content|template tabs + live PDF
-  applications/          board (a column per status) + per-application detail
+                         ?application=<id> -> saves back to that application
   api/...                route handlers (see docs/API.md)
 lib/
   applications/          status vocabulary, board grouping, attachment rules (pure)

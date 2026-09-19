@@ -147,11 +147,23 @@ first time an application leaves `draft` and never cleared (docs/SCHEMA.md).
 `resumeId: null` unlinks the resume; `postingUrl` must be empty or http(s),
 since it is rendered as a link.
 
-`POST /apply` is the moment a live resume becomes a record. It renders the
+`createResumeFrom` clones that resume under the company's name and links the
+copy — the normal path, since a new application arrives with something to
+tailor. `resumeId` links a resume that already exists instead; passing both is
+a `400`, and passing neither leaves the application without one.
+
+**`POST /pdf` is "save this resume to the application".** It renders the
 linked resume, stores a `resume_pdf` snapshot, and points the application at
-it — leaving `resumeId` in place. With no resume linked it only stamps the
-status, which is how an application sent from somewhere else gets logged.
-A LaTeX compile failure is **not** an HTTP error: it is
+it, leaving the status alone — this is what the resume editor calls when it
+was opened from an application. `400` if no resume is linked.
+
+**`POST /apply` declares it sent**, which is what moves it off the pipeline
+board and into the Applied table. If nothing has been saved to the application
+yet it takes that snapshot first, so a sent application is never left with no
+record; if one is already pinned, that snapshot stands and nothing is
+re-rendered.
+
+A LaTeX compile failure is **not** an HTTP error on either POST: it is
 `200 { ok: false, pages, errors, warnings, log }` and nothing is written,
 exactly as for `POST /api/resumes/:id/pdf`. Branch on `.ok`.
 
