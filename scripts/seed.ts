@@ -50,10 +50,14 @@ function one<T>(rows: T[]): T {
   return rows[0] as T;
 }
 
-// Content + resume tables, in an order TRUNCATE...CASCADE can process safely.
-// CASCADE makes the exact listed order irrelevant (it follows FKs itself),
-// but it's listed leaves-first for readability.
+// Content, resume and application tables, in an order TRUNCATE...CASCADE can
+// process safely. CASCADE makes the exact listed order irrelevant (it follows
+// FKs itself), but it's listed leaves-first for readability. Applications are
+// not seeded; they are listed because truncating `users` would reach them
+// through CASCADE anyway, and leaving them implicit hides that.
 const ALL_SEEDED_TABLES = [
+  'application_file',
+  'application',
   'resume_pdf',
   'resume_technical_skill',
   'resume_technical_skill_row',

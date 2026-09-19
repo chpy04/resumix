@@ -9,6 +9,7 @@ import {
   customType,
   index,
   integer,
+  pgEnum,
   pgTable,
   primaryKey,
   text,
@@ -314,6 +315,66 @@ export const resumePdf = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Applications
+//
+// One row per application, plus its attachments — no company table, no event
+// log, no tasks, no contacts (D-031). `application` is a sixth root table and
+// carries its owner; `application_file` infers one through its parent, like
+// every other non-root table (D-018).
+// ---------------------------------------------------------------------------
+
+export const applicationStatus = pgEnum('application_status', [
+  'draft',
+  'applied',
+  'interviewing',
+  'offered',
+  'rejected',
+]);
+
+export const application = pgTable(
+  'application',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    company: text('company').notNull(),
+    roleTitle: text('role_title').notNull().default(''),
+    postingUrl: text('posting_url').notNull().default(''),
+    notes: text('notes').notNull().default(''),
+    status: applicationStatus('status').notNull().default('draft'),
+    /** Null exactly while the application is still a draft. */
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    /** The live resume being tailored — keeps changing after it is sent. */
+    resumeId: uuid('resume_id').references(() => resume.id, { onDelete: 'set null' }),
+    /** The immutable snapshot that actually went out; null until applied. */
+    resumePdfId: uuid('resume_pdf_id').references(() => resumePdf.id, { onDelete: 'restrict' }),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [
+    index('ix_application_user_id').on(t.userId),
+    index('ix_application_resume_id').on(t.resumeId),
+    index('ix_application_resume_pdf_id').on(t.resumePdfId),
+  ],
+);
+
+export const applicationFile = pgTable(
+  'application_file',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicationId: uuid('application_id')
+      .notNull()
+      .references(() => application.id, { onDelete: 'cascade' }),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    bytes: bytea('bytes').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index('ix_application_file_application_id').on(t.applicationId, t.createdAt.desc())],
+);
+
+// ---------------------------------------------------------------------------
 // Relations (used by the query API; harmless if unused by callers)
 // ---------------------------------------------------------------------------
 
@@ -366,4 +427,17 @@ export const resumeRelations = relations(resume, ({ one, many }) => ({
 
 export const resumePdfRelations = relations(resumePdf, ({ one }) => ({
   resume: one(resume, { fields: [resumePdf.resumeId], references: [resume.id] }),
+}));
+
+export const applicationRelations = relations(application, ({ one, many }) => ({
+  resume: one(resume, { fields: [application.resumeId], references: [resume.id] }),
+  sentPdf: one(resumePdf, { fields: [application.resumePdfId], references: [resumePdf.id] }),
+  files: many(applicationFile),
+}));
+
+export const applicationFileRelations = relations(applicationFile, ({ one }) => ({
+  application: one(application, {
+    fields: [applicationFile.applicationId],
+    references: [application.id],
+  }),
 }));
