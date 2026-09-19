@@ -1,6 +1,9 @@
 /**
  * Seeds the database with:
- *   - the default template (DEFAULT_TEMPLATE, name "Default", is_default true)
+ *   - one user, who owns everything below (`SEED_USER_EMAIL`, defaulting to
+ *     the address in the reference resume's header)
+ *   - that user's default template (DEFAULT_TEMPLATE, name "Default",
+ *     is_default true)
  *   - all content transcribed from docs/reference/v1-resume.tex (lib/seed-data/**)
  *   - a "Default" resume (is_default true) pointing at that template, with
  *     every piece of seeded content selected, in the reference resume's order
@@ -8,18 +11,23 @@
  * This is the project's smoke test: representing the user's real resume
  * within the schema is the acceptance bar (see docs/agents/t5.md).
  *
- * Idempotent: if a default template already exists, the seed is a no-op
- * unless --force is passed. --force truncates every content + resume table
- * first (TRUNCATE ... CASCADE, which ignores the restrict/cascade delete
- * actions the tables normally use) and then reseeds from scratch.
+ * The single user it creates is also what makes `dev` auth mode work — the
+ * app logs in as the first user in the table with no password (see
+ * `lib/auth-mode.ts`), so a fresh clone goes from `db:seed` to a usable app
+ * with no credentials to configure.
+ *
+ * Idempotent: if a user already exists, the seed is a no-op unless --force
+ * is passed. --force truncates every content + resume table first
+ * (TRUNCATE ... CASCADE, which ignores the restrict/cascade delete actions
+ * the tables normally use) and then reseeds from scratch.
  *
  * Usage:
  *   node --experimental-strip-types scripts/seed.ts
  *   node --experimental-strip-types scripts/seed.ts --force
+ *   SEED_USER_EMAIL=someone@example.com node --experimental-strip-types scripts/seed.ts
  */
 
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 
 import * as schema from '../lib/db/schema.ts';
@@ -27,6 +35,11 @@ import { DEFAULT_TEMPLATE } from '../lib/render/default-template.ts';
 import { V1_EXPERIENCES, V1_PROJECTS, V1_SKILL_ROWS } from '../lib/seed-data/v1-resume.ts';
 
 const FORCE = process.argv.includes('--force');
+
+/** The seeded user. Defaults to the address already in the reference
+ *  resume's header, so a default seed is self-consistent. */
+const SEED_USER_EMAIL = process.env.SEED_USER_EMAIL ?? 'pyle.c@northeastern.edu';
+const SEED_USER_NAME = process.env.SEED_USER_NAME ?? 'Chris Pyle';
 
 /** `INSERT ... RETURNING` always returns exactly one row for one inserted
  * value; this just gives TypeScript (noUncheckedIndexedAccess) that fact. */
@@ -56,6 +69,7 @@ const ALL_SEEDED_TABLES = [
   'experience_bullet',
   'experience',
   'template',
+  'users',
 ] as const;
 
 async function main() {
@@ -68,28 +82,38 @@ async function main() {
   const db = drizzle(sql, { schema });
 
   try {
-    const [existingDefaultTemplate] = await db
-      .select({ id: schema.template.id })
-      .from(schema.template)
-      .where(eq(schema.template.isDefault, true))
-      .limit(1);
+    const [existingUser] = await db.select({ id: schema.users.id }).from(schema.users).limit(1);
 
-    if (existingDefaultTemplate && !FORCE) {
-      console.log('Already seeded (a default template exists) — nothing to do.');
+    if (existingUser && !FORCE) {
+      console.log('Already seeded (a user exists) — nothing to do.');
       console.log('Pass --force to wipe and reseed.');
       return;
     }
 
-    if (existingDefaultTemplate && FORCE) {
+    if (existingUser && FORCE) {
       console.log(`--force: truncating ${ALL_SEEDED_TABLES.length} tables before reseeding...`);
       await sql.unsafe(`truncate table ${ALL_SEEDED_TABLES.join(', ')} restart identity cascade`);
     }
 
     const summary = await db.transaction(async (tx) => {
+      // Everything below hangs off this row. Nothing in the database is
+      // ownerless (docs/SCHEMA.md), so the user has to exist first.
+      const user = one(
+        await tx
+          .insert(schema.users)
+          .values({ email: SEED_USER_EMAIL, name: SEED_USER_NAME })
+          .returning({ id: schema.users.id }),
+      );
+
       const tpl = one(
         await tx
           .insert(schema.template)
-          .values({ name: 'Default', content: DEFAULT_TEMPLATE, isDefault: true })
+          .values({
+            name: 'Default',
+            content: DEFAULT_TEMPLATE,
+            isDefault: true,
+            userId: user.id,
+          })
           .returning({ id: schema.template.id }),
       );
 
@@ -105,6 +129,7 @@ async function main() {
               title: exp.title,
               dateRange: exp.dateRange,
               location: exp.location,
+              userId: user.id,
             })
             .returning({ id: schema.experience.id }),
         );
@@ -132,6 +157,7 @@ async function main() {
               name: proj.name,
               technologies: proj.technologies,
               dateRange: proj.dateRange,
+              userId: user.id,
             })
             .returning({ id: schema.project.id }),
         );
@@ -155,7 +181,12 @@ async function main() {
         const rowRecord = one(
           await tx
             .insert(schema.technicalSkillRow)
-            .values({ name: row.name, top: row.top, separator: row.separator })
+            .values({
+              name: row.name,
+              top: row.top,
+              separator: row.separator,
+              userId: user.id,
+            })
             .returning({ id: schema.technicalSkillRow.id }),
         );
 
@@ -176,7 +207,7 @@ async function main() {
       const res = one(
         await tx
           .insert(schema.resume)
-          .values({ name: 'Default', isDefault: true, templateId: tpl.id })
+          .values({ name: 'Default', isDefault: true, templateId: tpl.id, userId: user.id })
           .returning({ id: schema.resume.id }),
       );
 
@@ -225,6 +256,7 @@ async function main() {
       }
 
       return {
+        userId: user.id,
         templateId: tpl.id,
         resumeId: res.id,
         experienceCount: experiences.length,
@@ -237,6 +269,7 @@ async function main() {
     });
 
     console.log('Seed complete:');
+    console.log(`  user: ${SEED_USER_EMAIL} (id ${summary.userId}) — owns everything below`);
     console.log(`  template: 1 (Default, id ${summary.templateId})`);
     console.log(
       `  experiences: ${summary.experienceCount} (${summary.experienceBulletCount} bullets)`,
