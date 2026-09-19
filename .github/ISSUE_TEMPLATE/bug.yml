@@ -1,0 +1,35 @@
+# Mirrors the shape the in-app feedback widget files (lib/feedback/issue.ts),
+# so a hand-written bug and a widget-filed one read the same on the board.
+name: Bug
+description: Something in the app does not behave the way it should
+labels: ['bug']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: The observed behaviour, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: Route, or the file if you already know it.
+      placeholder: /resume/[id] — the preview pane
+  - type: markdown
+    attributes:
+      value: |
+        Remember that **a resume stores no text**: editing a bullet is a global
+        edit that changes every resume that selected it. Most reports that turn
+        out not to be bugs are this.

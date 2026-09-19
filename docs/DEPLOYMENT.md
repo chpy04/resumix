@@ -11,7 +11,7 @@ any of them in this environment. Everything here has been checked for internal
 consistency against the code (env var names, the pooler flag, the sidecar's
 own README) but the actual `fly deploy` / Vercel import / Supabase project
 creation have not happened. Treat this as a validated plan, not a completed
-migration. `docs/agents/t11.md` records exactly what was and wasn't run.
+migration.
 
 ## Pre-flight checklist
 
