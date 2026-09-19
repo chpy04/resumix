@@ -51,3 +51,11 @@ points for T9. T9 branches off T8 rather than off `main`.
 | T10 | Spec-compliance e2e suite (8 specs, one per spec.md promise) | ✅ merged |
 | T11 | Deployment path (Supabase / Fly.io / Vercel), README, CLAUDE.md, CONTRIBUTING.md | ✅ merged |
 | T12 | Final review pass → `docs/REVIEW.md` | ✅ done (by the PM; the review agent was killed by a cyber-safeguard false positive) |
+
+## Wave 5 — multi-user
+| id | task | owns | branch | status |
+|---|---|---|---|---|
+| T14 | Multi-user: `users` table, per-user scoping of every query, dev/password/supabase auth modes, seeded dev user | `drizzle/0003_*`, `lib/session.ts`, `lib/auth*`, `lib/queries/**` | `feat/t14-multi-user` | ✅ done, awaiting merge |
+
+T13 is an unrelated in-flight task (`feat/t13-feedback-widget`), which is why
+multi-user is T14.

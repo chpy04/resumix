@@ -28,13 +28,36 @@ propose a change rather than editing one unilaterally. See
 `docs/CONTRIBUTING.md` for the workflow to change a contract or add a
 migration/endpoint.
 
-## Two invariants that are easy to violate by accident
+## Three invariants that are easy to violate by accident
+
+- **Every query is scoped to a user.** Route handlers begin with
+  `const userId = await requireUserId(request)` (`lib/session.ts`) and pass it
+  to the query layer, which filters on it. `user_id` lives only on the five
+  root tables (`template`, `experience`, `project`, `technical_skill_row`,
+  `resume`); bullets, skills, bridge rows and PDF snapshots inherit their
+  owner through their parent and are filtered by a join. Isolation is
+  enforced in the queries, **not** in `middleware.ts` — middleware runs on
+  the Edge and cannot reach the database, so it can only tell whether a
+  request is authenticated at all. Another user's id must read as "not
+  found", never "forbidden". `lib/queries/isolation.test.ts` is the
+  executable version of this paragraph; it is the first thing to run after
+  touching any query.
 
 - **Archive, never delete.** No DELETE endpoints on content. `is_archived`
   hides content from pickers but existing resumes keep rendering it forever.
 - **Content is raw, unescaped LaTeX.** Bullets legitimately contain
   `\textbf{}`, `\href{}{}`, `\$`, `\&`. Never add auto-escaping — it would
   corrupt every existing bullet (D-008 in `docs/DECISIONS.md`).
+
+## Auth modes
+
+`RESUMIX_AUTH_MODE` = `dev` | `password` | `supabase`, defaulting to `dev`
+outside production and `password` in production (`lib/auth-mode.ts`). `dev`
+means **no login screen**: the session is the first user in `users`, which is
+whoever `npm run db:seed` created. `supabase` is a written-but-unimplemented
+seam (`lib/auth-supabase.ts`) that fails closed. The browser suite pins
+`RESUMIX_AUTH_MODE=password` so it drives the real login screen; dev and
+supabase modes are covered in-process by `lib/session.test.ts`.
 
 ## Merge gate — all five, every branch
 

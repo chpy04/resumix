@@ -17,6 +17,10 @@ Short and practical. For the bigger picture, start at `docs/STATE.md`.
    repeatedly as you iterate.
 5. Re-run `npm run db:seed -- --force` and `npm run smoke` to confirm the
    round trip against the real V1 resume still holds.
+6. If the new table is a root table (not reachable from another), it needs
+   `user_id uuid not null references users (id) on delete restrict` and an
+   index on it. If it hangs off an existing table, it must **not** have one —
+   it inherits its owner through its parent (docs/SCHEMA.md, D-017).
 
 ## Adding an API endpoint
 
@@ -31,8 +35,14 @@ a live example):
    `parseJsonBody`/`withApiErrors` from `lib/http.ts`, then the query
    function. Handlers should have almost no logic of their own.
 4. Update `docs/API.md` in the same commit (see "Contracts," below).
-5. Auth is automatic — `middleware.ts` guards every `/api/*` route except
-   `/api/auth`; you don't need to check the token yourself in the handler.
+5. **Resolve the caller and scope every query to them.** Start the handler
+   body with `const userId = await requireUserId(request)` (`lib/session.ts`)
+   and thread that id into the query function, which must filter on it.
+   `middleware.ts` guards `/api/*` but cannot identify the user (Edge runtime,
+   no database), so it is not what keeps accounts apart — your `WHERE` clause
+   is. Answer another user's id with `NotFoundError`, never a 403.
+6. Add a case to `lib/queries/isolation.test.ts` for any new way to address
+   someone else's row by id.
 
 ## Running the smoke test
 

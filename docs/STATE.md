@@ -1,6 +1,7 @@
 # Project state
 
-_Last updated: 2026-09-19 — **feature-complete**. All twelve tasks merged, plus the empty-section fix (D-016)._
+_Last updated: 2026-09-19 — **feature-complete and multi-user**. All twelve tasks
+merged, plus the empty-section fix (D-016) and T14 (multi-user, awaiting merge)._
 
 **Read this first.** If you are picking this project up cold, read this file, then
 `docs/ARCHITECTURE.md`, then the contract docs (`SCHEMA.md`, `API.md`,
@@ -65,9 +66,37 @@ Wave 2/3 progress:
 - **T12 review** — `docs/REVIEW.md`. One low-severity fix (header sanitization); no critical
   or high findings in the areas examined.
 
+## T14 — multi-user (branch `feat/t14-multi-user`)
+
+The database is no longer single-tenant. A `users` table owns everything:
+`user_id` sits on the five root tables (`template`, `experience`, `project`,
+`technical_skill_row`, `resume`) and every other table inherits its owner
+through its parent (D-017). Every query function takes a `userId` and filters
+on it; another user's id reads as "not found", never "forbidden".
+`lib/queries/isolation.test.ts` states that guarantee as 13 tests.
+
+Authentication is now three modes behind one `requireUserId()` (D-018):
+
+- **`dev`** (default locally) — no login screen at all; the session is the
+  first user in `users`, which is the single user `npm run db:seed` creates.
+- **`password`** (default in production) — the original shared-password gate,
+  except the token now names a user (D-019).
+- **`supabase`** — the intended end state, **not implemented**. The seam is
+  `lib/auth-supabase.ts` and it fails closed. Everything downstream of "who is
+  this?" is already written against a `users` row, so implementing it is a
+  one-file change.
+
+Migration `0003` backfills: an existing single-tenant database gets an
+`owner@localhost` user who adopts every row. Verified on both a fresh
+database and a simulated pre-T14 one.
+
+Still true: the V1 resume round-trips byte-for-byte (`npm run smoke`), now
+read back through a user-scoped query. See `docs/agents/t14.md`.
+
 ## Status: feature-complete
 
-**110 unit tests + 16 browser tests passing. Build green. Smoke test green.**
+**143 unit tests + 16 browser tests passing. Build green. Smoke test green.**
+(110 + 33 new for T14.)
 
 Post-completion fix (2026-09-19): deselecting every item in a section aborted the
 compile — the template's `\begin{itemize}` was left with no `\item`. Templates now
@@ -107,6 +136,11 @@ later template/content edits do not retroactively change an already-saved resume
 
 - Deployment (Vercel + Fly.io + Supabase) is documented but not executed — T11.
 - No multi-template UI; the schema supports it, the UI assumes one default.
+- **Supabase OAuth is stubbed, not built** (T14). `lib/auth-supabase.ts` is the
+  only file that needs writing; it fails closed until then.
+- No UI shows which user you are signed in as — invisible with one seeded
+  user, worth adding when OAuth lands.
+- Deleting a user is deliberately not possible (`on delete restrict`).
 - PDF storage is `bytea`; swap point is `lib/storage.ts` if it ever outgrows that.
 - **Serverless pooling (T11).** `lib/db/index.ts` calls `postgres(url)` with defaults. On
   Vercel + Supabase's Supavisor *transaction* pooler this must become
