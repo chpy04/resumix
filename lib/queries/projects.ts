@@ -53,7 +53,8 @@ export async function updateProject(
     })
     .from(projectBullet)
     .where(eq(projectBullet.projectId, id))
-    .orderBy(asc(projectBullet.createdAt));
+    // The id breaks ties; the first column is not unique (D-030).
+    .orderBy(asc(projectBullet.createdAt), asc(projectBullet.id));
 
   return toWire(row, bullets);
 }

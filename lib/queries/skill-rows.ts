@@ -57,7 +57,8 @@ export async function updateSkillRow(
     })
     .from(technicalSkill)
     .where(eq(technicalSkill.technicalSkillRowId, id))
-    .orderBy(asc(technicalSkill.createdAt));
+    // The id breaks ties; the first column is not unique (D-030).
+    .orderBy(asc(technicalSkill.createdAt), asc(technicalSkill.id));
 
   return toWire(row, skills);
 }

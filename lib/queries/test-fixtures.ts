@@ -77,14 +77,18 @@ export async function insertExperience(
   return row;
 }
 
+/** `createdAt` is settable so a test can reproduce the shared-timestamp case
+ *  the seed produces — `now()` is transaction-start time, so every row written
+ *  in one transaction ties (D-030). Left to the column default otherwise. */
 export async function insertExperienceBullet(
   experienceId: string,
   content: string,
   isArchived = false,
+  createdAt?: Date,
 ) {
   const [row] = await db
     .insert(experienceBullet)
-    .values({ experienceId, content, isArchived })
+    .values({ experienceId, content, isArchived, ...(createdAt ? { createdAt } : {}) })
     .returning();
   if (!row) throw new Error('failed to insert test experience bullet');
   return row;

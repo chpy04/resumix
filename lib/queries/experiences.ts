@@ -61,7 +61,8 @@ export async function updateExperience(
     })
     .from(experienceBullet)
     .where(eq(experienceBullet.experienceId, id))
-    .orderBy(asc(experienceBullet.createdAt));
+    // The id breaks ties; the first column is not unique (D-030).
+    .orderBy(asc(experienceBullet.createdAt), asc(experienceBullet.id));
 
   return toWire(row, bullets);
 }

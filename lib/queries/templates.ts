@@ -23,7 +23,8 @@ export async function listTemplates(userId: string, includeArchived: boolean): P
         ? eq(template.userId, userId)
         : and(eq(template.userId, userId), eq(template.isArchived, false)),
     )
-    .orderBy(asc(template.name));
+    // The id breaks ties; the first column is not unique (D-030).
+    .orderBy(asc(template.name), asc(template.id));
   return rows.map(toWire);
 }
 
