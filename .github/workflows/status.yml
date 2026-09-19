@@ -1,0 +1,84 @@
+# Keeps an issue's `status:*` label in step with git. Only the transitions that
+# are unambiguously inferable from an event live here -- a PR being opened means
+# "ready for review", a PR being merged means "done". The transitions that
+# depend on judgement (-> planning, -> in-progress, -> blocked) or on a human's
+# approval (-> ready) are deliberately absent: see the lifecycle in CLAUDE.md.
+#
+# Runs on the default GITHUB_TOKEN. That is the point of D-026: status is a
+# label, an ordinary repository permission, so there is no secret to configure
+# and no way for this to silently stop working. The Projects v2 board this
+# replaced needed a `BOARD_TOKEN` PAT that was never set, so every job here
+# no-oped for the whole life of the board without ever failing a check.
+name: status
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, ready_for_review, reopened, closed]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+concurrency:
+  group: status-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # A freshly filed issue -- including one the in-app feedback widget files
+      # through POST /api/feedback -- lands in backlog, so nothing arrives
+      # without a status.
+      - name: Issue opened -> backlog
+        if: github.event_name == 'issues'
+        run: scripts/status.sh set "${{ github.event.issue.number }}" backlog
+
+      # A draft PR is explicitly not "ready for review", so it leaves the issue
+      # in in-progress until it is marked ready.
+      - name: PR ready -> in-review
+        if: >-
+          github.event_name == 'pull_request_target'
+          && github.event.action != 'closed'
+          && github.event.pull_request.draft == false
+        run: |
+          for issue in $(scripts/status.sh pr-issues "${{ github.event.pull_request.number }}"); do
+            scripts/status.sh set "$issue" in-review
+          done
+
+      # Merged closes the issue (via `Closes #n`) and finishes it. A PR closed
+      # *without* merging leaves its issue open, so it goes back to in-progress
+      # rather than to done.
+      - name: PR closed -> done or in-progress
+        if: >-
+          github.event_name == 'pull_request_target'
+          && github.event.action == 'closed'
+        env:
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          status="in-progress"
+          [ "$MERGED" = "true" ] && status="done"
+          for issue in $(scripts/status.sh pr-issues "${{ github.event.pull_request.number }}"); do
+            scripts/status.sh set "$issue" "$status"
+          done
+
+      # Changes requested sends the work back without a human touching a label.
+      # It returns to in-progress rather than a status of its own -- an agent
+      # reworking a PR is the same activity as an agent writing it. An approval
+      # deliberately does *not* move anything: the merge does.
+      - name: Changes requested -> in-progress
+        if: >-
+          github.event_name == 'pull_request_review'
+          && github.event.review.state == 'changes_requested'
+        run: |
+          for issue in $(scripts/status.sh pr-issues "${{ github.event.pull_request.number }}"); do
+            scripts/status.sh set "$issue" in-progress
+          done
