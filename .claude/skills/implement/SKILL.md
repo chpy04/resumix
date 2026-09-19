@@ -13,13 +13,18 @@ The whole lifecycle is in `CLAUDE.md`; this is the second of its three phases.
 `/triage` planned it and `/review-pr` handles review. **Never invoke them** —
 a human decides when a phase begins.
 
+This is the **unattended** path. When a human is in the session with you, none
+of this applies — follow the walk in `CLAUDE.md` directly, take approval in
+conversation, and do not invoke this skill.
+
 ## Hard limits
 
 - **Never merge.** Opening the PR is where you stop. `status.yml` moves the
   issue when a human merges.
-- **Never file an issue.** If the work uncovers other work — a bug you tripped
-  over, a refactor that suggests itself — put it in your reply, or comment on
-  the issue you are already on. The issue list is the human's inbox.
+- **Never file an issue unprompted.** If the work uncovers other work — a bug
+  you tripped over, a refactor that suggests itself — put it in your reply, or
+  comment on the issue you are already on. The issue list is the human's
+  inbox, and only they decide what enters it.
 - **Never widen the plan.** The approved plan is the contract. If the right
   change turns out to be bigger, that is a `status:blocked` and a question,
   not a judgement call you make alone.

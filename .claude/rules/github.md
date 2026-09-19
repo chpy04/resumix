@@ -91,14 +91,18 @@ requirement died with the board. The same token can serve the app's
 
 CI needs no secret at all: `status.yml` runs on the default `GITHUB_TOKEN`.
 
-## Agents do not file issues
+## Agents do not file issues unprompted
 
-An issue is a human-requested behaviour. The only issues an agent may create
-are the sub-issues of an issue already labelled `epic`, and only while planning
-that epic. Everything else — a bug you tripped over, a refactor that suggests
-itself, a follow-up the PR made obvious — goes in your reply or as a comment on
-the issue you are already working, and the human decides whether it becomes
-one. See `CLAUDE.md`.
+An issue is a human-requested behaviour, and only a human decides one exists.
+Two things count as that decision: the human asking outright ("make a separate
+issue for this"), and the `epic` label, whose children an agent creates as
+sub-issues while planning it. Nothing else — a bug you tripped over, a
+refactor that suggests itself, a follow-up the PR made obvious — goes in your
+reply or as a comment on the issue you are already working.
+
+A new request arriving mid-task is **scope creep onto the current issue**, and
+that is the normal case rather than a problem. Extend the issue and update its
+plan; do not split the work on your own initiative. See `CLAUDE.md`.
 
 ## Issue templates
 

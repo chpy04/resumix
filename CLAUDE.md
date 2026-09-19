@@ -136,14 +136,21 @@ before it gets a branch. The issue's `status:*` label is the _only_ record of
 task state. Nothing in `docs/` tracks progress; if you find yourself typing
 "in progress" into a markdown file, you are in the wrong system.
 
-**An issue represents a human-requested behaviour, so agents do not file
-them.** There is exactly one exception: the child issues of an issue labelled
-`epic`, which an agent creates as sub-issues when it plans that epic. Nothing
-else. If you notice a bug while doing something else, or think of work worth
-doing, say so in your reply or in a comment on the issue you are already on —
-do not open an issue for it. The list is the human's inbox, and an agent that
-files its own work item has quietly promoted its own idea to a commitment
-nobody made.
+**An issue represents a human-requested behaviour, so agents never open one
+unprompted.** A human asking for one is the gate — "make a separate issue for
+this" means file it, and so does an issue carrying the `epic` label, whose
+children an agent creates as sub-issues while planning it. Absent that, no.
+If you notice a bug while doing something else, or think of work worth doing,
+say so in your reply — do not open an issue for it. The list is the human's
+inbox, and an agent that files its own work item has quietly promoted its own
+idea to a commitment nobody made.
+
+**A new request mid-task is scope creep onto the issue you are already on.**
+That is the default and it is fine — assume it unless the human says
+otherwise. Do not split work into a second issue on your own initiative; if
+you think it genuinely belongs apart, say why and let them decide. When the
+new request changes what was planned, update the plan in the issue body so the
+issue still describes what is actually being built.
 
 | label                | means                                           | set by    |
 | -------------------- | ----------------------------------------------- | --------- |
@@ -163,12 +170,37 @@ is the only reason an issue cannot end up in two states at once.
 Never hand-set `status:in-review` or `status:done` — open or merge the PR and
 let the workflow do it, so the status cannot disagree with git.
 
+### Two ways work arrives
+
+**In a session with a human.** The default, and almost always what you are
+doing. Someone is right there, so the ceremony collapses:
+
+- **Approval happens in conversation.** "Go ahead" _is_ the gate. Never make a
+  human open GitHub to move a label that they have already approved out loud.
+  Set the labels yourself as you pass through them, so the issue still tells
+  the truth to anyone reading it later.
+- **One issue, carried along as you go.** New requests extend it.
+- **Do not invoke the skills below.** Have an issue if there is one, then
+  worktree, branch, build, gate, PR — and move the label at each step.
+
+The human gate is not deleted here, it is _relocated_: it still takes a person
+to approve a plan, but that person is in the room and can say so directly.
+
+**Unattended, through the skills.** When no one is watching, the label _is_ the
+conversation, and the gate has to be a real stop. That is what the three skills
+below are for.
+
 ### planning → ready is a human gate
 
-This is the one transition an agent must never make. You set `status:planning`,
-write the plan into the issue, and **stop there**. A human reads that plan and
-swaps the label for `status:ready`; that move is the approval, and it is what
-says the approach is agreed and code may start.
+No agent may decide its own plan is approved. You set `status:planning`, write
+the plan into the issue, and **stop there** until a human approves it.
+
+What differs between the two paths above is only _how the approval arrives_.
+Unattended, it is a human swapping the label for `status:ready`, and there is
+nothing else it could be. In a session, it is the human saying "go ahead" —
+equally an approval, and you then set the label yourself to record that it
+happened. What is forbidden either way is moving past `planning` on your own
+judgement, with nobody having agreed to anything.
 
 `ready` and `in-progress` are deliberately separate, because "approved" and
 "someone is on it" are different facts and the tracker is useless if it cannot
@@ -181,9 +213,12 @@ So: `planning` is waiting on a human. `ready` is waiting on an agent.
 `in-progress` means an agent already has it — including an agent reworking an
 open PR after review, which is the same activity and keeps the same label.
 
-### Three skills, invoked by hand
+### Three skills, for the unattended path
 
-Each phase has a skill in `.claude/skills/`, and a human invokes each one:
+Each phase has a skill in `.claude/skills/`, invoked by hand, for work running
+without a human in the loop. **In an ordinary session, ignore them** and follow
+the walk directly — they exist to make an unattended agent stop where a human
+would otherwise have interrupted it.
 
 | skill             | phase                         | ends at                                          |
 | ----------------- | ----------------------------- | ------------------------------------------------ |
@@ -197,8 +232,8 @@ three separate invocations is what keeps it one.
 ### The walk
 
 1. **Have an issue.** `gh issue view <n>`. If the request arrived as a
-   conversation and there is no issue for it, stop and ask the human to file
-   one — do not file it yourself.
+   conversation and there is no issue for it, ask whether to file one rather
+   than filing it — then carry that single issue through every step below.
 2. **Plan in the open.** `/triage <n>` — it sizes the issue and writes the
    plan into the **issue body**, fenced by `<!-- resumix:plan -->`, below
    whatever the human wrote. The body rather than a comment, so a re-plan

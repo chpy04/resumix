@@ -12,12 +12,16 @@ The whole lifecycle is in `CLAUDE.md`; this is the last of its three phases.
 **Never invoke `/triage` or `/implement`** — a human decides when a phase
 begins.
 
+This is the **unattended** path. When a human is in the session with you, none
+of this applies — work the PR directly and take direction in conversation.
+
 ## Hard limits
 
 - **Never merge.** Even when the gate is green and a human has approved.
   Merging is irreversible and outward-facing; the human presses it, and
   `status.yml` closes the issue and sets `status:done` from there.
-- **Never file an issue.** Follow-ups go in a PR comment or your reply.
+- **Never file an issue unprompted.** Follow-ups go in a PR comment or your
+  reply, and the human decides whether any of them becomes an issue.
 - **Never force-push.** Reviewers lose their place and inline comments detach
   from their lines. Add commits.
 - **Never resolve a thread you did not satisfy.** If you pushed back instead

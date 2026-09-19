@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Plan one issue and give it a status. Invoked by hand as `/triage <issue-number>` when a human points you at an issue that has not been planned yet. Sizes the issue, writes a plan proportional to that size into the issue body, and sets status:ready or status:planning. Never writes code, and never invokes another skill.
+description: Plan one issue, or re-plan one whose plan got feedback. Invoked by hand as `/triage <issue-number>` for work running without a human in the loop. On an unplanned issue it sizes it and writes a plan of proportional depth into the issue body; on an issue already in status:planning it collects the feedback left since that plan and answers it. Never writes code, and never invokes another skill.
 ---
 
 # Triage an issue
@@ -13,16 +13,22 @@ phases. `/implement` and `/review-pr` are the other two. **Never invoke
 them** — a human decides when a phase begins, and that is the point of having
 three separate skills.
 
+This is the **unattended** path. When a human is in the session with you, none
+of this applies — follow the walk in `CLAUDE.md` directly, take approval in
+conversation, and do not invoke this skill. It exists to make an agent stop
+where a human would otherwise have interrupted it.
+
 ## Hard limits
 
 - **Never write code.** Not in the plan, not in a scratch file. You are
   deciding things a human would want to overrule — architecture, structure,
   the shape of the data. A code block in a plan is you deciding something
   that was never yours to decide, and it is what `/implement` is for.
-- **Never file an issue.** The one exception in this entire repo is Track C
-  creating sub-issues of an issue that already carries the `epic` label. If
-  you notice other work worth doing, say so in your reply and let the human
-  decide.
+- **Never file an issue unprompted.** A human asking for one is the gate, and
+  so is the `epic` label, whose children Track C creates as sub-issues. Absent
+  that, no — if you notice other work worth doing, say so in your reply.
+  A new request that arrives mid-task is scope creep onto _this_ issue, and
+  the plan gets updated rather than split.
 - **Never set `status:ready` on Track B or C.** `planning → ready` is a human
   approval gate (`CLAUDE.md`). Track A self-approves because there was no
   architectural decision to approve; B and C stop and wait.
@@ -37,6 +43,10 @@ scripts/status.sh get <n>
 If it already carries `status:in-progress`, `status:in-review` or
 `status:done`, stop and say so — somebody is on it, and re-planning underneath
 them is how two agents collide.
+
+If it carries **`status:planning`** and its body already has a plan, you are
+**re-planning**: a human has left feedback on that plan and you are answering
+it. Jump to §7 — the sizing in §2 is already settled and must not be redone.
 
 Then read what the change would actually touch. Always `CLAUDE.md` (the five
 invariants) and `docs/STATE.md`. Then, as relevant: `docs/ARCHITECTURE.md`,
@@ -115,11 +125,15 @@ its own `/triage` later. **Do not plan them here.** Then
 Into the **issue body**, fenced by markers, below whatever the human wrote:
 
 ```
-<!-- resumix:plan -->
+<!-- resumix:plan planned=2026-09-19T20:31:00Z -->
 ## Plan
 …
 <!-- /resumix:plan -->
 ```
+
+The `planned=` timestamp is load-bearing — it is what a re-plan (§7) uses to
+tell feedback from the discussion that preceded the plan. Use
+`date -u +%Y-%m-%dT%H:%M:%SZ`.
 
 Read the body, keep everything above `<!-- resumix:plan -->`, and replace
 anything between the markers. A re-plan then _replaces_ the old one instead of
@@ -169,6 +183,66 @@ Do not ask about anything you can decide and state. "Which shade of grey",
 "should I also update the docs", "is this okay" — decide, write it in **Key
 decisions**, and let the human overrule it at the gate. That gate is what the
 question would have been.
+
+## 7. Re-planning: answering feedback on a plan you already wrote
+
+An issue sitting in `status:planning` is waiting on a human. When that human
+has responded with feedback rather than approval, `/triage` is pointed at it
+again to answer them.
+
+### Find what is new
+
+The opening marker records when the plan was written:
+
+```
+<!-- resumix:plan planned=2026-09-19T20:31:00Z -->
+```
+
+Feedback is anything that arrived after that timestamp, from two places:
+
+**Issue comments.**
+
+```bash
+gh issue view <n> --json comments \
+  --jq '.comments[] | select(.createdAt > "<planned>") | {author: .author.login, body}'
+```
+
+**Annotations on the diagram.** Excalidraw's own comment feature is not
+reachable — comments live on a different host behind a browser session, and
+the API the MCP wraps has no endpoint for them. So canvas feedback arrives as
+ordinary scene elements: a sticky note or a text box dropped on the diagram.
+Read them with `search_scene_content` or `get_scene_content` and treat every
+standalone text element that is not one of your own node or edge labels as a
+note to you.
+
+If both come back empty, say so and stop. Do not rewrite a plan nobody
+questioned.
+
+### Answer every piece of it
+
+Each note is exactly one of three things, the same as a code review:
+
+- **Take it.** Change the plan. Say what you changed.
+- **Push back.** You think it is wrong, or it breaks something they cannot see
+  from the plan — an invariant, a contract, a D-number. Say so, with the
+  reason, and leave the decision to them. Do not quietly comply with a change
+  you believe is wrong.
+- **Out of scope.** A real point that belongs to a different issue. Say that
+  plainly rather than absorbing it.
+
+### Write it back
+
+Rewrite the plan between the markers with a fresh `planned=` timestamp, and
+regenerate the diagram if any of the feedback touched it — `create_diagram`
+with `clearExisting: true`, which also clears the annotations now that they are
+answered.
+
+Then post **one** issue comment summarising what you did with each piece of
+feedback: taken, pushed back on (and why), or deferred. That comment is how
+the human sees they were heard without diffing two versions of a plan.
+
+Leave the issue in `status:planning`. It is still waiting on the same human,
+who now has your answers.
 
 ## Length
 

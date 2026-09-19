@@ -183,7 +183,13 @@ flowchart TD
     classDef work fill:#f0fdf4,stroke:#16a34a,color:#052e16
 ```
 
-Two transitions are deliberately **not** automated. A human moves
+That is the **unattended** path, where the label has to carry the whole
+conversation. Working alongside an agent in a session is lighter: approval
+happens by saying so, a new request extends the issue you are already on
+rather than spawning another, and the agent goes straight to worktree, branch
+and PR while moving the label as it passes each step.
+
+Either way two transitions are deliberately **not** automated. A human moves
 `planning → ready` — that move _is_ the approval, and it is the one an agent
 may never make itself. And a human presses merge. Everything else is either an
 agent setting a label through `scripts/status.sh`, or
