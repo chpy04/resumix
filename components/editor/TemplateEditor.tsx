@@ -1,10 +1,12 @@
 'use client';
 
-import { forwardRef, useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react';
+import { useMemo, useState, type KeyboardEvent, type Ref, type UIEvent } from 'react';
 
 interface TemplateEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /** Owned by the parent, which focuses the field when a token is inserted. */
+  ref?: Ref<HTMLTextAreaElement>;
 }
 
 /**
@@ -13,11 +15,7 @@ interface TemplateEditorProps {
  * gutter kept in sync via scroll position. Deliberately not CodeMirror/Monaco
  * — per the task brief, a plain textarea is enough for editing LaTeX here.
  */
-const TemplateEditor = forwardRef<HTMLTextAreaElement, TemplateEditorProps>(function TemplateEditor(
-  { value, onChange },
-  forwardedRef,
-) {
-  const gutterRef = useRef<HTMLDivElement>(null);
+export default function TemplateEditor({ value, onChange, ref }: TemplateEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const lineCount = useMemo(() => value.split('\n').length, [value]);
 
@@ -43,7 +41,6 @@ const TemplateEditor = forwardRef<HTMLTextAreaElement, TemplateEditorProps>(func
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden rounded-md border border-line bg-canvas font-mono text-[12.5px] leading-relaxed">
       <div
-        ref={gutterRef}
         aria-hidden="true"
         className="select-none overflow-hidden border-r border-line px-2 py-2 text-right text-ink-dim"
         style={{ transform: `translateY(-${scrollTop}px)` }}
@@ -53,7 +50,7 @@ const TemplateEditor = forwardRef<HTMLTextAreaElement, TemplateEditorProps>(func
         ))}
       </div>
       <textarea
-        ref={forwardedRef}
+        ref={ref}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
@@ -68,6 +65,4 @@ const TemplateEditor = forwardRef<HTMLTextAreaElement, TemplateEditorProps>(func
       />
     </div>
   );
-});
-
-export default TemplateEditor;
+}
