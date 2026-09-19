@@ -53,10 +53,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 - **PDF preview** — `react-pdf`, client-only via `next/dynamic({ ssr: false })`,
   with a hand-copied local pdf.js worker (`public/pdf.worker.min.mjs`) so it
   cannot version-skew against the bundled `pdfjs-dist`.
-- **Feedback widget** — a floating button on every gated page opens a popover
-  (bug or feature, description, drag-drop-or-paste screenshot, auto-captured
-  route, origin and browser) that files a GitHub issue via
-  `POST /api/feedback`. Screenshots are committed to the orphan
+- **Feedback widget** — a floating button on every gated page opens a modal
+  form (bug or feature, description, paste-or-drop screenshot, auto-captured
+  page URL) that files a GitHub issue via `POST /api/feedback`. Screenshots are committed to the orphan
   `feedback-assets` branch and linked at their commit sha (D-021). Needs
   `GITHUB_TOKEN` and `GITHUB_REPO`; without them the endpoint fails closed
   with a 503.
