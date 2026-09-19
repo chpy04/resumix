@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { expect, type Download, type Page } from '@playwright/test';
 // pdfjs-dist ships pure-JS text extraction that needs no canvas/DOM, so it
 // works fine directly under Node inside a Playwright test (not the browser
 // context). This is how "does the PDF actually contain X" is asserted —
@@ -187,6 +188,14 @@ export async function renderResumeText(page: Page, resumeId: string): Promise<st
     throw new Error(`render failed for resume ${resumeId}: ${result.errors.join('; ')}`);
   }
   return extractPdfText(result.pdfBase64);
+}
+
+/** A browser download's bytes, base64-encoded — the input `extractPdfText`
+ *  wants when the PDF came from a real click rather than the API. */
+export async function downloadAsBase64(download: Download): Promise<string> {
+  const path = await download.path();
+  if (!path) throw new Error('download had no local path');
+  return (await readFile(path)).toString('base64');
 }
 
 /** Decodes a base64 PDF (as returned by /render or read off disk from a

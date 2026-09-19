@@ -144,7 +144,7 @@ export function fuzzyScore(
  * empty query returns every item, in original order, with score 0.
  */
 export function fuzzyFilter<T>(
-  items: T[],
+  items: readonly T[],
   query: string,
   getText: (item: T) => string,
 ): FuzzyMatch[] {

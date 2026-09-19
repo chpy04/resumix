@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import {
   createResumeViaUi,
+  downloadAsBase64,
   extractPdfText,
   findExperienceBullet,
   getResumeDetail,
@@ -39,7 +39,7 @@ test('the home page download always gives the last-saved snapshot, not live cont
   // immediate download of that exact snapshot — "Save PDF" both POSTs the
   // snapshot and downloads it.
   const firstDownload = await clickSaveAndDownload(page);
-  const firstText = await extractPdfText(await fileAsBase64(firstDownload));
+  const firstText = await extractPdfText(await downloadAsBase64(firstDownload));
   expect(firstText).toContain(oldMarker);
 
   // Home page: the card's download button should now be enabled.
@@ -62,7 +62,7 @@ test('the home page download always gives the last-saved snapshot, not live cont
     .locator('[data-testid="resume-download-button"]')
     .click();
   const homeDownload = await downloadPromise;
-  const homeText = await extractPdfText(await fileAsBase64(homeDownload));
+  const homeText = await extractPdfText(await downloadAsBase64(homeDownload));
   expect(homeText).toContain(oldMarker);
   expect(homeText).not.toContain(newMarker);
 
@@ -70,7 +70,7 @@ test('the home page download always gives the last-saved snapshot, not live cont
   // persist the NEW content.
   await page.goto(`/resume/${resumeId}`);
   const secondDownload = await clickSaveAndDownload(page);
-  const secondText = await extractPdfText(await fileAsBase64(secondDownload));
+  const secondText = await extractPdfText(await downloadAsBase64(secondDownload));
   expect(secondText).toContain(newMarker);
   expect(secondText).not.toContain(oldMarker);
 });
@@ -79,11 +79,4 @@ async function clickSaveAndDownload(page: import('@playwright/test').Page) {
   const downloadPromise = page.waitForEvent('download', { timeout: 30_000 });
   await page.getByRole('button', { name: /save pdf/i }).click();
   return downloadPromise;
-}
-
-async function fileAsBase64(download: import('@playwright/test').Download): Promise<string> {
-  const path = await download.path();
-  if (!path) throw new Error('download had no local path');
-  const bytes = await readFile(path);
-  return bytes.toString('base64');
 }

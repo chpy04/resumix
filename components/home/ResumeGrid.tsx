@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ApiError, createResume, listResumes } from '@/lib/api-client';
 import { fuzzyFilter } from '@/lib/fuzzy';
@@ -8,7 +9,8 @@ import type { ResumeSummary } from '@/lib/types';
 import NewResumeCard from '@/components/home/NewResumeCard';
 import NewResumeDialog from '@/components/home/NewResumeDialog';
 import ResumeCard from '@/components/home/ResumeCard';
-import SearchBox from '@/components/home/SearchBox';
+import SearchBox from '@/components/SearchBox';
+import { useSearchShortcut } from '@/components/useSearchShortcut';
 
 type LoadState =
   | { status: 'loading' }
@@ -18,12 +20,6 @@ type LoadState =
 /** Stable identity for the not-yet-loaded case, so the memos below don't
  *  recompute on every render against a fresh `[]` literal. */
 const NO_RESUMES: readonly ResumeSummary[] = [];
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
-}
 
 /** The home page's resume grid: fetches, searches, creates, and downloads. */
 export default function ResumeGrid() {
@@ -58,23 +54,7 @@ export default function ResumeGrid() {
     };
   }, []);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      const isCmdK = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k';
-      if (isCmdK) {
-        event.preventDefault();
-        searchRef.current?.focus();
-        return;
-      }
-      if (event.key === '/' && !isTypingTarget(event.target)) {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  useSearchShortcut(searchRef);
 
   const resumes = state.status === 'ready' ? state.resumes : NO_RESUMES;
   const defaultResume = useMemo(
@@ -112,6 +92,12 @@ export default function ResumeGrid() {
           <p className="mt-1 text-sm text-ink-dim">
             Pick a resume to keep editing, or start a new one for a company.
           </p>
+          <Link
+            href="/applications"
+            className="mt-2 inline-block text-sm text-accent transition-opacity hover:opacity-80"
+          >
+            Applications →
+          </Link>
         </div>
         <SearchBox ref={searchRef} value={query} onChange={setQuery} />
       </header>
