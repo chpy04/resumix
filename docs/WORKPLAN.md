@@ -39,8 +39,8 @@ its report rather than edit the contract unilaterally.
 | id | task | owns | branch | status |
 |---|---|---|---|---|
 | T7 | Home page: resume grid, fuzzy search, new/open/download | `app/page.tsx`, `components/home/**` | `feat/t7-home` | ✅ merged |
-| T8 | Editor: content pane, dnd ordering, archive toggle, autosave | `app/resume/[id]/**`, `components/editor/**` | `feat/t8-editor` | blocked on T6 |
-| T9 | Template tab + PDF preview pane + save/download | `components/preview/**`, `components/template/**` | `feat/t9-preview` | blocked on T8 |
+| T8 | Editor: content pane, dnd ordering, archive toggle, autosave | `app/resume/[id]/**`, `components/editor/**` | `feat/t8-editor` | ✅ merged |
+| T9 | Template tab + PDF preview pane + save/download | `components/preview/**`, `components/template/**` | `feat/t9-preview` | ✅ merged |
 
 T8 and T9 share `app/resume/[id]/page.tsx`; T8 owns it and leaves named mount
 points for T9. T9 branches off T8 rather than off `main`.
