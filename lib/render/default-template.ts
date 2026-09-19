@@ -147,36 +147,36 @@ export const DEFAULT_TEMPLATE = String.raw`%-------------------------
 \resumeSubHeadingListEnd{}    
 
  %-----------PROGRAMMING SKILLS-----------
-\section{Technical Skills}
+<<IF:SKILLS_TOP>>\section{Technical Skills}
 \begin{itemize}[leftmargin=0.15in, label={}]
  \item{
  <<SKILLS_TOP>>
  }
-\end{itemize}
+\end{itemize}<<ENDIF>>
 
 %-----------EXPERIENCE-----------
 
-\section{Experience}
+<<IF:EXPERIENCES>>\section{Experience}
 \resumeSubHeadingListStart{}
 <<EXPERIENCES>>
 
- \resumeSubHeadingListEnd{}
+ \resumeSubHeadingListEnd{}<<ENDIF>>
  
 %-----------PROJECTS-----------
- \section{Projects}
+<<IF:PROJECTS>> \section{Projects}
 \resumeSubHeadingListStart{}
 <<PROJECTS>>
-\resumeSubHeadingListEnd{}
+\resumeSubHeadingListEnd{}<<ENDIF>>
 
 %---------------INTERESTS----------------------------
-\section{Additional Information}
+<<IF:SKILLS_BOTTOM>>\section{Additional Information}
 \begin{itemize}
 [leftmargin=0.15in, label={}]
  {\item{
  <<SKILLS_BOTTOM>>
  }}
 
-\end{itemize}
+\end{itemize}<<ENDIF>>
 
 
 \end{document}`;

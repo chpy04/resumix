@@ -9,7 +9,7 @@
  */
 import type { Library, Selections } from '../types.ts';
 import { renderExperiences, renderProjects, renderSkills } from './sections.ts';
-import { substituteTokens } from './tokens.ts';
+import { resolveConditionals, substituteTokens } from './tokens.ts';
 
 export interface RenderResumeInput {
   templateContent: string;
@@ -33,19 +33,20 @@ export function renderResume({
   const projects = renderProjects(library, selections, warnings);
   const skills = renderSkills(library, selections, warnings);
 
-  const tex = substituteTokens(
-    templateContent,
-    {
-      EXPERIENCES: experiences,
-      PROJECTS: projects,
-      SKILLS_TOP: skills.top,
-      SKILLS_BOTTOM: skills.bottom,
-    },
-    warnings,
-  );
+  const values = {
+    EXPERIENCES: experiences,
+    PROJECTS: projects,
+    SKILLS_TOP: skills.top,
+    SKILLS_BOTTOM: skills.bottom,
+  };
+
+  // Conditionals first: a section whose token is empty is dropped whole, so the
+  // template's `\begin{itemize}` never survives without an `\item` (a fatal
+  // LaTeX error, not a cosmetic one).
+  const tex = substituteTokens(resolveConditionals(templateContent, values, warnings), values, warnings);
 
   return { tex, warnings };
 }
 
-export { substituteTokens } from './tokens.ts';
+export { resolveConditionals, substituteTokens } from './tokens.ts';
 export { renderExperiences, renderProjects, renderSkills } from './sections.ts';

@@ -607,3 +607,84 @@ test('round trip: default template + full v1 fixture reproduces docs/reference/v
 
   assert.equal(normalizedActual, normalizedExpected);
 });
+
+// ---------------------------------------------------------------------------
+// Conditional sections (<<IF:TOKEN>> ... <<ENDIF>>).
+//
+// Regression guard for a fatal bug: when a section's token expanded to nothing,
+// the template's surrounding \begin{itemize} was left with no \item, which
+// aborts pdflatex with "Something's wrong--perhaps a missing \item". Turning a
+// whole section off is normal while tailoring a resume, so it must render.
+// ---------------------------------------------------------------------------
+
+test('a section with content keeps its <<IF>> block body', () => {
+  const library = emptyLibrary();
+  library.skillRows = [
+    { id: 'r', name: 'Languages', top: true, separator: ', ', isArchived: false, skills: [{ id: 's', name: 'Rust', isArchived: false }] },
+  ];
+  const selections = emptySelections();
+  selections.skillRows = ['r'];
+  selections.skills = { r: ['s'] };
+
+  const { tex } = renderResume({
+    templateContent: '<<IF:SKILLS_TOP>>\\section{Skills}<<SKILLS_TOP>><<ENDIF>>',
+    library,
+    selections,
+  });
+  assert.match(tex, /\\section\{Skills\}/);
+  assert.match(tex, /Rust/);
+  assert.doesNotMatch(tex, /<<IF:|<<ENDIF>>/);
+});
+
+test('an empty section drops the whole <<IF>> block, heading included', () => {
+  const { tex } = renderResume({
+    templateContent: 'BEFORE<<IF:PROJECTS>>\\section{Projects}\\begin{itemize}<<PROJECTS>>\\end{itemize}<<ENDIF>>AFTER',
+    library: emptyLibrary(),
+    selections: emptySelections(),
+  });
+  assert.equal(tex, 'BEFOREAFTER');
+  // The itemize must not survive without an \item — that is the fatal case.
+  assert.doesNotMatch(tex, /begin\{itemize\}/);
+});
+
+test('each of the four sections can be emptied independently', () => {
+  const template = [
+    '<<IF:EXPERIENCES>>E:<<EXPERIENCES>><<ENDIF>>',
+    '<<IF:PROJECTS>>P:<<PROJECTS>><<ENDIF>>',
+    '<<IF:SKILLS_TOP>>T:<<SKILLS_TOP>><<ENDIF>>',
+    '<<IF:SKILLS_BOTTOM>>B:<<SKILLS_BOTTOM>><<ENDIF>>',
+  ].join('\n');
+  const { tex } = renderResume({
+    templateContent: template,
+    library: emptyLibrary(),
+    selections: emptySelections(),
+  });
+  assert.equal(tex.trim(), '');
+});
+
+test('the default template survives every section being deselected', () => {
+  const { tex, warnings } = renderResume({
+    templateContent: DEFAULT_TEMPLATE,
+    library: emptyLibrary(),
+    selections: emptySelections(),
+  });
+  // Every section is gone — heading, list wrapper and all — so no \begin{itemize}
+  // is left without an \item. (The \newcommand definitions in the preamble
+  // legitimately contain a bare \begin{itemize}; only *usages* matter, and the
+  // real proof is the compile check in scripts/smoke.ts.)
+  for (const heading of ['\\section{Technical Skills}', '\\section{Experience}', '\\section{Projects}', '\\section{Additional Information}']) {
+    assert.doesNotMatch(tex, new RegExp(heading.replace(/[\\{}]/g, '\\$&')), `${heading} should be dropped`);
+  }
+  assert.match(tex, /\\begin\{document\}/);
+  assert.match(tex, /\\end\{document\}/);
+  assert.deepEqual(warnings, []);
+});
+
+test('an unmatched <<ENDIF>> is reported rather than silently mis-rendering', () => {
+  const { warnings } = renderResume({
+    templateContent: 'x<<ENDIF>>',
+    library: emptyLibrary(),
+    selections: emptySelections(),
+  });
+  assert.ok(warnings.some((w) => w.includes('unmatched')), warnings.join('; '));
+});

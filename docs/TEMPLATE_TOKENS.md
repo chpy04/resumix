@@ -22,6 +22,37 @@ the PDF as visible garbage, which fails loudly but non-fatally.
 Unknown tokens are left verbatim and reported as a render warning.
 A token may appear zero or more times; every occurrence is substituted.
 
+## Conditional sections — `<<IF:TOKEN>> ... <<ENDIF>>`
+
+The block is kept only when `TOKEN` expands to something non-empty, and dropped
+entirely otherwise. **Every section in the default template is wrapped in one.**
+
+```latex
+<<IF:PROJECTS>>\section{Projects}
+\resumeSubHeadingListStart{}
+<<PROJECTS>>
+\resumeSubHeadingListEnd{}<<ENDIF>>
+```
+
+This is not cosmetic. A section whose token expands to nothing leaves the
+surrounding `\begin{itemize} ... \end{itemize}` with no `\item`, which aborts
+the compile:
+
+```
+LaTeX Error: Something's wrong--perhaps a missing \item.
+==> Fatal error occurred, no output PDF file produced!
+```
+
+Deselecting every item in a section is a normal thing to do while tailoring a
+resume, so the section — heading included — disappears instead. A bare
+"Projects" heading over empty space would be wrong anyway.
+
+Blocks are **not nestable**. An unmatched `<<IF:...>>` or `<<ENDIF>>` produces a
+render warning. `<<IF:...>>` on an unknown token drops the block and warns.
+
+If you hand-edit a section's LaTeX, keep it inside its `<<IF:...>><<ENDIF>>`
+pair, or that section will break the compile whenever you deselect all of it.
+
 ## Expansions
 
 ### `<<EXPERIENCES>>`
@@ -65,9 +96,8 @@ Rows joined by ` \\\n`, each row one line, skills joined by that row's own
 
 No trailing `\\` on the last row (a trailing `\\` before `}` misformats).
 Rows with zero selected skills are skipped. If **all** rows in a section are empty
-the token expands to the empty string — the template's surrounding
-`\begin{itemize}...\item{...}` then produces an empty item, so templates should
-guard sections they may leave empty.
+the token expands to the empty string, and the surrounding `<<IF:SKILLS_TOP>>` /
+`<<IF:SKILLS_BOTTOM>>` block drops the whole section.
 
 ## Macros the template must define
 

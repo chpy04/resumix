@@ -1,6 +1,6 @@
 # Project state
 
-_Last updated: 2026-09-18 — **feature-complete**. All twelve tasks merged._
+_Last updated: 2026-09-19 — **feature-complete**. All twelve tasks merged, plus the empty-section fix (D-016)._
 
 **Read this first.** If you are picking this project up cold, read this file, then
 `docs/ARCHITECTURE.md`, then the contract docs (`SCHEMA.md`, `API.md`,
@@ -67,7 +67,13 @@ Wave 2/3 progress:
 
 ## Status: feature-complete
 
-**105 unit tests + 15 browser tests passing. Build green. Smoke test green.**
+**110 unit tests + 16 browser tests passing. Build green. Smoke test green.**
+
+Post-completion fix (2026-09-19): deselecting every item in a section aborted the
+compile — the template's `\begin{itemize}` was left with no `\item`. Templates now
+support `<<IF:TOKEN>> ... <<ENDIF>>` and every default section is wrapped in one, so an
+empty section disappears heading and all. Migration `0002` wraps existing templates
+section-by-section, preserving hand edits elsewhere in them. See D-016.
 Everything in `spec.md` is implemented and verified. The app has not been deployed —
 `docs/DEPLOYMENT.md` is written but unexecuted (no cloud credentials in this environment).
 

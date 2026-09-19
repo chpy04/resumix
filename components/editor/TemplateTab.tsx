@@ -81,6 +81,13 @@ export default function TemplateTab({ template, onContentChange, saveStatus, onR
             </button>
           ))}
         </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
+          Wrap a section in{' '}
+          <code className="font-mono text-[var(--color-ink)]">{'<<IF:TOKEN>>'}</code>…
+          <code className="font-mono text-[var(--color-ink)]">{'<<ENDIF>>'}</code> so it disappears
+          when nothing in it is selected. Without it, deselecting a whole section leaves an empty
+          LaTeX list and the compile fails.
+        </p>
       </div>
 
       <TemplateEditor ref={textareaRef} value={template.content} onChange={onContentChange} />

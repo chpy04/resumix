@@ -260,12 +260,43 @@ async function main() {
 
     const compileOk = compileResult.ok === true && compileResult.pages === 1;
 
+    // Every section emptied must still compile. Before <<IF:...>> existed, an
+    // empty section left `\begin{itemize}` with no `\item`, which aborts
+    // pdflatex outright -- so turning a whole section off broke the preview
+    // completely. These are the exact cases that regressed.
+    console.log('');
+    console.log('Empty-section compiles (deselecting a whole section must still render):');
+    const topRowIds = selections.skillRows.filter(
+      (id) => library.skillRows.find((r) => r.id === id)?.top,
+    );
+    const emptyCases: [string, typeof selections][] = [
+      ['all experiences off', { ...selections, experiences: [], experienceBullets: {} }],
+      ['all projects off', { ...selections, projects: [], projectBullets: {} }],
+      ['bottom skill rows off', { ...selections, skillRows: topRowIds }],
+      ['top skill rows off', {
+        ...selections,
+        skillRows: selections.skillRows.filter((id) => !topRowIds.includes(id)),
+      }],
+      ['everything off', {
+        experiences: [], experienceBullets: {}, projects: [],
+        projectBullets: {}, skillRows: [], skills: {},
+      }],
+    ];
+    let emptyCasesOk = true;
+    for (const [label, sel] of emptyCases) {
+      const rendered = renderResume({ templateContent: templateRow.content, library, selections: sel });
+      const res = await compileTex(rendered.tex);
+      if (!res.ok) emptyCasesOk = false;
+      console.log(`  ${res.ok ? 'PASS' : 'FAIL'}  ${label}${res.ok ? '' : ` -- ${res.errors[0] ?? 'no error text'}`}`);
+    }
+
     console.log('');
     console.log('=== SMOKE TEST SUMMARY ===');
     console.log(`Round trip match: ${roundTripOk ? 'PASS' : 'FAIL'}`);
     console.log(`Compile ok + 1 page: ${compileOk ? 'PASS' : 'FAIL'} (ok=${compileResult.ok}, pages=${compileResult.pages})`);
+    console.log(`Empty-section compiles: ${emptyCasesOk ? 'PASS' : 'FAIL'}`);
 
-    if (!roundTripOk || !compileOk) {
+    if (!roundTripOk || !compileOk || !emptyCasesOk) {
       process.exitCode = 1;
     }
   } finally {
