@@ -69,8 +69,6 @@ Wave 2/3 progress:
 - **T13 feedback widget** — a floating "Give feedback" button on every gated page
   opens a form (bug / feature request, description, drag-drop-or-paste screenshot,
   auto-captured page URL) that files a **GitHub issue** via `POST /api/feedback`.
-  The form became a corner popover and the button became a dropzone afterwards —
-  see "Feedback widget: popover + drop-on-button" below.
   Screenshots are committed to the orphan `feedback-assets` branch and linked at
   their commit sha. This is the push half of the feedback loop; the pull half (an
   agent that works issues off GitHub) lives outside this repo. Needs `GITHUB_TOKEN`
@@ -162,90 +160,10 @@ contributions from accumulating drift. See D-017.
   live in `.claude/rules/*.md`, each scoped by a `paths` glob so it loads
   only when the matching files are touched.
 
-That pass left four `react-hooks/exhaustive-deps` warnings alone (two
-`autosave` deps in `ResumeEditor`, two in `ResumeGrid`) as needing their own
-change with e2e coverage. They have since been fixed: the rule is now
-`'error'` in `eslint.config.mjs` and the tree is clean.
-
-## Feedback widget: popover, drop-on-button, better issue body (2026-09-19)
-
-Three changes to T13's widget. The first two are UI only; the third changes the
-shape of the issue body, not the endpoint's wire contract. See D-022 and D-023.
-
-- **The form is a popover, not a modal.** It opens above the button in the
-  bottom-right corner instead of a centred panel over a dimmed backdrop. A bug
-  report is a description of what is on screen, and the backdrop was covering
-  the evidence. Dismissal is now the popover contract: Escape, Cancel, or a
-  click anywhere else on the site. The outside-click listener lives in
-  `FeedbackWidget` rather than the panel, because the button has to be
-  excluded from "outside" too — otherwise clicking it would close and
-  immediately reopen, wiping a half-written report. Clicking the button while
-  the form is open therefore toggles it shut.
-- **The button is the dropzone.** Dragging an image file onto "Give feedback"
-  opens the form with it already attached; dropping a second one swaps the
-  image without remounting the form, so typed text survives. While a file is
-  being dragged anywhere over the page the button says "Drop screenshot" (its
-  `aria-label` stays fixed, so the e2e suite and screen readers keep one name
-  for it), and a drop that misses is swallowed — otherwise the browser
-  navigates to the raw image and the user loses the page they were reporting.
-- The screenshot now lives in `FeedbackWidget`, since it can arrive while the
-  panel is closed; the panel keeps kind/description and stays presentational.
-- `lib/feedback/drag.ts` holds the two decisions worth testing without a
-  browser: a drag exposes `types` but not `files` until the drop (so
-  "is this a file drag" can only read `types`), and a multi-file drop takes
-  the first _image_, not the first file. 5 unit tests.
-- Three new e2e tests in `e2e/feedback.spec.ts` (drop-on-button attaches and
-  opens; a second drop preserves typed text; the popover dismisses on an
-  outside click and toggles on the button). Native file drags have no
-  Playwright API, so they build a real `DataTransfer` in the page.
-- **The issue body separates route from host.** `**Page:**` is now the route
-  alone (`/resume/abc?tab=template`), and the origin moved into the
-  Environment block beside a new `Browser:` line — so two reports about the
-  same page group together whether they came from prod or a laptop, and which
-  one it was is still recorded. `lib/feedback/user-agent.ts` turns the UA
-  string into `Chrome 142 on macOS`; the raw string stays underneath it,
-  because a hand-rolled parser is the right size for one caller only if
-  getting it wrong costs nothing. 4 unit tests there, plus the reworked body
-  tests in `issue.test.ts`.
-- While in there: these two components were the last 51 `[var(--color-x)]`
-  arbitrary values in the tree, missed by the standards pass because T13 was
-  developed on a parallel branch. They now use the generated utilities, and
-  the one raw `text-amber-400` became a `--color-warning` token.
-
-## T16 — quality pass (2026-09-19)
-
-No behaviour change. An audit against `.claude/rules/**` found the mechanical
-half fully enforced — `format:check`, `lint`, `typecheck` all clean, 182 tests
-passing with 0 skipped, all 22 route handlers calling `requireUserId` +
-`withApiErrors`, all 22 documented in `docs/API.md`, no raw DB rows leaving
-`lib/queries/**`, and no unused exports anywhere in the tree. Four things the
-linter cannot see:
-
-- **`warning` had no colour tokens.** `PreviewPane`'s render-warnings banner
-  and its multi-page badge were the last raw palette shades in the app
-  (`border-amber-800/50`, `bg-amber-950/20`, `text-amber-300`) — exactly the
-  drift `.claude/rules/styling.md` describes, and invisible to ESLint.
-  `--color-warning` existed but was a single value, so there was nothing to
-  reach for. It now has the same `ink`/`surface`/`line`/`line-strong` triplet
-  `danger` has, mapped to the shades already in use, so no pixels moved.
-- **`forwardRef` is legacy on React 19** (D-024). `SearchBox` and
-  `TemplateEditor` were the only two components not using the
-  `export default function Name(props: NameProps)` shape, and `forwardRef`
-  was the only reason. `ref` is a plain prop now.
-- **`TemplateEditor`'s `gutterRef` was dead** — assigned, never read. The
-  gutter tracks the textarea through a `transform`, not through the ref.
-- **The latex-unavailable response was duplicated** in `/render` and `/pdf`,
-  and the `/pdf` copy was an untyped object literal, so it was not checked
-  against `RenderResult` — the same silent widening `.claude/rules/data-access.md`
-  warns about, one layer up. Both now call `latexUnavailableResult()` in
-  `lib/latex.ts`. The distinction that rule cares about is untouched: a
-  compile error is still a result, an unreachable sidecar still throws, and
-  they still converge only at the HTTP boundary. 2 new unit tests.
-
-Also corrected the stale note in the standards-pass section above, which still
-claimed four `react-hooks/exhaustive-deps` warnings were outstanding.
-
-**184 unit tests passing, 0 skipped.** See `docs/agents/t16.md`.
+Known, left alone deliberately: four `react-hooks/exhaustive-deps` warnings
+(two `autosave` deps in `ResumeEditor`, two in `ResumeGrid`). They are real
+observations, but fixing them changes editor behaviour and belongs in its
+own change with e2e coverage, not in a formatting pass.
 
 ## What is in flight
 

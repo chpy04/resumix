@@ -154,7 +154,7 @@ anything over 1 MB before sending.
 Creates a GitHub issue in `GITHUB_REPO`, labelled `feedback` + `bug`/`enhancement`.
 The submitted `url` is split in the body: the route leads it, while the origin,
 the browser parsed out of `userAgent`, and the raw `userAgent` sit in the
-collapsed Environment block (D-023).
+collapsed Environment block (D-024).
 A screenshot is committed to the orphan `FEEDBACK_ASSETS_BRANCH` branch and linked
 in the body at that commit's sha, so the image is immutable. If the screenshot
 upload fails the issue is still filed, says so in its body, and the response
