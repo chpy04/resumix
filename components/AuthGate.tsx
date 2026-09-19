@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import LoginPage from '@/app/login/page';
+import LoginForm from '@/components/LoginForm';
 import { AUTH_EXPIRED_EVENT, getToken } from '@/lib/auth-client';
 
 type Status = 'checking' | 'authenticated' | 'unauthenticated';
@@ -33,7 +33,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   if (status === 'checking') return null;
 
   if (status === 'unauthenticated') {
-    return <LoginPage onSuccess={() => setStatus('authenticated')} />;
+    return <LoginForm onSuccess={() => setStatus('authenticated')} />;
   }
 
   return <>{children}</>;
