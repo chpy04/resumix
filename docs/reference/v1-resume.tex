@@ -1,0 +1,224 @@
+%-------------------------
+% Resume in Latex
+% Author : Jake Gutierrez
+% Based off of: https://github.com/sb2nov/resume
+% License : MIT
+%------------------------
+\documentclass[10pt]{extarticle}
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+%----------FONT OPTIONS----------
+% sans-serif
+% \usepackage[sfdefault]{FiraSans}
+% \usepackage[sfdefault]{roboto}
+% \usepackage[sfdefault]{noto-sans}
+% \usepackage[default]{sourcesanspro}
+
+% serif
+% \usepackage{CormorantGaramond}
+% \usepackage{charter}
+
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\setlength{\footskip}{4pt}
+\addtolength{\oddsidemargin}{-0.530in}
+\addtolength{\evensidemargin}{-0.375in}
+\addtolength{\textwidth}{0.5in}
+\addtolength{\topmargin}{-.45in}
+\addtolength{\textheight}{0.5in}
+
+\urlstyle{same}
+
+\raggedbottom{}
+\raggedright{}
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+\vspace{-5pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule{} \vspace{0pt}]
+
+% Ensure that generate pdf is machine readable/ATS parsable
+\pdfgentounicode=1
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeSkillItem}[2]{
+\item{
+\textbf{#1}{: #2 \vspace{-1pt}}
+}
+}
+
+\newcommand{\resumeItem}[1]{
+\item{
+#1 \vspace{-1pt}
+}
+}
+
+\newcommand{\resumeItemWithoutTitle}[1]{
+\item{
+{\vspace{-1pt}}
+}
+}
+
+\newcommand{\resumeSubheading}[4]{
+\vspace{-1pt}\item
+\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+\textbf{#1} & #2 \\
+\textit{#3} & \textit{#4} \\
+\end{tabular*}\vspace{-1pt}
+}
+
+\newcommand{\resumeProjectHeading}[3]{
+\vspace{-1pt}\item
+\begin{tabular*}{1\linewidth}{l@{\extracolsep{\fill}}r}
+\textbf{#1} $|$ \emph{#2} & #3 \\
+\end{tabular*}\vspace{-1pt}
+}
+
+\newcommand{\resumeSubItem}[2]{\resumeSkillItem{#1}{#2}\vspace{-2pt}}
+
+\renewcommand{\labelitemii}{$\circ$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in,label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}\vspace{-3pt}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-1pt}}
+
+%-------------------------------------------
+%%%%%% RESUME STARTS HERE %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage[a4paper,left=0.3in,right=0.3in,top=0.3in,bottom=0.2in]{geometry}
+\begin{document}
+
+%----------HEADING----------
+% \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+%  \textbf{\href{http://sourabhbajaj.com/}{\Large Sourabh Bajaj}} & Email : \href{mailto:sourabh@sourabhbajaj.com}{sourabh@sourabhbajaj.com}\\
+%  \href{http://sourabhbajaj.com/}{http://www.sourabhbajaj.com} & Mobile : +1-123-456-7890 \\
+% \end{tabular*}
+
+\begin{center}
+ {\Huge \scshape Christopher Pyle} \\ \vspace{1pt}
+  (603)--400--9323 
+ $|$ Boston, MA $|$
+ \href{pyle.c@northeastern.edu}{\underline{pyle.c@northeastern.edu}} $|$
+ \href{https://www.linkedin.com/in/chris-pyle-neu/}{\underline{www.linkedin.com/in/chris-pyle-neu}} $|$ \newline
+ \href{https://chpy04.github.io/}{\underline{chpy04.github.io}} $|$ \href{https://github.com/chpy04}{\underline{github.com/chpy04}} $|$
+ Availability: May---December 2026
+\end{center}
+
+%-----------EDUCATION-----------
+\section{Education}
+ \resumeSubHeadingListStart{}
+ \resumeSubheading{BS in Computer Science, Software concentration, Math minor}
+  {Graduation: May 2027}
+  {Northeastern University -- Boston, MA}
+  {GPA\@: 3.97/4.00}
+  \resumeItemListStart{}
+    \resumeItem{\textbf{Relevant Coursework}: Object Oriented Design, Algorithms and Data, Computer Systems, Programming Languages, Intro to Databases, Accelerated Fundamentals of Computer Science 1 \& 2, Linear Algebra}
+    \resumeItem{\textbf{Extracurriculars}: Northeastern Electric Racing (Head of Web Dev), Northeastern Alpine Ski Team (Treasurer), Game Theory Association (Secretary), Teaching Assistant (Fundamentals of Computer Science 1 \& 2), Outdoors Club}
+  \resumeItemListEnd{}
+\resumeSubHeadingListEnd{}    
+
+ %-----------PROGRAMMING SKILLS-----------
+\section{Technical Skills}
+\begin{itemize}[leftmargin=0.15in, label={}]
+ \item{
+ \textbf{Languages}{:  JavaScript, Typescript, Python, Java, Rust, C, C++, SQL, Terraform, HTML, CSS, Racket } \\
+ \textbf{Frameworks \& Tools}{: Git, Docker, React, Node, Express, Prisma, FastAPI, SQLAlchemy, Django, FreeRTOS} \\
+ \textbf{Cloud Technologies}{: Github Actions, AWS (EB, ECS, EC2, S3, RDS, Amplify, DynamoDB), Netlify, Vercel }
+ }
+\end{itemize}
+
+%-----------EXPERIENCE-----------
+
+\section{Experience}
+\resumeSubHeadingListStart{}
+\resumeSubheading{Software Engineer}
+  {July 2025---December 2025}
+  {Via Separations (NExT Consulting)}{Boston, MA}
+  \resumeItemListStart{}
+  \resumeItem{Designed and implemented a production Warehouse Management System for \textbf{250+} users using \textbf{Python} / \textbf{React}, to track and manage biotech inventory across multiple facilities,  improving accuracy from \textbf{50\%} to \textbf{95\%} for \textbf{10k+} items}
+  \resumeItem{Architected PostgreSQL schema with temporal row versioning and genealogy tracking for complete traceability across \textbf{100k+} rows. Utlized SQL Triggers, computed columns, and optimized queries to achieve \textbf{2x} faster performance}
+  \resumeItem{Implemented Entity-Attribute-Value (EAV) model to flexibly store \textbf{1000+} custom attributes for biotech products}
+  \resumeItem{Integrated with \textbf{Quickbase API} to automatically fullfill purchase orders, increasing inventory intake speed by \textbf{40\%}}
+  % \resumeItem{Built \textbf{AWS} infrastructure (EC2, RDS, S3) using \textbf{Terraform} and automated deployments with \textbf{CI/CD pipeline}}
+  \resumeItemListEnd{}
+
+\resumeSubheading{Head of Web Development}
+  {January 2024---Present}
+  {Northeastern Electric Racing}{Boston, MA}
+  \resumeItemListStart{}
+  \resumeItem{Manage all development and technical operations on an \href{https://finishlinebyner.com/}{\underline{Enterprise Resource Planning (ERP) system}} serving \textbf{400+} club members, overseeing deployments on \textbf{AWS}, codebase architecture, and feature roadmap execution}
+  \resumeItem{Lead \textbf{9} tech leads and \textbf{60+} developers to implement multiple concurrent features each semester. Run weekly meetings, perform code reviews, provide technical help, and teach web dev onboarding class for \textbf{30+} novice developers }
+  \resumeItem{Designed and implemented full AWS infrastructure with \textbf{Terraform}, automated deployments, reduced costs by \textbf{30\%}}
+  \resumeItem{Implemented a file review system where users can upload, view, markup, and approve drawings for CAD parts}
+  \resumeItem{Refactored and optimized \textbf{100+} endpoints and added indexing on database causing up to \textbf{5x} faster page load times}
+  \resumeItemListEnd{}
+
+\resumeSubheading{Software Engineer}
+  {August 2022---Present}
+  {Unicode}{Virtual}
+  \resumeItemListStart{}
+  \resumeItem{Developed backend for the \href{https://aac.unicode.org/adopt/}{\underline{Adopt A Character}} site in \textbf{Svelte}, involving schema design, payment processing, and integration with internal and external databases. Generated \textbf{\$40,000} revenue in the first \textbf{2.5 months} of deployment}
+  \resumeItem{Implemented backend flow with \textbf{PouchDB} / \textbf{Typescript} to check availability, process payments, and add adoptions}
+  \resumeItem{Created Admin page to streamline adoption approval and automate social media posts \& sending thank you emails}
+  \resumeItem{Integrated with stripe payment and external accounting tool \textbf{API} \& \textbf{Webhooks} to maintain data consistency}
+  \resumeItem{Facilitated conversion of CLDR site with \textbf{130+} pages into a static site, automated conversion with Python}
+  \resumeItemListEnd{}
+
+ \resumeSubHeadingListEnd{}
+ 
+%-----------PROJECTS-----------
+ \section{Projects}
+\resumeSubHeadingListStart{}
+\resumeProjectHeading{Mentor Matcher}
+  {React, Django}{August 2025}
+  \resumeItemListStart{}
+  \resumeItem{Full stack staff mentorship matching application in \textbf{React} and \textbf{Django} with a customizable form and algorithm}
+  \resumeItem{Utilized custom 3-stage matching algorithm to compare matches and compute optimal match pairings for whole cohort}
+  \resumeItemListEnd{}
+
+\resumeProjectHeading{Bit board Chess Engine}
+  {C, GO, Web Sockets }{June 2025}
+  \resumeItemListStart{}
+  \resumeItem{Created bit board chess engine in \textbf{C} with alpha beta pruning, iterative deepening, and search extensions}
+  \resumeItem{Deployed engine in full-stack web app using \textbf{React}, \textbf{Web Sockets}, and \textbf{Golang} to interface with the engine }
+  \resumeItemListEnd{}
+
+\resumeProjectHeading{Alpine Skiing Image Processor}
+  {Python, Yolov8, PyQt5}{January 2025}
+  \resumeItemListStart{}
+  \resumeItem{Trained \textbf{computer vision model} on custom dataset to automatically recognize bib numbers of ski racers in photos}
+  \resumeItem{Developed user interface for bulk processing \textbf{400+} photos / week, generating \textbf{\$600+} in sales revenue }
+  \resumeItemListEnd{}
+\resumeSubHeadingListEnd{}
+
+%---------------INTERESTS----------------------------
+\section{Additional Information}
+\begin{itemize}
+[leftmargin=0.15in, label={}]
+ {\item{
+ \textbf{Interests}{:  Skiing $|$ Ski Racing $|$ Mountain Biking $|$ Rock Climbing $|$ Hiking $|$ Car Racing $|$ Cats $|$ Weightlifting $|$ Cooking} \\
+ \textbf{Accolades}{:  Deans List all semesters $|$ Red Cross CPR \& First Aid $|$ Bill Taylor Essay Contest Winner $|$ Cum Laude}
+ }}
+
+\end{itemize}
+
+
+\end{document}

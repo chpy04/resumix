@@ -1,0 +1,16 @@
+# Decision log
+
+| # | Decision | Rationale | Alternatives rejected |
+|---|---|---|---|
+| D-001 | LaTeX compiles in a sidecar TeX Live container, not in-process or in-browser | real `pdflatex`, so the V1 template compiles unchanged; Vercel serverless cannot host TeX Live | SwiftLaTeX WASM (bundled package set is fragile for exotic packages) |
+| D-002 | Drizzle + `postgres.js` from Next.js server code; browser never touches the DB | typed SQL, plain-SQL migrations, credentials stay server-side, portable off Supabase | `supabase-js` from the browser (anon key is public, so the password gate would be cosmetic; needs full Supabase local stack) |
+| D-003 | PDFs stored as `bytea` in `resume_pdf`, behind `lib/storage.ts` | ~100KB each, one dev/prod code path, snapshot is transactional with the resume | Supabase Storage now (extra infra + divergent dev path) |
+| D-004 | The renderer emits fixed macro names (`\resumeSubheading`, `\resumeItem`, …) | keeps templates in full control of layout without inventing a templating language | a general templating language (large scope); renderer emitting raw layout (template loses control) |
+| D-005 | Token syntax is `<<TOKEN>>` | an unsubstituted token renders as visible garbage — loud but non-fatal | `\Macro` (hard TeX error), `%%X%%` (silently swallowed by the comment) |
+| D-006 | `technical_skill` gains a `technical_skill_row_id` FK not present in the spec | the bridge table has no row reference, so skills must know their row — same shape as `experience_bullet` | keeping skills global and adding the row to the bridge PK (breaks the spec's stated composite PK) |
+| D-007 | Bridge-table presence means "selected"; `sort_order` is a dense 0-based sequence rewritten wholesale | no `is_selected` column to drift out of sync; reorder is one idempotent transaction | nullable `sort_order` + `is_selected` flag |
+| D-008 | Content is substituted into LaTeX **verbatim, unescaped** | bullets legitimately contain `\textbf`, `\href`, `\$`; the user is authoring LaTeX | auto-escaping (would break every existing bullet) |
+| D-009 | Column is `sort_order`, not `order` | `order` is a reserved SQL keyword | quoting `"order"` everywhere |
+| D-010 | Auth is one shared password → HMAC token in `localStorage`, verified by middleware | matches the spec's single-user gate; long password entered once | cookies/sessions (more moving parts), real user accounts (out of scope) |
+| D-011 | Content is never deleted, only archived — no DELETE endpoints | resumes must keep rendering content that has since been retired | soft-delete with cleanup job |
+| D-012 | `GET /api/resumes/:id` returns the entire editor payload (resume + template + selections + library) in one response | the editor needs all of it immediately; avoids a request waterfall on load | separate endpoints per slice |
