@@ -15,6 +15,10 @@ type LoadState =
   | { status: 'error'; message: string }
   | { status: 'ready'; resumes: ResumeSummary[] };
 
+/** Stable identity for the not-yet-loaded case, so the memos below don't
+ *  recompute on every render against a fresh `[]` literal. */
+const NO_RESUMES: readonly ResumeSummary[] = [];
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -72,7 +76,7 @@ export default function ResumeGrid() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const resumes = state.status === 'ready' ? state.resumes : [];
+  const resumes = state.status === 'ready' ? state.resumes : NO_RESUMES;
   const defaultResume = useMemo(
     () => resumes.find((resume) => resume.isDefault) ?? null,
     [resumes],

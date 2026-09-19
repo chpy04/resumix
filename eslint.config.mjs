@@ -138,6 +138,14 @@ export default tseslint.config(
   {
     files: ['app/**/*.tsx', 'components/**/*.tsx'],
     ...reactHooks.configs['recommended-latest'],
+    rules: {
+      ...reactHooks.configs['recommended-latest'].rules,
+      // The tree is clean, so this is an error rather than the plugin's
+      // default warning: a stale closure in the editor's autosave wiring is
+      // exactly the class of bug that survives review and shows up as
+      // "my edit didn't save".
+      'react-hooks/exhaustive-deps': 'error',
+    },
   },
   {
     files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}'],

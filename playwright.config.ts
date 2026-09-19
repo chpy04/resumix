@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * E2E against a real dev server, a real Postgres, and the real latex sidecar.
- * Assumes `docker compose up -d db latex` is already running; the webServer
- * block starts Next.js and seeds the database first.
+ * Assumes `docker compose up -d db latex` is already running. `globalSetup`
+ * force-reseeds the database; `webServer` starts Next.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -18,9 +18,19 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  globalSetup: './e2e/global-setup.ts',
   webServer: {
-    command: 'node --experimental-strip-types scripts/seed.ts --force && npx next dev --port 3100',
-    url: 'http://localhost:3100/login',
+    // A single process, deliberately. This used to be
+    // `seed.ts --force && npx next dev`, and the compound shell command meant
+    // Playwright's teardown killed the shell while next-server survived,
+    // leaving :3100 occupied and failing the next run. Seeding moved to
+    // e2e/global-setup.ts.
+    command: 'next dev --port 3100',
+    // `/`, not `/login`: this probe is also what warms the dev server's
+    // per-route compilation, and every spec starts with `goto('/')`. Probing
+    // a route the tests don't use left the first test paying a cold compile
+    // inside its own timeout, which it intermittently lost.
+    url: 'http://localhost:3100/',
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
