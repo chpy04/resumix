@@ -36,8 +36,8 @@ test('the home page download always gives the last-saved snapshot, not live cont
   await waitForSaved(page);
 
   // Save PDF from the editor: this is both the persisted snapshot AND an
-  // immediate download of that exact snapshot (see docs/agents/t8.md
-  // Deviations — "Save PDF" both POSTs the snapshot and downloads it).
+  // immediate download of that exact snapshot — "Save PDF" both POSTs the
+  // snapshot and downloads it.
   const firstDownload = await clickSaveAndDownload(page);
   const firstText = await extractPdfText(await fileAsBase64(firstDownload));
   expect(firstText).toContain(oldMarker);
