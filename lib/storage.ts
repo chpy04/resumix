@@ -4,7 +4,7 @@
  * Supabase Storage later should only touch this file — callers only ever
  * see `saveResumePdfSnapshot` / `getLatestResumePdfSnapshot`.
  */
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import { resumePdf } from './db/schema.ts';
 
@@ -63,7 +63,11 @@ export async function getLatestResumePdfSnapshot(resumeId: string): Promise<PdfS
 }
 
 /** Metadata only (no bytes) for the most recent snapshot of each resume in
- * one query — used to assemble `ResumeSummary.latestPdf` without N+1s. */
+ * one query — used to assemble `ResumeSummary.latestPdf` without N+1s.
+ *
+ * Snapshots carry no `user_id`; they belong to whoever owns the resume. The
+ * `inArray` filter is what keeps this to the caller's own resumes, since
+ * the ids passed in always come from a user-scoped resume query. */
 export async function getLatestResumePdfMetaByResumeId(
   resumeIds: string[],
 ): Promise<Map<string, PdfSnapshotMeta>> {
@@ -77,6 +81,7 @@ export async function getLatestResumePdfMetaByResumeId(
       createdAt: resumePdf.createdAt,
     })
     .from(resumePdf)
+    .where(inArray(resumePdf.resumeId, resumeIds))
     .orderBy(resumePdf.resumeId, desc(resumePdf.createdAt));
 
   for (const row of rows) {

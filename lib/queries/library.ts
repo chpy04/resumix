@@ -1,10 +1,15 @@
 /**
- * Assembles the global `Library` (D-012): all experiences/projects/skill
+ * Assembles one user's `Library` (D-012): their experiences/projects/skill
  * rows/templates with their children attached, optionally including
  * archived rows. A handful of flat queries plus in-memory grouping — no
  * per-row lookups.
+ *
+ * Every query here is filtered by `userId`. Child rows (bullets, skills)
+ * carry no owner of their own, so they are filtered through a join to their
+ * parent — the parent's `user_id` is the single source of truth for who
+ * owns a bullet (docs/SCHEMA.md).
  */
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
   experience,
@@ -17,9 +22,7 @@ import {
 import type { Bullet, Experience, Library, Project, Skill, SkillRow } from '../types.ts';
 import { listTemplates } from './templates.ts';
 
-function bulletsByParent<TRow extends { id: string; isArchived: boolean }>(
-  bullets: (Bullet & { parentId: string })[],
-): Map<string, Bullet[]> {
+function bulletsByParent(bullets: (Bullet & { parentId: string })[]): Map<string, Bullet[]> {
   const map = new Map<string, Bullet[]>();
   for (const bullet of bullets) {
     const list = map.get(bullet.parentId) ?? [];
@@ -29,11 +32,18 @@ function bulletsByParent<TRow extends { id: string; isArchived: boolean }>(
   return map;
 }
 
-async function listExperiencesWithBullets(includeArchived: boolean): Promise<Experience[]> {
+async function listExperiencesWithBullets(
+  userId: string,
+  includeArchived: boolean,
+): Promise<Experience[]> {
   const experienceRows = await db
     .select()
     .from(experience)
-    .where(includeArchived ? undefined : eq(experience.isArchived, false))
+    .where(
+      includeArchived
+        ? eq(experience.userId, userId)
+        : and(eq(experience.userId, userId), eq(experience.isArchived, false)),
+    )
     .orderBy(asc(experience.createdAt));
 
   const bulletRows = await db
@@ -44,7 +54,12 @@ async function listExperiencesWithBullets(includeArchived: boolean): Promise<Exp
       parentId: experienceBullet.experienceId,
     })
     .from(experienceBullet)
-    .where(includeArchived ? undefined : eq(experienceBullet.isArchived, false))
+    .innerJoin(experience, eq(experienceBullet.experienceId, experience.id))
+    .where(
+      includeArchived
+        ? eq(experience.userId, userId)
+        : and(eq(experience.userId, userId), eq(experienceBullet.isArchived, false)),
+    )
     .orderBy(asc(experienceBullet.createdAt));
 
   const byExperience = bulletsByParent(bulletRows);
@@ -60,11 +75,18 @@ async function listExperiencesWithBullets(includeArchived: boolean): Promise<Exp
   }));
 }
 
-async function listProjectsWithBullets(includeArchived: boolean): Promise<Project[]> {
+async function listProjectsWithBullets(
+  userId: string,
+  includeArchived: boolean,
+): Promise<Project[]> {
   const projectRows = await db
     .select()
     .from(project)
-    .where(includeArchived ? undefined : eq(project.isArchived, false))
+    .where(
+      includeArchived
+        ? eq(project.userId, userId)
+        : and(eq(project.userId, userId), eq(project.isArchived, false)),
+    )
     .orderBy(asc(project.createdAt));
 
   const bulletRows = await db
@@ -75,7 +97,12 @@ async function listProjectsWithBullets(includeArchived: boolean): Promise<Projec
       parentId: projectBullet.projectId,
     })
     .from(projectBullet)
-    .where(includeArchived ? undefined : eq(projectBullet.isArchived, false))
+    .innerJoin(project, eq(projectBullet.projectId, project.id))
+    .where(
+      includeArchived
+        ? eq(project.userId, userId)
+        : and(eq(project.userId, userId), eq(projectBullet.isArchived, false)),
+    )
     .orderBy(asc(projectBullet.createdAt));
 
   const byProject = bulletsByParent(bulletRows);
@@ -90,11 +117,18 @@ async function listProjectsWithBullets(includeArchived: boolean): Promise<Projec
   }));
 }
 
-async function listSkillRowsWithSkills(includeArchived: boolean): Promise<SkillRow[]> {
+async function listSkillRowsWithSkills(
+  userId: string,
+  includeArchived: boolean,
+): Promise<SkillRow[]> {
   const rowRows = await db
     .select()
     .from(technicalSkillRow)
-    .where(includeArchived ? undefined : eq(technicalSkillRow.isArchived, false))
+    .where(
+      includeArchived
+        ? eq(technicalSkillRow.userId, userId)
+        : and(eq(technicalSkillRow.userId, userId), eq(technicalSkillRow.isArchived, false)),
+    )
     .orderBy(asc(technicalSkillRow.createdAt));
 
   const skillRows = await db
@@ -105,7 +139,12 @@ async function listSkillRowsWithSkills(includeArchived: boolean): Promise<SkillR
       parentId: technicalSkill.technicalSkillRowId,
     })
     .from(technicalSkill)
-    .where(includeArchived ? undefined : eq(technicalSkill.isArchived, false))
+    .innerJoin(technicalSkillRow, eq(technicalSkill.technicalSkillRowId, technicalSkillRow.id))
+    .where(
+      includeArchived
+        ? eq(technicalSkillRow.userId, userId)
+        : and(eq(technicalSkillRow.userId, userId), eq(technicalSkill.isArchived, false)),
+    )
     .orderBy(asc(technicalSkill.createdAt));
 
   const bySkillRow = bulletsByParent(skillRows);
@@ -122,12 +161,15 @@ async function listSkillRowsWithSkills(includeArchived: boolean): Promise<SkillR
   }));
 }
 
-export async function assembleLibrary(includeArchived: boolean): Promise<Library> {
+export async function assembleLibrary(
+  userId: string,
+  includeArchived: boolean,
+): Promise<Library> {
   const [experiences, projects, skillRows, templates] = await Promise.all([
-    listExperiencesWithBullets(includeArchived),
-    listProjectsWithBullets(includeArchived),
-    listSkillRowsWithSkills(includeArchived),
-    listTemplates(includeArchived),
+    listExperiencesWithBullets(userId, includeArchived),
+    listProjectsWithBullets(userId, includeArchived),
+    listSkillRowsWithSkills(userId, includeArchived),
+    listTemplates(userId, includeArchived),
   ]);
 
   return { experiences, projects, skillRows, templates };

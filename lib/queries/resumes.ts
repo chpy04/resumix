@@ -1,4 +1,12 @@
-import { desc, eq } from 'drizzle-orm';
+/**
+ * Resumes, always scoped to their owner.
+ *
+ * Every function takes the caller's `userId` and filters by it, so a resume
+ * id belonging to someone else behaves exactly like one that does not
+ * exist — `null` / `NotFoundError`, never a 403. Distinguishing the two
+ * would confirm to a stranger that a given id is real.
+ */
+import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { resume } from '../db/schema.ts';
 import type { ResumeDetail, ResumeSummary } from '../types.ts';
@@ -26,10 +34,11 @@ function toSummary(
 }
 
 /** Default first, then `created_at desc`, per docs/API.md. */
-export async function listResumeSummaries(): Promise<ResumeSummary[]> {
+export async function listResumeSummaries(userId: string): Promise<ResumeSummary[]> {
   const rows = await db
     .select()
     .from(resume)
+    .where(eq(resume.userId, userId))
     .orderBy(desc(resume.isDefault), desc(resume.createdAt));
 
   const pdfMeta = await getLatestResumePdfMetaByResumeId(rows.map((r) => r.id));
@@ -37,53 +46,72 @@ export async function listResumeSummaries(): Promise<ResumeSummary[]> {
   return rows.map((row) => toSummary(row, pdfMeta.get(row.id) ?? null));
 }
 
-export async function getResumeRow(id: string): Promise<ResumeRow | null> {
-  const [row] = await db.select().from(resume).where(eq(resume.id, id)).limit(1);
+export async function getResumeRow(userId: string, id: string): Promise<ResumeRow | null> {
+  const [row] = await db
+    .select()
+    .from(resume)
+    .where(and(eq(resume.id, id), eq(resume.userId, userId)))
+    .limit(1);
   return row ?? null;
 }
 
-export async function getResumeSummary(id: string): Promise<ResumeSummary | null> {
-  const row = await getResumeRow(id);
+export async function getResumeSummary(
+  userId: string,
+  id: string,
+): Promise<ResumeSummary | null> {
+  const row = await getResumeRow(userId, id);
   if (!row) return null;
   const pdfMeta = await getLatestResumePdfMetaByResumeId([id]);
   return toSummary(row, pdfMeta.get(id) ?? null);
 }
 
-async function getDefaultResumeRow(): Promise<ResumeRow | null> {
-  const [row] = await db.select().from(resume).where(eq(resume.isDefault, true)).limit(1);
+async function getDefaultResumeRow(userId: string): Promise<ResumeRow | null> {
+  const [row] = await db
+    .select()
+    .from(resume)
+    .where(and(eq(resume.userId, userId), eq(resume.isDefault, true)))
+    .limit(1);
   return row ?? null;
 }
 
-/** Clones the default resume's template + every selection slice, per docs/API.md. */
-export async function createResume(name: string): Promise<ResumeSummary> {
-  const defaultResume = await getDefaultResumeRow();
+/** Clones *this user's* default resume — its template + every selection
+ *  slice, per docs/API.md. Every user has one, created by `provisionUser`. */
+export async function createResume(userId: string, name: string): Promise<ResumeSummary> {
+  const defaultResume = await getDefaultResumeRow(userId);
   if (!defaultResume) {
     throw new Error('no default resume is configured — cannot clone');
   }
 
   const [row] = await db
     .insert(resume)
-    .values({ name, isDefault: false, templateId: defaultResume.templateId })
+    .values({ name, isDefault: false, templateId: defaultResume.templateId, userId })
     .returning();
   if (!row) throw new Error('failed to create resume');
 
-  await cloneSelections(defaultResume.id, row.id);
+  await cloneSelections(userId, defaultResume.id, row.id);
 
   return toSummary(row, null);
 }
 
 export async function updateResume(
+  userId: string,
   id: string,
   patch: { name?: string; templateId?: string },
 ): Promise<ResumeSummary> {
   if (patch.templateId !== undefined) {
-    const template = await getTemplateById(patch.templateId);
+    // Scoped lookup: pointing a resume at another user's template is a 400,
+    // exactly like pointing it at a template id that does not exist.
+    const template = await getTemplateById(userId, patch.templateId);
     if (!template) {
       throw new BadRequestError(`unknown template id: ${patch.templateId}`);
     }
   }
 
-  const [row] = await db.update(resume).set(patch).where(eq(resume.id, id)).returning();
+  const [row] = await db
+    .update(resume)
+    .set(patch)
+    .where(and(eq(resume.id, id), eq(resume.userId, userId)))
+    .returning();
   if (!row) throw new NotFoundError(`resume ${id} not found`);
 
   const pdfMeta = await getLatestResumePdfMetaByResumeId([id]);
@@ -91,29 +119,32 @@ export async function updateResume(
 }
 
 /** 400s on the default resume — see docs/DECISIONS.md D-011/D-012 and docs/API.md. */
-export async function deleteResume(id: string): Promise<void> {
-  const row = await getResumeRow(id);
+export async function deleteResume(userId: string, id: string): Promise<void> {
+  const row = await getResumeRow(userId, id);
   if (!row) throw new NotFoundError(`resume ${id} not found`);
   if (row.isDefault) {
     throw new BadRequestError('cannot delete the default resume');
   }
-  await db.delete(resume).where(eq(resume.id, id));
+  await db.delete(resume).where(and(eq(resume.id, id), eq(resume.userId, userId)));
 }
 
 /** The whole editor payload in one round trip (D-012). Library always
  * includes archived content — the editor UI is responsible for filtering it. */
-export async function getResumeDetail(id: string): Promise<ResumeDetail | null> {
-  const row = await getResumeRow(id);
+export async function getResumeDetail(
+  userId: string,
+  id: string,
+): Promise<ResumeDetail | null> {
+  const row = await getResumeRow(userId, id);
   if (!row) return null;
 
-  const template = await getTemplateById(row.templateId);
+  const template = await getTemplateById(userId, row.templateId);
   if (!template) {
     throw new Error(`resume ${id} references missing template ${row.templateId}`);
   }
 
   const [selections, library, pdfMeta] = await Promise.all([
     getSelections(id),
-    assembleLibrary(true),
+    assembleLibrary(userId, true),
     getLatestResumePdfMetaByResumeId([id]),
   ]);
 

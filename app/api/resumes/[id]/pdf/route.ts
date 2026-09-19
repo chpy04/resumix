@@ -5,6 +5,7 @@ import { NotFoundError } from '@/lib/queries/errors';
 import { renderResumeById } from '@/lib/queries/render';
 import { getResumeRow } from '@/lib/queries/resumes';
 import { getLatestResumePdfSnapshot, saveResumePdfSnapshot } from '@/lib/storage';
+import { requireUserId } from '@/lib/session';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -16,14 +17,15 @@ interface RouteContext {
  * errors, warnings, log }`, the same shape `/render` uses, since there is
  * no PDF to name/store. On success: `{ ok: true, filename, createdAt }`.
  */
-export async function POST(_request: Request, { params }: RouteContext): Promise<Response> {
+export async function POST(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {
+    const userId = await requireUserId(request);
     const { id } = await params;
 
-    const resumeRow = await getResumeRow(id);
+    const resumeRow = await getResumeRow(userId, id);
     if (!resumeRow) throw new NotFoundError(`resume ${id} not found`);
 
-    const { tex, warnings } = await renderResumeById(id);
+    const { tex, warnings } = await renderResumeById(userId, id);
 
     let compiled;
     try {
@@ -58,11 +60,12 @@ export async function POST(_request: Request, { params }: RouteContext): Promise
  * render. `404` if the resume has never been saved (docs/API.md's
  * anti-drift guarantee).
  */
-export async function GET(_request: Request, { params }: RouteContext): Promise<Response> {
+export async function GET(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {
+    const userId = await requireUserId(request);
     const { id } = await params;
 
-    const resumeRow = await getResumeRow(id);
+    const resumeRow = await getResumeRow(userId, id);
     if (!resumeRow) throw new NotFoundError(`resume ${id} not found`);
 
     const snapshot = await getLatestResumePdfSnapshot(id);
