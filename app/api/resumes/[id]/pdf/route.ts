@@ -1,6 +1,6 @@
 import { compileTex, LatexServiceError } from '@/lib/latex';
 import { withApiErrors, errorResponse } from '@/lib/http';
-import { buildResumeFilename } from '@/lib/filename';
+import { buildResumeFilename, sanitizeForHeader } from '@/lib/filename';
 import { NotFoundError } from '@/lib/queries/errors';
 import { renderResumeById } from '@/lib/queries/render';
 import { getResumeRow } from '@/lib/queries/resumes';
@@ -74,7 +74,7 @@ export async function GET(_request: Request, { params }: RouteContext): Promise<
       status: 200,
       headers: {
         'content-type': 'application/pdf',
-        'content-disposition': `attachment; filename="${snapshot.filename}"`,
+        'content-disposition': `attachment; filename="${sanitizeForHeader(snapshot.filename)}"`,
         'content-length': String(snapshot.bytes.byteLength),
       },
     });

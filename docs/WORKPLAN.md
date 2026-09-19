@@ -50,4 +50,4 @@ points for T9. T9 branches off T8 rather than off `main`.
 |---|---|---|
 | T10 | Spec-compliance e2e suite (8 specs, one per spec.md promise) | ✅ merged |
 | T11 | Deployment path (Supabase / Fly.io / Vercel), README, CLAUDE.md, CONTRIBUTING.md | ✅ merged |
-| T12 | Final fresh-eyes review pass → `docs/REVIEW.md` | in flight |
+| T12 | Final review pass → `docs/REVIEW.md` | ✅ done (by the PM; the review agent was killed by a cyber-safeguard false positive) |

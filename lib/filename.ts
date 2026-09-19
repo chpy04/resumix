@@ -34,10 +34,22 @@ export function slugifyForFilename(input: string): string {
 
 /**
  * Builds `<prefix>_<Company>_Resume.pdf`. `prefix` defaults to
- * `PDF_NAME_PREFIX` (falling back to `Chris_Pyle`) and is used verbatim —
- * only the company portion is normalized.
+ * `PDF_NAME_PREFIX` (falling back to `Chris_Pyle`).
+ *
+ * The company portion is normalized by `slugifyForFilename`. The prefix is
+ * operator-supplied rather than user-supplied, but it still ends up inside a
+ * quoted `Content-Disposition` header, so quotes, control characters and CRLF
+ * are stripped from it — a stray quote in the env var would otherwise truncate
+ * the header value and break the download filename.
  */
 export function buildResumeFilename(resumeName: string, prefix?: string): string {
-  const p = prefix ?? process.env.PDF_NAME_PREFIX ?? DEFAULT_PREFIX;
+  const raw = prefix ?? process.env.PDF_NAME_PREFIX ?? DEFAULT_PREFIX;
+  const p = sanitizeForHeader(raw) || DEFAULT_PREFIX;
   return `${p}_${slugifyForFilename(resumeName)}_Resume.pdf`;
+}
+
+/** Strips quotes, backslashes and control characters (including CR/LF). */
+export function sanitizeForHeader(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/["\\]/g, '').replace(/[\x00-\x1f\x7f]/g, '');
 }

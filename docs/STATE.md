@@ -1,6 +1,6 @@
 # Project state
 
-_Last updated: 2026-09-18 — Wave 1 complete, Wave 2 in flight._
+_Last updated: 2026-09-18 — **feature-complete**. All twelve tasks merged._
 
 **Read this first.** If you are picking this project up cold, read this file, then
 `docs/ARCHITECTURE.md`, then the contract docs (`SCHEMA.md`, `API.md`,
@@ -50,7 +50,30 @@ Wave 2/3 progress:
 
 **Current test count: 71 passing.** `npm run build` green with all 19 API routes.
 
-Remaining: the editor (T8 in flight, T9 blocked on it) and the T10/T11 integration wave.
+- **T8 editor** — two-pane editor, dnd-kit reordering, per-slice autosave, archived-unless-
+  selected visibility, inline global content editing. Pure reducer/visibility/autosave logic
+  is unit-tested.
+- **T9 preview** — debounced coalescing live preview via `POST /render` that keeps the last
+  good PDF visible through compile errors, a page-count badge, and a dependency-free LaTeX
+  editor with a click-to-insert token legend. react-pdf is client-only with a local worker.
+- **T10 e2e** — 15 Playwright tests, one per behavioural promise in `spec.md`. No spec
+  violations found.
+- **T11 deployment** — `README.md` (executed from a clean clone), `docs/DEPLOYMENT.md`,
+  `CLAUDE.md`, `docs/CONTRIBUTING.md`, `services/latex/fly.toml`.
+- **D-015** — the latex sidecar now requires a bearer token on `/compile`; it needs a public
+  IP on Fly (a Vercel function cannot join Fly's 6PN mesh) and LaTeX can read files on its box.
+- **T12 review** — `docs/REVIEW.md`. One low-severity fix (header sanitization); no critical
+  or high findings in the areas examined.
+
+## Status: feature-complete
+
+**105 unit tests + 15 browser tests passing. Build green. Smoke test green.**
+Everything in `spec.md` is implemented and verified. The app has not been deployed —
+`docs/DEPLOYMENT.md` is written but unexecuted (no cloud credentials in this environment).
+
+Sensible next steps, none blocking: deploy per `docs/DEPLOYMENT.md`; exercise the
+`pages > 1` warning against real two-page content; consider the partial-nested-map trap in
+`docs/REVIEW.md` if a second API client is ever written.
 
 ## What is in flight
 
