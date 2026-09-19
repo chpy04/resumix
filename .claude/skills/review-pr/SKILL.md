@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Work an open PR until it is mergeable. Invoked by hand as `/review-pr <pr-number>` when a human points you at a PR with review feedback or failing CI. Answers every comment — fixing, or disagreeing with a reason — and gets the merge gate green. Never merges, and never invokes another skill.
+description: Work an open PR until it is mergeable. Invoked by hand as `/review-pr <pr-number>` when a human points you at one PR with review feedback or failing CI; it takes exactly one PR number and never scans open PRs. Answers every comment — fixing, or disagreeing with a reason — and gets the merge gate green. Never merges, and never invokes another skill.
 ---
 
 # Get a PR to mergeable
@@ -17,6 +17,7 @@ of this applies — work the PR directly and take direction in conversation.
 
 ## Hard limits
 
+- **Exactly one PR, and it is given to you.** `/review-pr <pr-number>` takes the number as its argument. If you were invoked without one, ask which PR — never list, search or scan to pick one yourself, and never work more than one in a single invocation. Choosing what to work on is the human's job, and an agent that goes looking will find work nobody queued.
 - **Never merge.** Even when the gate is green and a human has approved.
   Merging is irreversible and outward-facing; the human presses it, and
   `status.yml` closes the issue and sets `status:done` from there.

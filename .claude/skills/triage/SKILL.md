@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Plan one issue, or re-plan one whose plan got feedback. Invoked by hand as `/triage <issue-number>` for work running without a human in the loop. On an unplanned issue it sizes it and writes a plan of proportional depth into the issue body; on an issue already in status:planning it collects the feedback left since that plan and answers it. Never writes code, and never invokes another skill.
+description: Plan one issue, or re-plan one whose plan got feedback. Invoked by hand as `/triage <issue-number>` for work running without a human in the loop; it takes exactly one issue number and never scans the issue list. On an unplanned issue it sizes it and writes a plan of proportional depth into the issue body; on an issue already in status:planning it collects the feedback left since that plan and answers it. Never writes code, and never invokes another skill.
 ---
 
 # Triage an issue
@@ -24,6 +24,7 @@ where a human would otherwise have interrupted it.
   deciding things a human would want to overrule — architecture, structure,
   the shape of the data. A code block in a plan is you deciding something
   that was never yours to decide, and it is what `/implement` is for.
+- **Exactly one issue, and it is given to you.** `/triage <issue-number>` takes the number as its argument. If you were invoked without one, ask which issue — never list, search or scan to pick one yourself, and never work more than one in a single invocation. Choosing what to work on is the human's job, and an agent that goes looking will find work nobody queued.
 - **Never file an issue unprompted.** A human asking for one is the gate, and
   so is the `epic` label, whose children Track C creates as sub-issues. Absent
   that, no — if you notice other work worth doing, say so in your reply.

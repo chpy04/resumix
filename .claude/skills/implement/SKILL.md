@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Build one approved issue and open its PR. Invoked by hand as `/implement <issue-number>` when a human points you at an issue already in status:ready. Claims it, works in a dedicated worktree, runs the full merge gate, and opens the PR. Never merges, and never invokes another skill.
+description: Build one approved issue and open its PR. Invoked by hand as `/implement <issue-number>` when a human points you at one issue already in status:ready; it takes exactly one issue number and never scans the issue list. Claims it, works in a dedicated worktree, runs the full merge gate, and opens the PR. Never merges, and never invokes another skill.
 ---
 
 # Implement an approved issue
@@ -19,6 +19,7 @@ conversation, and do not invoke this skill.
 
 ## Hard limits
 
+- **Exactly one issue, and it is given to you.** `/implement <issue-number>` takes the number as its argument. If you were invoked without one, ask which issue — never list, search or scan to pick one yourself, and never work more than one in a single invocation. Choosing what to work on is the human's job, and an agent that goes looking will find work nobody queued.
 - **Never merge.** Opening the PR is where you stop. `status.yml` moves the
   issue when a human merges.
 - **Never file an issue unprompted.** If the work uncovers other work — a bug
