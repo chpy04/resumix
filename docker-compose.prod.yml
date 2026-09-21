@@ -1,0 +1,110 @@
+# The production lane. Everything here is deliberately disjoint from
+# `docker-compose.yml`: different project name, different volume, different
+# ports, different image. Nothing a developer runs touches it (D-031).
+#
+# Never invoked by hand — `npm run deploy:prod` (scripts/deploy-prod.sh) is
+# the only supported entry point, because the deploy order (pull → build →
+# back up → migrate → swap) is the part that matters, not the `up`.
+#
+# Interpolated variables come from ~/.resumix/prod.env via the script's
+# `--env-file`. Every one of them uses `:?` so a missing secret fails the
+# deploy loudly instead of silently starting an unprotected instance.
+
+name: resumix-prod
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resumix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in ~/.resumix/prod.env}
+      POSTGRES_DB: resumix
+    ports:
+      # Published only so you can `pg_dump`/`psql` into prod from the host.
+      # Nothing in the app reaches it this way — the app container uses the
+      # compose network (`db:5432`).
+      - '127.0.0.1:39432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U resumix -d resumix']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  latex:
+    image: resumix-latex:prod
+    build: ./services/latex
+    restart: unless-stopped
+    environment:
+      # Required here, unlike dev. Even bound to loopback this is a process
+      # that runs pdflatex on whatever it is handed; see services/latex/README.md.
+      LATEX_SERVICE_TOKEN: ${LATEX_SERVICE_TOKEN:?set LATEX_SERVICE_TOKEN in ~/.resumix/prod.env}
+    ports:
+      - '127.0.0.1:39080:8080'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: resumix-app:prod
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      latex:
+        condition: service_healthy
+    environment:
+      # Built from the compose network, not read from prod.env, so there is
+      # no way to hand the production app a development database by editing
+      # one line of an env file.
+      DATABASE_URL: postgres://resumix:${POSTGRES_PASSWORD:?}@db:5432/resumix
+      LATEX_SERVICE_URL: http://latex:8080
+      LATEX_SERVICE_TOKEN: ${LATEX_SERVICE_TOKEN:?}
+      RESUMIX_AUTH_MODE: password
+      APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in ~/.resumix/prod.env}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in ~/.resumix/prod.env}
+      OWNER_EMAIL: ${OWNER_EMAIL:?set OWNER_EMAIL in ~/.resumix/prod.env}
+      # Optional — each degrades a feature rather than failing the deploy,
+      # so these use `:-` and not `:?`.
+      PDF_NAME_PREFIX: ${PDF_NAME_PREFIX:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+    ports:
+      # Loopback only. This is a personal instance on a laptop, not a host.
+      - '127.0.0.1:39000:3000'
+
+  # Not started by `up` — it has a profile, so it only runs when named
+  # explicitly (`docker compose run --rm migrate`). Built from the `migrate`
+  # stage, which has the full source and node_modules, so `scripts/*.ts` run
+  # exactly as they do in development.
+  migrate:
+    image: resumix-migrate:prod
+    build:
+      context: .
+      target: migrate
+    profiles: ['tools']
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://resumix:${POSTGRES_PASSWORD:?}@db:5432/resumix
+      SEED_USER_EMAIL: ${OWNER_EMAIL:?}
+      SEED_USER_NAME: ${SEED_USER_NAME:-}
+
+volumes:
+  # Namespaced by the `name:` above, so this is `resumix-prod_pgdata` and can
+  # never be confused with development's `resumix_pgdata`.
+  pgdata:

@@ -1,0 +1,24 @@
+# Keep the build context small, and — critically — keep the *host's* build
+# artifacts out of it. Copying a `.next/` from the checkout into the image
+# is how a dev build and a prod build end up sharing state (CLAUDE.md,
+# "Branches and worktrees").
+.next
+node_modules
+.git
+.env
+.env.*
+prod.env
+
+# Nothing under here can affect a production build.
+e2e
+playwright-report
+test-results
+blob-report
+coverage
+docs
+.claude
+.github
+**/*.test.ts
+lib/render/.scratch
+scripts/.scratch
+.DS_Store
