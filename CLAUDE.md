@@ -75,7 +75,7 @@ one cannot:
   page default export taking a custom prop typechecks fine and fails the
   build. That bug reached `main` once.
 - `test` needs `DATABASE_URL` or 16 integration tests silently self-skip and
-  still report green. Expect **184 passing, 0 skipped**.
+  still report green. Expect **185 passing, 0 skipped**.
 - `smoke` reads live DB state and a prior Playwright run leaves edited
   content behind — hence the reseed before it.
 

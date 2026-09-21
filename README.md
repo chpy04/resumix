@@ -119,7 +119,7 @@ and a 1-page PDF. This is the project's acceptance bar (see
 | `npm run dev`         | Next.js dev server on :3000, hot reload                                                                                                                                              |
 | `npm run build`       | Production build (`next build`); also the strictest typecheck (validates App Router export signatures, not just types)                                                               |
 | `npm start`           | Run the production build (`next start`)                                                                                                                                              |
-| `npm test`            | Tests across `lib/**/*.test.ts` (`node --test`). Loads `.env`; the DB-backed `lib/queries` suites self-skip without `DATABASE_URL`, so expect 110 passing and 0 skipped              |
+| `npm test`            | Tests across `lib/**/*.test.ts` (`node --test`). Loads `.env`; the DB-backed `lib/queries` suites self-skip without `DATABASE_URL`, so expect 185 passing and 0 skipped              |
 | `npm run test:e2e`    | Playwright browser tests (`e2e/**`); spins up its own dev server on :3100 and **force-reseeds the database** — see `playwright.config.ts` before running against data you care about |
 | `npm run db:migrate`  | Applies any `drizzle/*.sql` files not yet recorded in `_migrations`. Idempotent — safe to re-run.                                                                                    |
 | `npm run db:seed`     | Seeds the real V1 resume content + Default template + Default resume. Refuses to run twice unless you pass `--force` (wipes and reseeds)                                             |
