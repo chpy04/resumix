@@ -130,3 +130,56 @@ export interface RenderResult {
   warnings: string[];
   log: string;
 }
+
+// ---------------------------------------------------------------------------
+// Applications
+//
+// One flat row per application plus untyped attachments — see docs/SCHEMA.md
+// and D-032 for why there is no company, event, task or contact type here.
+// ---------------------------------------------------------------------------
+
+export type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
+
+/** An attachment's metadata. The bytes are only ever streamed by
+ *  `GET /api/application-files/:id`, never carried in a JSON payload. */
+export interface ApplicationFile {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  isArchived: boolean;
+  createdAt: string;
+}
+
+export interface ApplicationSummary {
+  id: string;
+  company: string;
+  roleTitle: string;
+  postingUrl: string;
+  status: ApplicationStatus;
+  /** Null exactly while the application is still a draft. */
+  appliedAt: string | null;
+  /** The live resume this is being tailored from; null if none is linked. */
+  resumeId: string | null;
+  /** The snapshot that was actually sent. Null until it is marked applied —
+   *  and pinned to those bytes forever afterwards, even as `resumeId` moves on. */
+  sentPdf: { filename: string; createdAt: string } | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `GET /api/applications/:id` — the summary plus the two things the list
+ *  view has no use for. */
+export interface ApplicationDetail extends ApplicationSummary {
+  notes: string;
+  files: ApplicationFile[];
+}
+
+/** What both `POST /api/applications/:id/pdf` (save the resume to the
+ *  application) and `POST /api/applications/:id/apply` return. A LaTeX
+ *  failure is `ok: false` and changes nothing, exactly like
+ *  `POST /api/resumes/:id/pdf` (docs/API.md). */
+export type ApplicationPdfResult =
+  | { ok: true; application: ApplicationDetail }
+  | { ok: false; pages: number | null; errors: string[]; warnings: string[]; log: string };

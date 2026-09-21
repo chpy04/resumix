@@ -8,7 +8,7 @@
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { resume } from '../db/schema.ts';
+import { application, resume, resumePdf } from '../db/schema.ts';
 import type { ResumeDetail, ResumeSummary } from '../types.ts';
 import { getLatestResumePdfMetaByResumeId } from '../storage.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
@@ -72,23 +72,53 @@ async function getDefaultResumeRow(userId: string): Promise<ResumeRow | null> {
   return row ?? null;
 }
 
-/** Clones *this user's* default resume — its template + every selection
- *  slice, per docs/API.md. Every user has one, created by `provisionUser`. */
-export async function createResume(userId: string, name: string): Promise<ResumeSummary> {
-  const defaultResume = await getDefaultResumeRow(userId);
-  if (!defaultResume) {
+/**
+ * Clones an existing resume — its template + every selection slice, per
+ * docs/API.md — under a new name.
+ *
+ * `sourceResumeId` defaults to this user's own Default resume, which every
+ * account has (`provisionUser` creates it). Starting a new application from
+ * last month's tailored resume rather than from Default is the reason it is
+ * a parameter at all.
+ */
+export async function createResume(
+  userId: string,
+  name: string,
+  sourceResumeId?: string,
+): Promise<ResumeSummary> {
+  const source = sourceResumeId
+    ? await getResumeRow(userId, sourceResumeId)
+    : await getDefaultResumeRow(userId);
+  if (!source) {
+    // Scoped lookup, so another user's resume id is a 400 — the same answer
+    // an id that does not exist gets.
+    if (sourceResumeId) throw new BadRequestError(`unknown resume id: ${sourceResumeId}`);
     throw new Error('no default resume is configured — cannot clone');
   }
 
   const [row] = await db
     .insert(resume)
-    .values({ name, isDefault: false, templateId: defaultResume.templateId, userId })
+    .values({ name, isDefault: false, templateId: source.templateId, userId })
     .returning();
   if (!row) throw new Error('failed to create resume');
 
-  await cloneSelections(userId, defaultResume.id, row.id);
+  await cloneSelections(userId, source.id, row.id);
 
   return toSummary(row, null);
+}
+
+/**
+ * How many of this user's applications were sent with a snapshot of this
+ * resume. Lives here rather than in `applications.ts` so the dependency runs
+ * one way: applications reach for `createResume`, not the other way round.
+ */
+async function countApplicationsSentWithResume(userId: string, id: string): Promise<number> {
+  const rows = await db
+    .select({ id: application.id })
+    .from(application)
+    .innerJoin(resumePdf, eq(application.resumePdfId, resumePdf.id))
+    .where(and(eq(application.userId, userId), eq(resumePdf.resumeId, id)));
+  return rows.length;
 }
 
 export async function updateResume(
@@ -122,6 +152,18 @@ export async function deleteResume(userId: string, id: string): Promise<void> {
   if (!row) throw new NotFoundError(`resume ${id} not found`);
   if (row.isDefault) {
     throw new BadRequestError('cannot delete the default resume');
+  }
+
+  // `resume_pdf` cascades from `resume`, so deleting this would take the
+  // snapshots with it — including one an application points at as the record
+  // of what it actually sent. That record wins (D-032). Checked here rather
+  // than left to the foreign key so the caller gets a 400 that says why,
+  // instead of a 500 out of Postgres.
+  const sentCount = await countApplicationsSentWithResume(userId, id);
+  if (sentCount > 0) {
+    throw new BadRequestError(
+      `cannot delete a resume that ${sentCount} application(s) were sent with`,
+    );
   }
   await db.delete(resume).where(and(eq(resume.id, id), eq(resume.userId, userId)));
 }

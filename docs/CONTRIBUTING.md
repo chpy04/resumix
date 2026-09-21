@@ -21,7 +21,7 @@ Run all of it, not a subset:
   That bug reached `main` once, which is why `build` is in the gate.
 - `npm test` needs `DATABASE_URL` (it reads `.env`). Without it, the 16
   `lib/queries` integration suites self-skip and the run still reports
-  green. Expect **184 passing, 0 skipped**.
+  green. Expect **225 passing, 0 skipped**.
 - `npm run smoke` reads live database state, and a Playwright run leaves
   edited content behind — hence the reseed immediately before it. Running
   `smoke` straight after `test:e2e` will fail the round-trip diff for

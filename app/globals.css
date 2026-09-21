@@ -27,7 +27,12 @@
   --color-danger-line: var(--color-red-900);
   --color-danger-line-strong: var(--color-red-800);
 
+  /* Success. `success` is the check in the save badge; the rest build the
+   * "offered" status pill, mirroring the danger and warning triplets. */
   --color-success: var(--color-green-500);
+  --color-success-ink: var(--color-green-300);
+  --color-success-surface: var(--color-green-950);
+  --color-success-line: var(--color-green-800);
 
   /* Something worked but not entirely — the feedback report that filed while
    * its screenshot upload failed, or a render that produced warnings. Distinct

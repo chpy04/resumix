@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ApiError,
   createExperience,
@@ -12,6 +13,7 @@ import {
   downloadResumePdf,
   getResumeDetail,
   saveResumePdf,
+  saveResumeToApplication,
   updateExperience,
   updateExperienceBullet,
   updateProject,
@@ -36,6 +38,10 @@ import { useAutosaveRegistry } from './useAutosaveRegistry';
 
 interface ResumeEditorProps {
   resumeId: string;
+  /** Present when the editor was opened from an application
+   *  (`/resume/:id?application=:id`). Saving then writes the PDF to that
+   *  application and returns to it, rather than downloading a snapshot. */
+  applicationId?: string;
 }
 
 type SliceValue = string[] | Record<string, string[]>;
@@ -62,7 +68,8 @@ function useFieldDrafts() {
   }, []);
 }
 
-export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
+export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorProps) {
+  const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [tab, setTab] = useState<EditorTab>('content');
   const [selections, dispatchSelections] = useReducer(selectionsReducer, EMPTY_SELECTIONS);
@@ -519,10 +526,28 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
     ).schedule(content);
   }
 
+  /**
+   * The primary action, which means two different things.
+   *
+   * From an application: render, store the snapshot on the application, and
+   * go back to it — you came here to tailor this resume for that job, and
+   * saving is what finishes the errand. From the library: snapshot the resume
+   * and download it, as it has always worked.
+   */
   async function handleDownload(): Promise<void> {
     setDownloading(true);
     setDownloadError(null);
     try {
+      if (applicationId !== undefined) {
+        const saved = await saveResumeToApplication(applicationId);
+        if (!saved.ok) {
+          setDownloadError(saved.errors[0] ?? 'The LaTeX for this resume failed to compile.');
+          return;
+        }
+        router.push(`/applications/${applicationId}`);
+        return;
+      }
+
       const result = await saveResumePdf(resumeId);
       if (!result.ok) {
         setDownloadError(result.errors[0] ?? 'The LaTeX for this resume failed to compile.');
@@ -601,6 +626,7 @@ export default function ResumeEditor({ resumeId }: ResumeEditorProps) {
         onDownload={() => void handleDownload()}
         downloading={downloading}
         downloadError={downloadError}
+        applicationId={applicationId}
       />
 
       <div ref={containerRef} className="flex min-h-0 flex-1">

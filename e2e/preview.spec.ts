@@ -1,14 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-
-const PASSWORD = 'e2e-password';
+import { login } from './support';
 
 async function openDefaultEditor(page: Page) {
-  await page.goto('/');
-  const field = page.getByPlaceholder('Password');
-  if (await field.isVisible().catch(() => false)) {
-    await field.fill(PASSWORD);
-    await page.keyboard.press('Enter');
-  }
+  await login(page);
+  await page.goto('/resumes');
   await page.getByText('Default').first().click();
   await expect(page).toHaveURL(/\/resume\//);
 }

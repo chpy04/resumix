@@ -62,6 +62,26 @@ type Selections = {
   skillRows: string[];
   skills: Record<string, string[]>; // skillRowId -> skill ids
 };
+
+type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
+
+type ApplicationSummary = {
+  id;
+  company;
+  roleTitle;
+  postingUrl;
+  status: ApplicationStatus;
+  appliedAt: string | null; // null exactly while it is a draft
+  resumeId: string | null; // the live resume being tailored
+  sentPdf: { filename; createdAt } | null; // the frozen snapshot that went out
+  isArchived;
+  createdAt;
+  updatedAt;
+};
+
+type ApplicationFile = { id; filename; contentType; byteSize; isArchived; createdAt };
+
+type ApplicationDetail = ApplicationSummary & { notes: string; files: ApplicationFile[] };
 ```
 
 ## Auth
@@ -110,6 +130,64 @@ with `ok: false`. `POST /pdf` then returns the same failure shape `/render` does
 (`{ ok: false, pages, errors, warnings, log }`) and stores nothing, because there
 is no PDF to name or snapshot. Clients must branch on `.ok`, never on
 `response.ok` alone.
+
+## Applications
+
+| method | path                                  | body                                                                             | returns                                                            |
+| ------ | ------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| GET    | `/api/applications?includeArchived=1` | —                                                                                | `ApplicationSummary[]`, `created_at desc`                          |
+| POST   | `/api/applications`                   | `{ company, roleTitle?, postingUrl?, resumeId? }`                                | `201 ApplicationDetail`                                            |
+| GET    | `/api/applications/:id`               | —                                                                                | `ApplicationDetail`                                                |
+| PATCH  | `/api/applications/:id`               | `{ company?, roleTitle?, postingUrl?, notes?, status?, resumeId?, isArchived? }` | `ApplicationDetail`                                                |
+| POST   | `/api/applications/:id/apply`         | —                                                                                | `{ ok: true, application }` — renders, snapshots, pins             |
+| GET    | `/api/applications/:id/pdf`           | —                                                                                | `application/pdf` of the snapshot **that was sent**; `404` if none |
+
+`appliedAt` is deliberately not writable: it follows from `status`, stamped the
+first time an application leaves `draft` and never cleared (docs/SCHEMA.md).
+`resumeId: null` unlinks the resume; `postingUrl` must be empty or http(s),
+since it is rendered as a link.
+
+`createResumeFrom` clones that resume under the company's name and links the
+copy — the normal path, since a new application arrives with something to
+tailor. `resumeId` links a resume that already exists instead; passing both is
+a `400`, and passing neither leaves the application without one.
+
+**`POST /pdf` is "save this resume to the application".** It renders the
+linked resume, stores a `resume_pdf` snapshot, and points the application at
+it, leaving the status alone — this is what the resume editor calls when it
+was opened from an application. `400` if no resume is linked.
+
+**`POST /apply` declares it sent**, which is what moves it off the pipeline
+board and into the Applied table. If nothing has been saved to the application
+yet it takes that snapshot first, so a sent application is never left with no
+record; if one is already pinned, that snapshot stands and nothing is
+re-rendered.
+
+A LaTeX compile failure is **not** an HTTP error on either POST: it is
+`200 { ok: false, pages, errors, warnings, log }` and nothing is written,
+exactly as for `POST /api/resumes/:id/pdf`. Branch on `.ok`.
+
+`GET /api/applications/:id/pdf` returns the bytes this application was sent
+with — never a fresh render, and never the resume's _latest_ snapshot either.
+
+**There is no DELETE.** `{ "isArchived": true }` takes an application off the
+board. Deleting a resume that an application was sent with is refused with a
+`400`, because `resume_pdf` cascades from `resume` and that snapshot is the
+only record of what went out.
+
+### Attachments
+
+| method | path                          | body                  | returns               |
+| ------ | ----------------------------- | --------------------- | --------------------- |
+| POST   | `/api/applications/:id/files` | `multipart/form-data` | `201 ApplicationFile` |
+| GET    | `/api/application-files/:id`  | —                     | the file's bytes      |
+| PATCH  | `/api/application-files/:id`  | `{ isArchived }`      | `ApplicationFile`     |
+
+One form field, `file`, ≤ 4 MB, any type — multipart rather than JSON for the
+same reason `/api/feedback` uses it. Responses are always
+`Content-Disposition: attachment` with `X-Content-Type-Options: nosniff`, and
+the content type comes from a fixed list rather than the upload, so an
+uploaded HTML file cannot be served back as a live page on this origin.
 
 ## Library (the caller’s content)
 

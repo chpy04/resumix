@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { expect, type Download, type Page } from '@playwright/test';
 // pdfjs-dist ships pure-JS text extraction that needs no canvas/DOM, so it
 // works fine directly under Node inside a Playwright test (not the browser
 // context). This is how "does the PDF actually contain X" is asserted —
@@ -34,12 +35,13 @@ export async function login(page: Page): Promise<void> {
 }
 
 /**
- * Drives the real "new resume" flow from the home page: click the pinned
- * new-resume cell, type a company name into the modal, submit, and wait for
- * the editor to load. Returns the created resume's id (parsed from the URL).
+ * Drives the real "new resume" flow from the resume library (`/resumes` —
+ * the home page is the applications board): click the pinned new-resume cell,
+ * type a company name into the modal, submit, and wait for the editor to
+ * load. Returns the created resume's id (parsed from the URL).
  */
 export async function createResumeViaUi(page: Page, companyName: string): Promise<string> {
-  await page.goto('/');
+  await page.goto('/resumes');
   await page
     .getByText(/new resume/i)
     .first()
@@ -162,6 +164,29 @@ export function findExperienceBullet(
   return { experienceId: experience.id, bulletId: bullet.id, content: bullet.content };
 }
 
+/** The seeded Default resume's id, the usual starting point for a new
+ *  application's resume. */
+export async function getDefaultResumeId(page: Page): Promise<string> {
+  const resumes = await apiRequest<{ id: string; isDefault: boolean }[]>(page, '/api/resumes');
+  const found = resumes.find((resume) => resume.isDefault);
+  if (!found) throw new Error('no default resume found');
+  return found.id;
+}
+
+/** Logs an application through the real API, cloning `createResumeFrom` into
+ *  a resume of its own exactly as the new-application dialog does. Used for
+ *  setup where the creation flow itself is not what is under test. */
+export async function createApplicationViaApi(
+  page: Page,
+  input: { company: string; roleTitle?: string; createResumeFrom?: string },
+): Promise<string> {
+  const created = await apiRequest<{ id: string }>(page, '/api/applications', {
+    method: 'POST',
+    body: input,
+  });
+  return created.id;
+}
+
 export function findExperienceId(detail: ResumeDetailLike, company: string): string {
   const experience = detail.library.experiences.find((e) => e.company === company);
   if (!experience) throw new Error(`no experience found for company "${company}"`);
@@ -189,6 +214,14 @@ export async function renderResumeText(page: Page, resumeId: string): Promise<st
   return extractPdfText(result.pdfBase64);
 }
 
+/** A browser download's bytes, base64-encoded — the input `extractPdfText`
+ *  wants when the PDF came from a real click rather than the API. */
+export async function downloadAsBase64(download: Download): Promise<string> {
+  const path = await download.path();
+  if (!path) throw new Error('download had no local path');
+  return (await readFile(path)).toString('base64');
+}
+
 /** Decodes a base64 PDF (as returned by /render or read off disk from a
  *  browser download) into its plain text content, page by page. */
 export async function extractPdfText(base64: string): Promise<string> {
@@ -209,6 +242,48 @@ export async function extractPdfText(base64: string): Promise<string> {
   } finally {
     await doc.destroy();
   }
+}
+
+/**
+ * Drags a board card onto a droppable target and drops it.
+ *
+ * The exit zones only mount once a drag is actually under way, so the target
+ * is located *after* the pointer has cleared `PointerSensor`'s 4px activation
+ * distance — looking it up before the press would find nothing.
+ */
+export async function dragCardOnto(
+  page: Page,
+  cardTestId: string,
+  targetTestId: string,
+): Promise<void> {
+  const card = page.getByTestId(cardTestId);
+  const cardBox = await card.boundingBox();
+  if (!cardBox) throw new Error(`no bounding box for ${cardTestId}`);
+
+  const startX = cardBox.x + cardBox.width / 2;
+  const startY = cardBox.y + cardBox.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY + 8, { steps: 5 });
+  await page.mouse.move(startX, startY + 16, { steps: 5 });
+
+  const target = page.getByTestId(targetTestId);
+  await expect(target).toBeVisible();
+  const targetBox = await target.boundingBox();
+  if (!targetBox) throw new Error(`no bounding box for ${targetTestId}`);
+
+  const endX = targetBox.x + targetBox.width / 2;
+  const endY = targetBox.y + targetBox.height / 2;
+  await page.mouse.move(endX, endY, { steps: 20 });
+  await page.mouse.move(endX, endY, { steps: 2 });
+  await page.mouse.up();
+
+  // dnd-kit's pointer sensor swallows clicks with a capture-phase listener on
+  // the document and removes it 50ms after the drop — so that the click which
+  // ends a drag doesn't also fire. A person cannot click inside that window;
+  // a test can, and would silently lose its next click.
+  await page.waitForTimeout(100);
 }
 
 /**

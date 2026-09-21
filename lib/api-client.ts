@@ -10,6 +10,11 @@
 import { authedFetch } from './auth-client.ts';
 import type { FeedbackKind } from './feedback/issue.ts';
 import type {
+  ApplicationDetail,
+  ApplicationFile,
+  ApplicationPdfResult,
+  ApplicationStatus,
+  ApplicationSummary,
   Bullet,
   Experience,
   Project,
@@ -320,19 +325,17 @@ export function updateTemplate(
 }
 
 /**
- * `GET /api/resumes/:id/pdf` — downloads the most recently *saved* PDF
- * snapshot (not a fresh render) and saves it client-side using the
- * filename the server provides via `Content-Disposition`. Throws `ApiError`
- * with status 404 if the resume has never been saved as a PDF.
+ * Fetches a binary endpoint and saves it client-side under the filename the
+ * server named in `Content-Disposition`. Shared by every download in the app:
+ * the server is the only thing that knows what a file should be called.
  */
-export async function downloadResumePdf(id: string): Promise<void> {
-  const response = await authedFetch(`/api/resumes/${id}/pdf`);
+async function downloadFile(path: string, fallbackFilename: string): Promise<void> {
+  const response = await authedFetch(path);
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorMessage(response));
   }
 
-  const filename =
-    extractFilename(response.headers.get('content-disposition')) ?? `resume-${id}.pdf`;
+  const filename = extractFilename(response.headers.get('content-disposition')) ?? fallbackFilename;
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   try {
@@ -347,11 +350,131 @@ export async function downloadResumePdf(id: string): Promise<void> {
   }
 }
 
+/**
+ * `GET /api/resumes/:id/pdf` — downloads the most recently *saved* PDF
+ * snapshot (not a fresh render). Throws `ApiError` with status 404 if the
+ * resume has never been saved as a PDF.
+ */
+export function downloadResumePdf(id: string): Promise<void> {
+  return downloadFile(`/api/resumes/${id}/pdf`, `resume-${id}.pdf`);
+}
+
 function extractFilename(contentDisposition: string | null): string | null {
   if (!contentDisposition) return null;
   // Matches both `filename="foo.pdf"` and unquoted `filename=foo.pdf`.
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(contentDisposition);
   return match?.[1]?.trim() ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Applications
+// ---------------------------------------------------------------------------
+
+/** `GET /api/applications` — newest first; the board regroups them itself. */
+export function listApplications(includeArchived = false): Promise<ApplicationSummary[]> {
+  return requestJson<ApplicationSummary[]>(
+    `/api/applications${includeArchived ? '?includeArchived=1' : ''}`,
+  );
+}
+
+/**
+ * `POST /api/applications` — everything but the company can come later.
+ *
+ * `createResumeFrom` clones that resume under the company's name and links
+ * the copy, which is how a new application arrives with something to tailor.
+ * `resumeId` links an existing resume instead; passing neither leaves it
+ * without one.
+ */
+export function createApplication(input: {
+  company: string;
+  roleTitle?: string;
+  postingUrl?: string;
+  resumeId?: string | null;
+  createResumeFrom?: string | null;
+}): Promise<ApplicationDetail> {
+  return requestJson<ApplicationDetail>('/api/applications', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input),
+  });
+}
+
+export function getApplication(id: string): Promise<ApplicationDetail> {
+  return requestJson<ApplicationDetail>(`/api/applications/${id}`);
+}
+
+/** `PATCH /api/applications/:id` — the autosave target for every field on the
+ *  detail page, plus the status picker and archiving. `resumeId: null`
+ *  unlinks the resume. */
+export function updateApplication(
+  id: string,
+  patch: Partial<{
+    company: string;
+    roleTitle: string;
+    postingUrl: string;
+    notes: string;
+    status: ApplicationStatus;
+    resumeId: string | null;
+    isArchived: boolean;
+  }>,
+): Promise<ApplicationDetail> {
+  return requestJson<ApplicationDetail>(`/api/applications/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * `POST /api/applications/:id/pdf` — "save this resume to the application":
+ * renders the linked resume and pins the snapshot, leaving the status alone.
+ * Check `.ok`; a LaTeX failure is a normal `200 { ok: false, ... }`.
+ */
+export function saveResumeToApplication(id: string): Promise<ApplicationPdfResult> {
+  return requestJson<ApplicationPdfResult>(`/api/applications/${id}/pdf`, { method: 'POST' });
+}
+
+/**
+ * `POST /api/applications/:id/apply` — marks it sent, which is what moves it
+ * into the Applied table. Takes the snapshot first if nothing has been saved
+ * to the application yet. Same `.ok` contract as above.
+ */
+export function markApplicationApplied(id: string): Promise<ApplicationPdfResult> {
+  return requestJson<ApplicationPdfResult>(`/api/applications/${id}/apply`, { method: 'POST' });
+}
+
+/** `GET /api/applications/:id/pdf` — the bytes that were actually sent, not
+ *  the resume's latest snapshot. `404` while it is still a draft. */
+export function downloadApplicationPdf(id: string): Promise<void> {
+  return downloadFile(`/api/applications/${id}/pdf`, `application-${id}.pdf`);
+}
+
+/** `POST /api/applications/:id/files` — multipart, like the feedback widget;
+ *  deliberately sets no `content-type` so the browser writes the boundary. */
+export function uploadApplicationFile(id: string, file: File): Promise<ApplicationFile> {
+  const form = new FormData();
+  form.set('file', file, file.name);
+  return requestJson<ApplicationFile>(`/api/applications/${id}/files`, {
+    method: 'POST',
+    body: form,
+  });
+}
+
+/** `PATCH /api/application-files/:id` — archiving is how an attachment is
+ *  removed; there is no DELETE (D-011). */
+export function updateApplicationFile(
+  id: string,
+  patch: { isArchived: boolean },
+): Promise<ApplicationFile> {
+  return requestJson<ApplicationFile>(`/api/application-files/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+export function downloadApplicationFile(id: string, filename: string): Promise<void> {
+  return downloadFile(`/api/application-files/${id}`, filename);
 }
 
 // ---------------------------------------------------------------------------
