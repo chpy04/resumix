@@ -120,12 +120,13 @@ rule message names the file in `.claude/rules/` that explains it (D-017).
 
 These are properties of the system as it stands, not a to-do list.
 
-- **Not deployed.** `docs/DEPLOYMENT.md` describes the Vercel + Fly.io +
-  Supabase path; it has not been executed.
-- **`lib/db/index.ts` calls `postgres(url)` with defaults.** On Supabase's
-  Supavisor _transaction_ pooler this must become
-  `postgres(url, { max: 1, prepare: false })` — transaction pooling does not
-  support prepared statements. Harmless locally; a production footgun.
+- **Production is a second local instance, not a cloud one.** It runs from
+  `~/.resumix/src` via `npm run deploy:prod` on ports 39000/39432/39080,
+  entirely separate from development (D-031, `docs/DEPLOYMENT.md`). The
+  Vercel + Fly.io + Supabase path is documented as an appendix and has never
+  been executed.
+- **No multi-machine story.** Production is reachable on loopback only, so
+  the app exists on exactly one laptop and is down whenever it is asleep.
 - **No multi-template UI.** The schema supports many templates per user; the
   editor assumes the resume's own.
 - **Nothing shows which user is signed in.** Invisible with one seeded user.
@@ -134,5 +135,13 @@ These are properties of the system as it stands, not a to-do list.
 
 ## Ports
 
-Web 3000 (e2e uses 3100), latex 8080, postgres **5433** — 5432 is usually
-already taken.
+Two disjoint blocks, so the two instances can run at once and neither can be
+reached by accident from the other's tooling.
+
+|             | web             | postgres                                 | latex     |
+| ----------- | --------------- | ---------------------------------------- | --------- |
+| development | 3000 (e2e 3100) | **5433** — 5432 is usually already taken | 8080      |
+| production  | **39000**       | **39432**                                | **39080** |
+
+Production's block is deliberately odd and bound to `127.0.0.1`. Nothing in
+development points at it; nothing may (CLAUDE.md, "Production is not yours").

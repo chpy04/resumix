@@ -12,9 +12,14 @@ Checked-in configuration for agents working in this repo.
   they deliberately never invoke each other — a phase boundary is a human
   decision. Unlike `rules/`, a skill is a _procedure_ rather than a
   convention: it costs no context until someone asks for it.
-- **`settings.json`** — permission allowlist for the project's own read-only
-  and verification commands, so the gate can be run without a prompt per
-  step.
+- **`settings.json`** — permissions. The `allow` half lists the project's own
+  read-only and verification commands, so the merge gate can be run without a
+  prompt per step. The `deny` half is a hard boundary, not a convenience: the
+  production instance (`npm run deploy:prod`, `docker-compose.prod.yml`,
+  `~/.resumix/`) and `.env` files are off-limits. `scripts/deploy-prod.sh`
+  refuses independently when `CLAUDECODE` is set, so neither half is the only
+  thing standing between an agent and real data — see CLAUDE.md, "Production
+  is not yours".
 
 The mechanical half of these rules is enforced by `eslint.config.mjs`, whose
 error messages name the rule file that explains them. Prose and lint config

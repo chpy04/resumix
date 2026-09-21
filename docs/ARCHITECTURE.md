@@ -25,24 +25,24 @@ hand back the exact bytes a resume was last saved with.
                              ▼            ▼
                     ┌────────────┐  ┌──────────────────┐
                     │ Postgres   │  │ latex service    │
-                    │ (docker /  │  │ texlive + express│
-                    │  Supabase) │  │ (docker / Fly.io)│
+                    │ (docker)   │  │ texlive + node   │
+                    │            │  │ (docker)         │
                     └────────────┘  └──────────────────┘
 ```
 
-| Concern       | Choice                                                                                                                                                                | Why                                                                  |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Framework     | Next.js 15 App Router, React 19, TypeScript                                                                                                                           | Vercel target, server + client in one repo                           |
-| Styling       | Tailwind CSS v4                                                                                                                                                       | fast, no design system needed                                        |
-| DB access     | Drizzle ORM + `postgres.js`, server-side only                                                                                                                         | typed SQL, plain SQL migrations, portable off Supabase               |
-| DB (dev)      | `postgres:17` container in docker-compose                                                                                                                             | matches spec's "separate postgres container"                         |
-| DB (prod)     | Supabase Postgres via Supavisor pooler                                                                                                                                | just a different `DATABASE_URL`                                      |
-| LaTeX         | sidecar container: TeX Live + Express `/compile`                                                                                                                      | real `pdflatex`; V1 template compiles unchanged                      |
-| PDF storage   | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                                                                                                          | one code path dev/prod; swap to Supabase Storage later               |
-| Multi-tenancy | `user_id` on the five root tables; children inherit through their parent; every query takes a `userId`                                                                | one source of truth per fact (D-018)                                 |
-| Auth          | three modes behind one `requireUserId()`: `dev` (auto-login as the seeded user), `password` (shared password → HMAC token naming a user), `supabase` (OAuth, stubbed) | local dev needs no credentials; production keeps a real gate (D-019) |
-| Drag + drop   | `@dnd-kit`                                                                                                                                                            | proven in V1                                                         |
-| PDF preview   | `react-pdf` (pdf.js)                                                                                                                                                  | proven in V1                                                         |
+| Concern       | Choice                                                                                                                                                                | Why                                                                    |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Framework     | Next.js 15 App Router, React 19, TypeScript                                                                                                                           | server + client in one repo; `output: 'standalone'` for the prod image |
+| Styling       | Tailwind CSS v4                                                                                                                                                       | fast, no design system needed                                          |
+| DB access     | Drizzle ORM + `postgres.js`, server-side only                                                                                                                         | typed SQL, plain SQL migrations, portable off Supabase                 |
+| DB (dev)      | `postgres:17` container in `docker-compose.yml`                                                                                                                       | matches spec's "separate postgres container"                           |
+| DB (prod)     | a second `postgres:17` container, its own volume and port, in `docker-compose.prod.yml`                                                                               | production is a separate local instance, not a cloud one (D-031)       |
+| LaTeX         | sidecar container: TeX Live + Express `/compile`                                                                                                                      | real `pdflatex`; V1 template compiles unchanged                        |
+| PDF storage   | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                                                                                                          | one code path dev/prod; swap to Supabase Storage later                 |
+| Multi-tenancy | `user_id` on the five root tables; children inherit through their parent; every query takes a `userId`                                                                | one source of truth per fact (D-018)                                   |
+| Auth          | three modes behind one `requireUserId()`: `dev` (auto-login as the seeded user), `password` (shared password → HMAC token naming a user), `supabase` (OAuth, stubbed) | local dev needs no credentials; production keeps a real gate (D-019)   |
+| Drag + drop   | `@dnd-kit`                                                                                                                                                            | proven in V1                                                           |
+| PDF preview   | `react-pdf` (pdf.js)                                                                                                                                                  | proven in V1                                                           |
 
 ## Repo layout
 

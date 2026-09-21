@@ -25,6 +25,22 @@
       "Bash(git diff:*)",
       "Bash(git log:*)"
     ],
-    "deny": ["Read(./.env)", "Read(./.env.*)"]
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+
+      "Read(~/.resumix/**)",
+      "Edit(~/.resumix/**)",
+      "Write(~/.resumix/**)",
+
+      "Bash(npm run deploy:prod)",
+      "Bash(npm run deploy:prod:*)",
+      "Bash(scripts/deploy-prod.sh:*)",
+      "Bash(./scripts/deploy-prod.sh:*)",
+      "Bash(bash scripts/deploy-prod.sh:*)",
+      "Bash(sh scripts/deploy-prod.sh:*)",
+      "Bash(docker compose -f docker-compose.prod.yml:*)",
+      "Bash(docker compose --env-file:*)"
+    ]
   }
 }

@@ -155,6 +155,31 @@ never pays for them in context. Each skill is
 `disable-model-invocation: true` and fires only when something types
 `/triage 12` — never on its own, and never at another skill's request.
 
+## Production is not yours
+
+There is a second Resumix on this machine. It runs from its own clone at
+`~/.resumix/src`, its own Postgres volume, its own images, on ports
+**39000 / 39432 / 39080**, and it holds Chris's real resume content — not
+seed data. `npm run deploy:prod` is the only thing that touches it, and a
+human is the only one who runs it (D-031, `docs/DEPLOYMENT.md`).
+
+**Never deploy, migrate, seed, query, stop or read it.** Everything you do
+— `npm run dev`, `npm run verify`, Playwright, `psql` — belongs to the
+development environment on **3000 / 3100 / 5433 / 8080**, whose database
+exists to be wiped and reseeded and where `npm run verify` reseeds with
+`--force` on every run. That is exactly why the two are separate: so the
+merge gate can destroy its data freely.
+
+This is enforced, not merely asked. `scripts/deploy-prod.sh` aborts when
+`CLAUDECODE` is set, and `.claude/settings.json` denies the deploy script,
+the prod compose file, and everything under `~/.resumix/`. If you find
+yourself wanting to route around either, the answer is no — say what you
+wanted to do and let the human do it.
+
+Editing the prod _lane_ is normal work: `Dockerfile`,
+`docker-compose.prod.yml`, `scripts/deploy-prod.sh` and `prod.env.example`
+are ordinary checked-in files. Changing them is fine. Running them is not.
+
 ## Branches and worktrees
 
 **Never commit to `main`.** Branch `feat/<slug>`, `fix/<slug>` or
