@@ -23,10 +23,11 @@ function formatSize(bytes: number): string {
 }
 
 /**
- * Anything else that belongs to this application: the cover letter, a
- * take-home, the offer letter. Untyped on purpose — no categories to pick
- * from, because every application wants something slightly different
- * (D-032).
+ * Anything else that belongs to this application: a take-home, the offer
+ * letter, a screenshot of the posting. Untyped on purpose — no categories to
+ * pick from, because every application wants something slightly different
+ * (D-032). A cover letter authored in this app is not one of these: it is a
+ * `cover_letter` row with its own panel (D-035).
  *
  * Archiving hides a file rather than deleting it, like every other removal in
  * the app (D-011).
@@ -96,7 +97,8 @@ export default function AttachmentsPanel({
 
       {visible.length === 0 ? (
         <p className="text-sm text-ink-dim">
-          No files yet. Cover letters, take-homes, the offer letter — anything.
+          No files yet. Take-homes, the offer letter, a screenshot of the posting — anything. (A
+          cover letter you write here is not a file; it has its own panel above.)
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5">

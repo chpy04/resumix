@@ -10,11 +10,11 @@ hidden from the picker unless "show archived" is toggled on.
 
 ## Ownership — every row belongs to exactly one user
 
-The six **root** tables carry `user_id uuid not null references users (id) on
+The seven **root** tables carry `user_id uuid not null references users (id) on
 delete restrict`:
 
 `template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`application`.
+`cover_letter`, `application`.
 
 Everything else infers its owner through its parent and carries **no**
 `user_id` of its own:
@@ -154,6 +154,36 @@ wholesale on reorder — never patched incrementally.
 
 History is kept (one row per save). "Most recent PDF" = `order by created_at desc limit 1`.
 
+## Cover letters
+
+### `cover_letter`
+
+| column        | type                           | notes                                           |
+| ------------- | ------------------------------ | ----------------------------------------------- |
+| `user_id`     | uuid → `users(id)` not null    | a root table, like `resume`                     |
+| `name`        | text not null                  | the company, normally — it names the download   |
+| `content`     | text not null                  | the **whole** LaTeX document, raw and unescaped |
+| `is_default`  | boolean not null default false | partial unique index: one true per user         |
+| `is_archived` | boolean not null default false |                                                 |
+
+**A cover letter stores its text; a resume deliberately does not.** That is
+the one asymmetry worth understanding here. A resume is a selection of
+globally-shared content because the same bullet belongs on twenty resumes and
+has to be editable in one place. A cover letter is prose written for one
+company and reused nowhere, so there is nothing to share: no template, no
+bridge tables, no tokens (D-035).
+
+Creating one copies `content` from the user's `is_default` row **verbatim** —
+nothing about the company is substituted in.
+
+**There is no `cover_letter_pdf`.** `resume_pdf` exists because a resume's
+bytes can change without anyone touching that resume; a cover letter can only
+change if you edit that letter, so downloads compile `content` on demand and
+nothing is snapshotted. The consequence is that this text is the only record
+of what was sent, which is why removal is `is_archived` and there is no
+DELETE — and why the default row cannot be archived at all, since new letters
+are copied from it.
+
 ## Applications
 
 Two tables, and deliberately only two: no company table, no event log, no
@@ -163,18 +193,19 @@ in the way (D-032).
 
 ### `application`
 
-| column          | type                                       | notes                                                             |
-| --------------- | ------------------------------------------ | ----------------------------------------------------------------- |
-| `user_id`       | uuid → `users(id)` not null                | a root table, like `resume`                                       |
-| `company`       | text not null                              | plain text; two applications to one company are two rows          |
-| `role_title`    | text not null default `''`                 |                                                                   |
-| `posting_url`   | text not null default `''`                 | empty or http(s) — it is rendered as a link                       |
-| `notes`         | text not null default `''`                 | freeform; the only place unstructured detail goes                 |
-| `status`        | `application_status` not null              | `draft` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
-| `applied_at`    | timestamptz                                | null exactly while nothing has been sent                          |
-| `resume_id`     | uuid → `resume(id)` on delete set null     | the **live** resume being tailored                                |
-| `resume_pdf_id` | uuid → `resume_pdf(id)` on delete restrict | the **frozen** snapshot that was sent                             |
-| `is_archived`   | boolean not null default false             |                                                                   |
+| column            | type                                         | notes                                                             |
+| ----------------- | -------------------------------------------- | ----------------------------------------------------------------- |
+| `user_id`         | uuid → `users(id)` not null                  | a root table, like `resume`                                       |
+| `company`         | text not null                                | plain text; two applications to one company are two rows          |
+| `role_title`      | text not null default `''`                   |                                                                   |
+| `posting_url`     | text not null default `''`                   | empty or http(s) — it is rendered as a link                       |
+| `notes`           | text not null default `''`                   | freeform; the only place unstructured detail goes                 |
+| `status`          | `application_status` not null                | `draft` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
+| `applied_at`      | timestamptz                                  | null exactly while nothing has been sent                          |
+| `resume_id`       | uuid → `resume(id)` on delete set null       | the **live** resume being tailored                                |
+| `resume_pdf_id`   | uuid → `resume_pdf(id)` on delete restrict   | the **frozen** snapshot that was sent                             |
+| `cover_letter_id` | uuid → `cover_letter(id)` on delete set null | this application's own letter                                     |
+| `is_archived`     | boolean not null default false               |                                                                   |
 
 **The two resume references are not redundant.** `resume_id` is the mutable
 thing you keep editing; `resume_pdf_id` is what the company actually received.
@@ -188,6 +219,13 @@ nothing, so `resume_id` is `set null`. Losing the evidence does, so
 that makes deleting a resume an application was sent with impossible.
 `deleteResume` checks first and answers `400`, rather than letting Postgres
 raise a foreign-key error as a 500.
+
+**The cover letter needs only one column where the resume needed two.** The
+second resume column exists because the live resume keeps changing after it
+is sent and the snapshot is the only evidence of what went out. A cover
+letter is a private copy that nothing else can edit, so the link _is_ the
+record (D-035). `set null` for the same reason `resume_id` is: an application
+that has lost its letter is still a true row about a job.
 
 `applied_at` is not settable by the API. It follows from `status`
 (`lib/applications/status.ts`): stamped the first time an application leaves
@@ -205,8 +243,10 @@ because the date something was sent is a fact and the status is an opinion.
 | `byte_size`      | integer not null                           |                                          |
 | `is_archived`    | boolean not null default false             |                                          |
 
-No `kind` column: a cover letter, a take-home, a screenshot of the posting and
-an offer letter are all just files. Uploads are capped at 4 MB
+No `kind` column: a take-home, a screenshot of the posting and an offer
+letter are all just files. (A cover letter authored here is not one of them —
+it is a `cover_letter` row. Uploading someone else's PDF as an attachment is
+still perfectly normal.) Uploads are capped at 4 MB
 (`lib/applications/attachments.ts`), and what comes back out is typed from a
 fixed list rather than echoed from the upload, so a stored `.html` cannot come
 back as a live page on this origin.

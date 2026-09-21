@@ -20,10 +20,11 @@ changes every resume that selected it. That is intentional, and it is the
 source of most reports that turn out not to be bugs.
 
 An **application** is what the app is now organised around: one row per job,
-carrying a status and two resume references — the live resume being tailored,
-and the immutable PDF snapshot pinned to it (D-032). Logging one clones a
-resume named after the company, so there is always something to tailor;
-everything else about it is freeform text and untyped attachments. Marking it
+carrying a status, two resume references — the live resume being tailored,
+and the immutable PDF snapshot pinned to it (D-032) — and a cover letter.
+Logging one clones a resume named after the company, so there is always
+something to tailor; adding a cover letter copies the default letter the same
+way. Everything else about it is freeform text and untyped attachments. Marking it
 applied — or dragging it onto the Applied zone — moves it off the board into
 the Applied table, where most applications quietly stay (D-033).
 
@@ -32,6 +33,13 @@ Rendering is: load the selections → substitute them into the template's
 `pdflatex` PDF back. Saving a PDF snapshots the bytes into `resume_pdf`, and
 that snapshot is what the download button serves — so editing content or a
 template later never retroactively changes an already-saved resume.
+
+A **cover letter** is the counter-example to all of that, and the asymmetry
+is the point (D-035). It has no reuse — one letter, one company — so it
+stores its whole LaTeX document in one column: no template, no selections, no
+tokens, and no PDF snapshot, because nothing but editing that letter can
+change it. Creating one copies the default verbatim; downloading one compiles
+the stored text on demand.
 
 Content is substituted **verbatim and unescaped**: bullets legitimately
 contain `\textbf{}`, `\href{}{}`, `\$` and `\&`, because the user is authoring
@@ -48,12 +56,16 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   are the only way those statuses appear on the board (D-034). `/applications/[id]` is one application — fields, freeform notes,
   attachments, the linked resume and the button that marks it applied.
   `/resumes` is the resume library (fuzzy search, per-card download of the
-  saved snapshot), and `/resume/[id]` is the two-pane editor: content
+  saved snapshot), `/cover-letters` is its counterpart for letters, and
+  `/cover-letter/[id]` is a two-pane LaTeX editor over the one `content`
+  column — the same textarea and the same live preview the resume editor
+  uses, with nothing on the left but the document. `/resume/[id]` is the
+  two-pane editor: content
   selection with `@dnd-kit` reordering and per-slice autosave on the left, a
   live PDF preview and a LaTeX template tab on the right.
   `/resume/[id]?application=<id>` is the same editor in **application mode**,
   where back returns to the application and saving writes the PDF to it.
-- **Database** — Postgres, 17 tables, Drizzle for typed queries and
+- **Database** — Postgres, 18 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
   the pool on first query, because `next build` evaluates every route module
@@ -84,9 +96,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 
 ## Users and isolation
 
-Every query is scoped to a user. `user_id` sits on the six root tables
+Every query is scoped to a user. `user_id` sits on the seven root tables
 (`template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`application`); every other table inherits its owner through a join to its
+`cover_letter`, `application`); every other table inherits its owner through a join to its
 parent (D-018). Every
 query function takes a `userId` and filters on it, and another user's id reads
 as "not found", never "forbidden". Isolation is enforced in the query layer,

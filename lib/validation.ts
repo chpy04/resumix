@@ -167,6 +167,35 @@ export const patchTemplateSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
 
 // ---------------------------------------------------------------------------
+// Cover letters
+//
+// `content` may be empty: a letter you have cleared out to start over is a
+// normal editor state, and an empty document simply fails to compile the
+// same way a broken one does. `isDefault` is absent on purpose — see
+// `updateCoverLetter`.
+// ---------------------------------------------------------------------------
+
+export const createCoverLetterSchema = z.object({
+  name: nonEmpty,
+  /** Copy this letter instead of the default. */
+  sourceCoverLetterId: uuid.nullable().optional(),
+});
+
+export const patchCoverLetterSchema = z
+  .object({
+    name: nonEmpty.optional(),
+    content: z.string().optional(),
+    isArchived: z.boolean().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
+
+/** The editor previews what is on screen, which is not yet what is stored —
+ *  the same trick `renderBodySchema` plays with `templateOverride`. */
+export const renderCoverLetterSchema = z.object({
+  contentOverride: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Applications
 //
 // Everything but the company is optional and may be empty: an application is
@@ -205,6 +234,8 @@ export const patchApplicationSchema = z
     status: z.enum(APPLICATION_STATUSES).optional(),
     /** `null` unlinks the resume. */
     resumeId: uuid.nullable().optional(),
+    /** `null` unlinks the cover letter, which survives in the library. */
+    coverLetterId: uuid.nullable().optional(),
     isArchived: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });

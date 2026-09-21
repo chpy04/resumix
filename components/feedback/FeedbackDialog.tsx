@@ -50,7 +50,7 @@ const ACCEPTED_IMAGE_TYPES = 'image/png,image/jpeg,image/gif,image/webp';
  *
  * Presentation only: `FeedbackWidget` owns the network call and passes
  * `submitting`/`error`/`result` back in, mirroring how `ResumeGrid` drives
- * `NewResumeDialog`.
+ * `NewDocumentDialog`.
  */
 export default function FeedbackDialog({
   open,

@@ -132,6 +132,31 @@ export interface RenderResult {
 }
 
 // ---------------------------------------------------------------------------
+// Cover letters
+//
+// A cover letter is its text. There is no Selections analogue, no template
+// and no PDF snapshot: nothing is shared between letters, so nothing needs
+// to be assembled or frozen (D-035).
+// ---------------------------------------------------------------------------
+
+/** What the library grid needs — everything but the document itself, which
+ *  is large and useless until you open one. */
+export interface CoverLetterSummary {
+  id: string;
+  name: string;
+  /** The one new letters are copied from. Exactly one per user. */
+  isDefault: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoverLetter extends CoverLetterSummary {
+  /** The whole LaTeX document, raw and unescaped (D-008). */
+  content: string;
+}
+
+// ---------------------------------------------------------------------------
 // Applications
 //
 // One flat row per application plus untyped attachments — see docs/SCHEMA.md
@@ -164,6 +189,10 @@ export interface ApplicationSummary {
   /** The snapshot that was actually sent. Null until it is marked applied —
    *  and pinned to those bytes forever afterwards, even as `resumeId` moves on. */
   sentPdf: { filename: string; createdAt: string } | null;
+  /** This application's own cover letter; null until one is added. Unlike
+   *  the resume there is no frozen counterpart — the letter is a private
+   *  copy nothing else can edit, so the link is the record (D-035). */
+  coverLetterId: string | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

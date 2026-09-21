@@ -1,11 +1,11 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, renderResume } from '@/lib/api-client';
+import { useEffect, useRef, useState } from 'react';
+import { ApiError } from '@/lib/api-client';
 import { createAutosave, type AutosaveController } from '@/lib/editor/autosave';
 import { base64PdfToObjectUrl } from '@/lib/preview/pdf-blob';
-import type { Library, Selections } from '@/lib/types';
+import type { RenderResult } from '@/lib/types';
 
 // react-pdf touches canvas/DOM APIs that don't exist during Next's server
 // render, so the viewer is loaded client-only (the documented react-pdf +
@@ -16,20 +16,22 @@ const PdfViewer = dynamic(() => import('./PdfViewer'), {
 });
 
 interface PreviewPaneProps {
-  resumeId: string;
-  /** The LaTeX currently in effect in the editor — either the saved
-   *  template's content, or the Template tab's unsaved draft. Always sent
-   *  as `templateOverride` so the preview reflects what's on screen, not
-   *  necessarily what's persisted. */
-  templateContent: string;
-  /** Only used to detect that *something* content-shaped changed so the
-   *  preview knows to re-render — `render` itself always re-reads the
-   *  resume's persisted selections/content from the database. */
-  selections: Selections;
-  library: Library;
+  /**
+   * A serialization of everything the preview depends on. Changing it is
+   * what schedules a re-render; its contents are never inspected. The pane
+   * deliberately does not know *what* changed — a resume watches its
+   * selections, library and template draft, a cover letter watches one
+   * string, and neither shape belongs in here.
+   */
+  renderKey: string;
+  /** Produces the PDF for whatever is on screen right now. Always a
+   *  preview-only endpoint (`POST .../render`), never one that persists.
+   *  Read through a ref, so the debounced call always uses the latest
+   *  closure rather than the one that was current when it was scheduled. */
+  render: () => Promise<RenderResult>;
 }
 
-type RenderPayload = { templateContent: string };
+type RenderPayload = { renderKey: string };
 
 interface GoodRender {
   fileUrl: string;
@@ -37,23 +39,18 @@ interface GoodRender {
 }
 
 /**
- * Live PDF preview, visible on both editor tabs. Calls `POST /render`
- * (never `/pdf` — that persists a snapshot) on a 600ms debounce whenever
- * selections, content, or the template draft change, and always converges
- * on the *last requested* state rather than whichever response lands last
- * (see `createAutosave`'s coalescing).
+ * Live PDF preview, shared by the resume editor (both tabs) and the cover
+ * letter editor. Calls the caller's `render` — always a `POST .../render`,
+ * never a `/pdf` that persists — on a 600ms debounce whenever `renderKey`
+ * changes, and always converges on the *last requested* state rather than
+ * whichever response lands last (see `createAutosave`'s coalescing).
  *
  * A LaTeX compile failure is a normal `200 { ok: false, errors, warnings }`
  * — not an exception — so it never blanks the pane; the last successfully
  * rendered PDF stays on screen underneath the error panel until a new
  * render succeeds.
  */
-export default function PreviewPane({
-  resumeId,
-  templateContent,
-  selections,
-  library,
-}: PreviewPaneProps) {
+export default function PreviewPane({ renderKey, render }: PreviewPaneProps) {
   const [good, setGood] = useState<GoodRender | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
@@ -66,8 +63,8 @@ export default function PreviewPane({
   const [pageWidth, setPageWidth] = useState(600);
 
   const goodUrlRef = useRef<string | null>(null);
-  const resumeIdRef = useRef(resumeId);
-  resumeIdRef.current = resumeId;
+  const renderRef = useRef(render);
+  renderRef.current = render;
 
   // ---------------------------------------------------------------------
   // Debounced, coalescing render queue. `createAutosave` already guarantees
@@ -80,10 +77,10 @@ export default function PreviewPane({
   if (controllerRef.current === null) {
     controllerRef.current = createAutosave<RenderPayload>({
       debounceMs: 600,
-      save: async ({ templateContent: tex }) => {
+      save: async () => {
         setPhase('rendering');
         try {
-          const result = await renderResume(resumeIdRef.current, tex);
+          const result = await renderRef.current();
           setWarnings(result.warnings);
           if (result.ok && result.pdfBase64) {
             const url = base64PdfToObjectUrl(result.pdfBase64);
@@ -96,7 +93,7 @@ export default function PreviewPane({
             // Keep whatever `good` already holds — never blank the pane on
             // a transient compile failure while typing.
             setErrors(
-              result.errors.length > 0 ? result.errors : ['The template failed to compile.'],
+              result.errors.length > 0 ? result.errors : ['The document failed to compile.'],
             );
             setPhase('compile-error');
           }
@@ -117,16 +114,9 @@ export default function PreviewPane({
     [],
   );
 
-  // Re-render on any change to selections, content, or the template draft.
-  // Selections/library are only used as a change signal here — `render`
-  // re-reads the resume's persisted state from the database itself; the one
-  // piece of client state it actually needs is `templateContent`, sent as
-  // `templateOverride`.
-  const selectionsKey = useMemo(() => JSON.stringify(selections), [selections]);
-  const libraryKey = useMemo(() => JSON.stringify(library), [library]);
   useEffect(() => {
-    controllerRef.current?.schedule({ templateContent });
-  }, [selectionsKey, libraryKey, templateContent]);
+    controllerRef.current?.schedule({ renderKey });
+  }, [renderKey]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -174,7 +164,7 @@ export default function PreviewPane({
                 ? 'border border-warning-line-strong/60 bg-warning-surface/40 text-warning-ink'
                 : 'border border-line text-ink-dim'
             }`}
-            title={multiPage ? 'This resume is spilling past one page' : 'Page count'}
+            title={multiPage ? 'This document is spilling past one page' : 'Page count'}
           >
             {multiPage ? '⚠ ' : ''}
             {good.pages} {good.pages === 1 ? 'page' : 'pages'}
@@ -191,7 +181,7 @@ export default function PreviewPane({
       {errors.length > 0 ? (
         <div className="max-h-40 shrink-0 overflow-auto rounded-md border border-danger-line/50 bg-danger-surface/30 p-2 text-xs text-danger-ink">
           <p className="mb-1 font-medium">
-            The template failed to compile — showing the last good preview.
+            This didn&apos;t compile — showing the last good preview.
           </p>
           <ul className="list-disc space-y-0.5 pl-4">
             {errors.map((message, index) => (

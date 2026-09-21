@@ -17,7 +17,7 @@ import { prepareScreenshot } from '@/lib/feedback/screenshot-client';
  * filed issue.
  *
  * Owns the network call and hands `submitting`/`error`/`result` down to the
- * presentational panel — same split as `ResumeGrid` → `NewResumeDialog`. It
+ * presentational panel — same split as `ResumeGrid` → `NewDocumentDialog`. It
  * also owns the screenshot itself, since that can arrive on the button while
  * the panel is closed.
  */

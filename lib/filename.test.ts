@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildResumeFilename, slugifyForFilename } from './filename.ts';
+import { buildCoverLetterFilename, buildResumeFilename, slugifyForFilename } from './filename.ts';
 
 test('lowercase words are title-cased', () => {
   assert.equal(slugifyForFilename('google cloud'), 'Google_Cloud');
@@ -74,4 +74,28 @@ test('buildResumeFilename falls back to Chris_Pyle when the env var is unset', (
 
 test('buildResumeFilename accepts an explicit prefix override', () => {
   assert.equal(buildResumeFilename('Google Cloud', 'Jane_Doe'), 'Jane_Doe_Google_Cloud_Resume.pdf');
+});
+
+test('buildCoverLetterFilename differs only in the suffix', () => {
+  const previous = process.env.PDF_NAME_PREFIX;
+  delete process.env.PDF_NAME_PREFIX;
+  try {
+    // The two documents an application sends share a prefix and a company
+    // so they sort next to each other in a downloads folder.
+    assert.equal(buildResumeFilename('google cloud'), 'Chris_Pyle_Google_Cloud_Resume.pdf');
+    assert.equal(
+      buildCoverLetterFilename('google cloud'),
+      'Chris_Pyle_Google_Cloud_Cover_Letter.pdf',
+    );
+  } finally {
+    if (previous === undefined) delete process.env.PDF_NAME_PREFIX;
+    else process.env.PDF_NAME_PREFIX = previous;
+  }
+});
+
+test('buildCoverLetterFilename normalizes its name the same way', () => {
+  assert.equal(
+    buildCoverLetterFilename('Johnson & Johnson', 'Jane_Doe'),
+    'Jane_Doe_Johnson_Johnson_Cover_Letter.pdf',
+  );
 });

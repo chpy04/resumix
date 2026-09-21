@@ -21,6 +21,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db, sql } from '../db/index.ts';
 import {
   application,
+  coverLetter,
   experience,
   experienceBullet,
   project,
@@ -172,6 +173,13 @@ export async function insertTestApplication(userId: string, tag: string) {
 
 export async function deleteApplicationRow(id: string): Promise<void> {
   await db.delete(application).where(eq(application.id, id));
+}
+
+/** Cover letters are archived rather than deleted in the app, but like
+ *  resumes they show up in a library the developer has to look at, so
+ *  fixtures clean up after themselves. Never pass the provisioned Default. */
+export async function deleteCoverLetterRow(id: string): Promise<void> {
+  await db.delete(coverLetter).where(eq(coverLetter.id, id));
 }
 
 /**
