@@ -1,31 +1,204 @@
 # Deployment
 
-The target from `spec.md`'s Tech stack section: **Supabase (Postgres) + Vercel**
-(the Next.js app), plus a separate host for the LaTeX sidecar, which cannot run
-on Vercel at all (see "Why not Vercel" below). This doc gives the concrete path
-for all three.
+Production is a **second copy of Resumix on this same machine**. It has its
+own clone, its own Postgres volume, its own images and its own ports; it
+holds real resume content; and no development command can reach it. One
+script deploys it:
 
-**Status: written, not executed.** Nobody has run these steps against a real
-Supabase/Fly/Vercel account for this project — there are no credentials for
-any of them in this environment. Everything here has been checked for internal
-consistency against the code (env var names, the pooler flag, the sidecar's
-own README) but the actual `fly deploy` / Vercel import / Supabase project
-creation have not happened. Treat this as a validated plan, not a completed
-migration.
+```
+npm run deploy:prod
+```
 
-## Pre-flight checklist
+That is the whole interface. See D-031 for why it is local rather than
+cloud-hosted, and the appendix at the bottom for the Vercel + Fly + Supabase
+path that was written, validated, and not taken.
 
-Before touching any dashboard:
+## Why two instances
 
-- [ ] `npm run build` succeeds locally with no `.env` present (confirms
-      `lib/db/index.ts`'s lazy client doesn't need a live `DATABASE_URL` at
-      build time — see D-014 and the troubleshooting section below)
-- [ ] `npm run smoke` passes locally against `docker compose up -d db latex`
-- [ ] You have a Supabase account, a Fly.io account, and a Vercel account
-- [ ] You have a long random string ready for `APP_PASSWORD` and a different
-      one for `AUTH_SECRET` (e.g. `openssl rand -base64 32` for each)
+`npm run verify` runs `npm run db:seed -- --force`, which `TRUNCATE`s every
+content table, and then drives Playwright through the app leaving edited
+content behind. That is correct — the merge gate needs a database it can
+destroy. It just means the development database can never also be the one
+holding your real resume.
 
-## 1. Supabase (Postgres)
+So the two are disjoint at every layer that could leak:
+
+|          | development               | production                                        |
+| -------- | ------------------------- | ------------------------------------------------- |
+| source   | this checkout, any branch | `~/.resumix/src`, always `origin/main`            |
+| app      | `next dev` on the host    | `resumix-app:prod` container                      |
+| database | volume `resumix_pgdata`   | volume `resumix-prod_pgdata`                      |
+| compose  | `docker-compose.yml`      | `docker-compose.prod.yml`, project `resumix-prod` |
+| web      | 3000 (e2e 3100)           | **39000**                                         |
+| postgres | 5433                      | **39432**                                         |
+| latex    | 8080                      | **39080**                                         |
+| secrets  | `.env`                    | `~/.resumix/prod.env`                             |
+| auth     | `dev` — no login screen   | `password`                                        |
+| seeding  | `--force`, constantly     | once, on first deploy, never `--force`            |
+
+Production's ports are deliberately odd and bound to `127.0.0.1`, so nothing
+that guesses a default port can find it and nothing outside the machine can
+reach it at all.
+
+Everything production owns lives under `~/.resumix`, outside the repo:
+
+```
+~/.resumix/prod.env      secrets, mode 600, never committed
+~/.resumix/src/          the clone deploys build from
+~/.resumix/backups/      a pg_dump taken before every migration
+```
+
+## Agents do not deploy
+
+`scripts/deploy-prod.sh` exits immediately when `CLAUDECODE` is set, and
+`.claude/settings.json` denies the deploy script, the prod compose file and
+everything under `~/.resumix/`. The matching prose is CLAUDE.md's
+"Production is not yours". If Claude needs a deploy, it should say so and
+stop — the refusal is intentional, and routing around it is not a clever
+solution to anything.
+
+## First deploy
+
+Prerequisites: Docker Desktop running, and the work you want deployed merged
+to `main`.
+
+1. **Bootstrap.**
+
+   ```bash
+   npm run deploy:prod
+   ```
+
+   With nothing set up yet this clones `origin` into `~/.resumix/src`, copies
+   `prod.env.example` to `~/.resumix/prod.env` (mode 600), and stops. It does
+   not deploy on this pass — a half-configured production instance is worse
+   than none.
+
+2. **Fill in the secrets** in `~/.resumix/prod.env`. Four are required:
+
+   | Variable              | What it is                                                |
+   | --------------------- | --------------------------------------------------------- |
+   | `POSTGRES_PASSWORD`   | production database password                              |
+   | `APP_PASSWORD`        | what you type at the login screen                         |
+   | `AUTH_SECRET`         | signs the session token — must differ from `APP_PASSWORD` |
+   | `LATEX_SERVICE_TOKEN` | shared secret the app presents to the sidecar             |
+   | `OWNER_EMAIL`         | which user the password gate signs in as                  |
+
+   Generate each random one separately with `openssl rand -base64 32`. You
+   never write a `DATABASE_URL`: `docker-compose.prod.yml` builds it from
+   `POSTGRES_PASSWORD` against the compose network, so there is no line to
+   edit that could point production at the development database.
+
+3. **Deploy.**
+
+   ```bash
+   npm run deploy:prod
+   ```
+
+   On this pass it builds the images, starts Postgres, applies migrations,
+   and runs `scripts/seed.ts` **without** `--force`. The seed is a faithful
+   transcription of the reference resume, so the first deploy hands you a
+   working account with real content; every later deploy finds a user already
+   there and no-ops.
+
+4. Open <http://localhost:39000> and log in with `APP_PASSWORD`.
+
+## Every deploy after that
+
+```bash
+npm run deploy:prod
+```
+
+Idempotent, and always in this order:
+
+1. `git fetch` + `reset --hard origin/main` in `~/.resumix/src` — that clone
+   is deploy output and is never edited by hand, so "whatever is on
+   `origin/main`" is the only state it may be in. The script prints the
+   commit range it is moving across.
+2. `docker compose build` — from the pulled tree, not from your checkout.
+3. `pg_dump` into `~/.resumix/backups/` **before** anything touches the
+   schema. The last 20 are kept.
+4. Migrations, via `docker compose run --rm migrate`. They run inside the
+   image built from the same commit, so the schema applied always matches the
+   code that will run against it.
+5. `docker compose up -d`, then poll `http://localhost:39000/login` until it
+   answers.
+
+Any step failing stops the deploy (`set -euo pipefail`); the currently
+running containers keep serving until step 5 actually swaps them.
+
+## Operating it
+
+```bash
+npm run deploy:prod status    # docker compose ps
+npm run deploy:prod logs      # follow all services; add a name to narrow
+npm run deploy:prod stop      # stop without removing anything
+npm run deploy:prod backup    # take a dump now, outside a deploy
+```
+
+Containers are `restart: unless-stopped`, so production comes back on its own
+when Docker Desktop starts. `stop` is sticky — the next `deploy` starts it
+again.
+
+## Backups and restore
+
+Every deploy dumps first, and `backup` dumps on demand. To restore:
+
+```bash
+cd ~/.resumix/src
+docker compose --env-file ~/.resumix/prod.env -f docker-compose.prod.yml \
+  exec -T db psql -U resumix -d resumix < ~/.resumix/backups/<timestamp>.sql
+```
+
+These are plain `pg_dump` output of a small database, and they include the
+`resume_pdf` snapshots — which is the point, since those bytes are not
+reproducible from content once a template or bullet changes (D-011).
+
+## Limits worth knowing
+
+- **One machine.** Loopback-bound, so production exists only on this laptop
+  and is down whenever it is asleep. There is no remote access story.
+- **`pdflatex` cold path.** The prod sidecar is `restart: unless-stopped`
+  rather than scale-to-zero, so there is no cold start, at the cost of an
+  idle container.
+- **Single-user in practice.** The schema is multi-user but the only
+  implemented login is the shared password, which signs in as `OWNER_EMAIL`.
+  See "A note on multi-user" in the appendix.
+
+## Troubleshooting
+
+**`refusing to deploy: CLAUDECODE is set`** — working as designed; run it in
+your own shell rather than through an agent.
+
+**`~/.resumix/prod.env is mode 644`** — `chmod 600 ~/.resumix/prod.env`.
+
+**`database did not become ready in 60s`** — `npm run deploy:prod logs db`.
+Usually a port clash on 39432 or a volume left mid-upgrade by a Postgres
+major bump.
+
+**A port is already in use** — something else grabbed 39000/39432/39080.
+These are only defaults; change them in `docker-compose.prod.yml` and update
+the table in `docs/STATE.md`.
+
+**Production and development disagree about the schema** — they are separate
+databases with separate `_migrations` tables, which is intended. `npm run
+deploy:prod` is the only thing that migrates production, and it only ever
+applies what is on `origin/main`.
+
+---
+
+# Appendix: the cloud path, not taken
+
+Everything below describes deploying to **Supabase + Fly.io + Vercel**. It
+was written and checked for internal consistency against the code, but it has
+never been executed and is not the current deployment (D-031). It is kept
+because `services/latex/fly.toml` is still checked in and the constraints it
+documents — above all why `pdflatex` cannot run on Vercel — remain true.
+
+**Pre-flight, if you ever take this path:** confirm `npm run build` succeeds
+with no `.env` present (D-014), confirm `npm run smoke` passes locally, and
+have Supabase, Fly.io and Vercel accounts plus two long random strings ready.
+
+## A1. Supabase (Postgres)
 
 1. Create a new Supabase project (any region; pick one close to where Vercel
    will run your functions).
@@ -77,7 +250,7 @@ Before touching any dashboard:
 
 5. Keep this exact connection string for the Vercel env vars in step 3 below.
 
-## 2. The LaTeX sidecar (Fly.io)
+## A2. The LaTeX sidecar (Fly.io)
 
 **Why not Vercel:** TeX Live is roughly 700MB installed and `pdflatex` needs a
 real, writable filesystem for its working directory, font caches, and
@@ -91,7 +264,7 @@ assumptions baked in.
 ### Deploy
 
 A `services/latex/fly.toml` is checked into the repo already (written but
-unexecuted — see the note at the top of this doc). From `services/latex/`:
+unexecuted — see the appendix preamble above). From `services/latex/`:
 
 ```bash
 cd services/latex
@@ -182,7 +355,7 @@ possible. Mitigate it in layers instead of pretending it's fully private:
    the cross-cloud problem entirely but is a different deployment target than
    the spec asks for, so it's noted here, not adopted.
 
-## 3. Vercel (the Next.js app)
+## A3. Vercel (the Next.js app)
 
 1. Import the repo in the Vercel dashboard ("Add New… → Project"). Framework
    preset: Next.js (auto-detected).
@@ -227,7 +400,7 @@ shared password, which cannot tell people apart — it signs in as one account
 running on multi-user foundations. Inviting anyone else means implementing
 Supabase OAuth first: `lib/auth-supabase.ts`, then `RESUMIX_AUTH_MODE=supabase`.
 
-## Troubleshooting
+## Cloud troubleshooting
 
 **`DATABASE_URL is not set` during `next build` / Vercel build step**
 Should not happen for the Next.js app itself — `lib/db/index.ts`'s client is a

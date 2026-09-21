@@ -4,6 +4,14 @@ import type { NextConfig } from 'next';
 const require = createRequire(import.meta.url);
 
 const nextConfig: NextConfig = {
+  // Emits `.next/standalone` — a self-contained server plus only the
+  // node_modules the app actually reaches at runtime. The production image
+  // (Dockerfile, `runtime` stage) is built from it. Left on unconditionally
+  // rather than gated behind an env var so `npm run build` in the merge gate
+  // produces the same output prod ships; a standalone-only build failure
+  // that only reproduces inside Docker is exactly the kind of thing that
+  // reaches main (CLAUDE.md, "Merge gate").
+  output: 'standalone',
   serverExternalPackages: ['postgres'],
   // The board moved to `/` when applications became the front door. Kept as a
   // redirect rather than a second page so there is one URL for it, and any

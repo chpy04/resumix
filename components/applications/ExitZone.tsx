@@ -15,7 +15,7 @@ interface ExitZoneProps {
  *
  * They are hidden the rest of the time on purpose: `applied` and `rejected`
  * are not places you go looking, they are where a card goes to leave. Giving
- * them permanent columns is exactly what this layout is avoiding (D-033).
+ * them permanent columns is exactly what this layout is avoiding (D-034).
  */
 export default function ExitZone({ status, hint }: ExitZoneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });

@@ -8,7 +8,7 @@
  *
  * An application stores no resume text and no PDF bytes of its own. It holds
  * two nullable references instead — the live resume it is being tailored
- * from, and the immutable snapshot that was actually sent (D-031).
+ * from, and the immutable snapshot that was actually sent (D-032).
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { nextAppliedAt } from '../applications/status.ts';

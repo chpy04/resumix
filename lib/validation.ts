@@ -170,7 +170,7 @@ export const patchTemplateSchema = z
 // Applications
 //
 // Everything but the company is optional and may be empty: an application is
-// logged the moment you see a posting, and filled in from there (D-031).
+// logged the moment you see a posting, and filled in from there (D-032).
 // `appliedAt` is deliberately absent — it follows from `status`, and is set
 // by the query layer (`lib/applications/status.ts`).
 // ---------------------------------------------------------------------------

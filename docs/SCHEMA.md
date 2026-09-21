@@ -159,7 +159,7 @@ History is kept (one row per save). "Most recent PDF" = `order by created_at des
 Two tables, and deliberately only two: no company table, no event log, no
 tasks, no contacts. An application is one row of mostly-optional text plus a
 status, because applications differ from each other enough that structure gets
-in the way (D-031).
+in the way (D-032).
 
 ### `application`
 

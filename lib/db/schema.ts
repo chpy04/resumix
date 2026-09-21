@@ -318,7 +318,7 @@ export const resumePdf = pgTable(
 // Applications
 //
 // One row per application, plus its attachments — no company table, no event
-// log, no tasks, no contacts (D-031). `application` is a sixth root table and
+// log, no tasks, no contacts (D-032). `application` is a sixth root table and
 // carries its owner; `application_file` infers one through its parent, like
 // every other non-root table (D-018).
 // ---------------------------------------------------------------------------

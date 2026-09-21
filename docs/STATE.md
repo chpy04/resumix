@@ -21,11 +21,11 @@ source of most reports that turn out not to be bugs.
 
 An **application** is what the app is now organised around: one row per job,
 carrying a status and two resume references — the live resume being tailored,
-and the immutable PDF snapshot pinned to it (D-031). Logging one clones a
+and the immutable PDF snapshot pinned to it (D-032). Logging one clones a
 resume named after the company, so there is always something to tailor;
 everything else about it is freeform text and untyped attachments. Marking it
 applied — or dragging it onto the Applied zone — moves it off the board into
-the Applied table, where most applications quietly stay (D-032).
+the Applied table, where most applications quietly stay (D-033).
 
 Rendering is: load the selections → substitute them into the template's
 `<<TOKEN>>` placeholders → POST the `.tex` to a TeX Live sidecar → get a real
@@ -45,7 +45,7 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   drag-and-drop kanban, and an **Applied** tab holding everything that has
   left it — applied or rejected — as a searchable table. Picking a card up
   reveals two drop zones under the columns, `applied` and `rejected`, which
-  are the only way those statuses appear on the board (D-033). `/applications/[id]` is one application — fields, freeform notes,
+  are the only way those statuses appear on the board (D-034). `/applications/[id]` is one application — fields, freeform notes,
   attachments, the linked resume and the button that marks it applied.
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), and `/resume/[id]` is the two-pane editor: content
@@ -138,12 +138,13 @@ rule message names the file in `.claude/rules/` that explains it (D-017).
 
 These are properties of the system as it stands, not a to-do list.
 
-- **Not deployed.** `docs/DEPLOYMENT.md` describes the Vercel + Fly.io +
-  Supabase path; it has not been executed.
-- **`lib/db/index.ts` calls `postgres(url)` with defaults.** On Supabase's
-  Supavisor _transaction_ pooler this must become
-  `postgres(url, { max: 1, prepare: false })` — transaction pooling does not
-  support prepared statements. Harmless locally; a production footgun.
+- **Production is a second local instance, not a cloud one.** It runs from
+  `~/.resumix/src` via `npm run deploy:prod` on ports 39000/39432/39080,
+  entirely separate from development (D-031, `docs/DEPLOYMENT.md`). The
+  Vercel + Fly.io + Supabase path is documented as an appendix and has never
+  been executed.
+- **No multi-machine story.** Production is reachable on loopback only, so
+  the app exists on exactly one laptop and is down whenever it is asleep.
 - **No multi-template UI.** The schema supports many templates per user; the
   editor assumes the resume's own.
 - **Nothing shows which user is signed in.** Invisible with one seeded user.
@@ -152,5 +153,13 @@ These are properties of the system as it stands, not a to-do list.
 
 ## Ports
 
-Web 3000 (e2e uses 3100), latex 8080, postgres **5433** — 5432 is usually
-already taken.
+Two disjoint blocks, so the two instances can run at once and neither can be
+reached by accident from the other's tooling.
+
+|             | web             | postgres                                 | latex     |
+| ----------- | --------------- | ---------------------------------------- | --------- |
+| development | 3000 (e2e 3100) | **5433** — 5432 is usually already taken | 8080      |
+| production  | **39000**       | **39432**                                | **39080** |
+
+Production's block is deliberately odd and bound to `127.0.0.1`. Nothing in
+development points at it; nothing may (CLAUDE.md, "Production is not yours").

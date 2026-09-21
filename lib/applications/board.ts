@@ -19,7 +19,7 @@ export interface BoardColumn {
  * `applied` and `rejected` are deliberately absent. Both are where an
  * application goes to be forgotten — one waiting, one over — and as columns
  * they would grow without bound and bury the handful that are live. They are
- * drop targets below the board instead, and the rows land in a table (D-033).
+ * drop targets below the board instead, and the rows land in a table (D-034).
  */
 export const KANBAN_STATUSES = [
   'draft',

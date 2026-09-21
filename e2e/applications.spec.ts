@@ -18,7 +18,7 @@ import {
  * The assertion that matters is the last one. A resume is a live selection of
  * global content, so the only honest record of what a company received is the
  * PDF saved against the application — and continuing to edit that resume
- * afterwards, which is the normal thing to do, must not touch it (D-031).
+ * afterwards, which is the normal thing to do, must not touch it (D-032).
  */
 test('a new application brings its own resume, and tailoring it saves back', async ({ page }) => {
   await login(page);
@@ -129,7 +129,7 @@ test('marking an application applied moves it off the pipeline and into the tabl
 /**
  * The board is a board: cards move between columns by dragging, and the two
  * exit zones — which only appear once a card is in the air — are how an
- * application leaves the kanban for the Applied table (D-033).
+ * application leaves the kanban for the Applied table (D-034).
  */
 test('dragging a card moves it between columns, and off the board entirely', async ({ page }) => {
   await login(page);

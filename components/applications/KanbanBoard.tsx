@@ -34,7 +34,7 @@ const EXIT_HINTS: Record<string, string> = {
  *
  * Columns are the live statuses; the two exit zones under them appear only
  * while a card is in the air, because `applied` and `rejected` are where a
- * card *goes*, not somewhere you browse (D-033). Dropping is the only gesture
+ * card *goes*, not somewhere you browse (D-034). Dropping is the only gesture
  * — there is no ordering within a column to persist, since an application
  * carries no sort_order.
  *

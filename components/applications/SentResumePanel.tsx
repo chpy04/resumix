@@ -32,7 +32,7 @@ function formatDate(iso: string): string {
  *
  * The two are separate on purpose. Editing the resume changes nothing here
  * until you save it back from the editor; marking it applied then moves the
- * application off the pipeline board and into the Applied table (D-031).
+ * application off the pipeline board and into the Applied table (D-032).
  */
 export default function SentResumePanel({
   application,

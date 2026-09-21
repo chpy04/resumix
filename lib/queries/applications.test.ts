@@ -1,7 +1,7 @@
 /**
  * Applications against a real database. The interesting behaviour is not the
  * CRUD — it is the two resume references: one that keeps moving, one that is
- * frozen the moment something is sent (D-031).
+ * frozen the moment something is sent (D-032).
  */
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';

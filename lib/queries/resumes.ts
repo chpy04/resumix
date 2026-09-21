@@ -156,7 +156,7 @@ export async function deleteResume(userId: string, id: string): Promise<void> {
 
   // `resume_pdf` cascades from `resume`, so deleting this would take the
   // snapshots with it — including one an application points at as the record
-  // of what it actually sent. That record wins (D-031). Checked here rather
+  // of what it actually sent. That record wins (D-032). Checked here rather
   // than left to the foreign key so the caller gets a 400 that says why,
   // instead of a 500 out of Postgres.
   const sentCount = await countApplicationsSentWithResume(userId, id);

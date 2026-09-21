@@ -5,7 +5,7 @@
 -- rows, and that is fine), no event log (the status *is* the state), no
 -- tasks and no contacts. Applications differ enough from each other that
 -- structure gets in the way — hence one `notes` column and untyped
--- attachments (D-031).
+-- attachments (D-032).
 --
 -- No begin/commit here: scripts/migrate.ts wraps each file in a transaction.
 
@@ -28,7 +28,7 @@ create type application_status as enum (
 -- the whole point of the editor. `resume_pdf_id` is the immutable snapshot
 -- that was actually sent, set when the application is marked applied. Asking
 -- "what did they receive?" and "which resume was that, and what has it become
--- since?" are different questions and need different columns (D-031).
+-- since?" are different questions and need different columns (D-032).
 -- ---------------------------------------------------------------------------
 
 create table application (

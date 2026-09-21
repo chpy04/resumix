@@ -8,6 +8,10 @@ dist/
 *.tsbuildinfo
 .env
 .env*.local
+# The real one lives at ~/.resumix/prod.env, outside the repo (D-031). This
+# is belt-and-braces for a copy that lands here by accident; the committed
+# template is `prod.env.example`.
+prod.env
 .DS_Store
 coverage/
 playwright-report/

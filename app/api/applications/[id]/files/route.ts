@@ -10,7 +10,7 @@ import { requireUserId } from '@/lib/session';
  * reason `/api/feedback` uses it: base64-in-JSON would inflate the body ~33%
  * against Vercel's 4.5 MB ceiling.
  *
- * No type restriction, on purpose (D-031). What comes *back* is constrained
+ * No type restriction, on purpose (D-032). What comes *back* is constrained
  * instead — see `GET /api/application-files/:id`.
  */
 export async function POST(request: Request, { params }: RouteContext): Promise<Response> {

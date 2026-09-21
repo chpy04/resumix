@@ -17,6 +17,7 @@
     "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types scripts/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env --experimental-strip-types scripts/seed.ts",
     "smoke": "node --env-file-if-exists=.env --experimental-strip-types scripts/smoke.ts",
+    "deploy:prod": "bash scripts/deploy-prod.sh",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && npm run db:seed -- --force && npm run smoke && npm run test:e2e"
   },
   "dependencies": {

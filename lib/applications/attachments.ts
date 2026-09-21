@@ -4,7 +4,7 @@
  * willing to hand back.
  *
  * Attachments are deliberately untyped as far as the user is concerned — any
- * file, no `kind` column (D-031). "Untyped" is not the same as "trusted",
+ * file, no `kind` column (D-032). "Untyped" is not the same as "trusted",
  * though: the bytes come back out over HTTP, so the response's content type
  * is drawn from a fixed list rather than echoed from whatever the browser
  * claimed at upload time.

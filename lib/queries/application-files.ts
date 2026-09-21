@@ -1,6 +1,6 @@
 /**
  * Attachments on an application: a cover letter, a take-home, a screenshot of
- * the posting, an offer letter. Untyped on purpose — see D-031.
+ * the posting, an offer letter. Untyped on purpose — see D-032.
  *
  * An `application_file` has no `user_id` of its own; it belongs to whoever
  * owns its application (docs/SCHEMA.md), so every function here resolves that

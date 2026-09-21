@@ -135,7 +135,7 @@ export interface RenderResult {
 // Applications
 //
 // One flat row per application plus untyped attachments — see docs/SCHEMA.md
-// and D-031 for why there is no company, event, task or contact type here.
+// and D-032 for why there is no company, event, task or contact type here.
 // ---------------------------------------------------------------------------
 
 export type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
