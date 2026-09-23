@@ -65,3 +65,86 @@ alter table application
   add column cover_letter_id uuid references cover_letter (id) on delete set null;
 
 create index ix_application_cover_letter_id on application (cover_letter_id);
+
+-- ---------------------------------------------------------------------------
+-- Backfill: give every existing account a Default cover letter.
+--
+-- `provisionUser` creates one for every account made from here on, and the
+-- seed creates one for a fresh database — but neither reaches an account
+-- that already exists, and the seed deliberately no-ops rather than
+-- re-running on a database that already has a user in it. Without this
+-- block an established account would migrate into a feature whose whole
+-- premise is "copy my default" while having no default to copy.
+--
+-- The document below is a **snapshot** of `DEFAULT_COVER_LETTER`
+-- (lib/render/default-cover-letter.ts) as it stood at this migration, not a
+-- second source of truth for it. Migrations are history: editing that
+-- constant later is expected and affects only accounts provisioned after
+-- the edit, exactly as it already does for the default resume template.
+--
+-- Dollar-quoted, so the document's backslashes and `$|$` reach the column
+-- untouched. Guarded on "has no cover letter at all", which makes the block
+-- re-runnable and means it can never produce a second default and trip the
+-- partial unique index.
+-- ---------------------------------------------------------------------------
+
+insert into cover_letter (user_id, name, content, is_default)
+select u.id, 'Default', $cover_letter$%-------------------------
+% Cover letter
+%-------------------------
+\documentclass[11pt]{article}
+
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage[english]{babel}
+
+\urlstyle{same}
+\pagenumbering{gobble}
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+  {\Huge \scshape Christopher Pyle} \\ \vspace{2pt}
+  (603)--400--9323 $|$ Boston, MA $|$
+  \href{mailto:pyle.c@northeastern.edu}{\underline{pyle.c@northeastern.edu}} $|$
+  \href{https://chpy04.github.io/}{\underline{chpy04.github.io}}
+\end{center}
+
+\vspace{12pt}
+
+[Month Day, Year]
+
+\vspace{6pt}
+
+[Company] \\
+Hiring Team
+
+\vspace{6pt}
+
+Dear Hiring Team,
+
+I am writing to apply for the [Role] position at [Company]. [One or two
+sentences on why this company and this role in particular --- the specific
+thing about the posting or the product that made you open this file.]
+
+[The middle paragraph is the one worth rewriting every time. Take the single
+most relevant thing on the resume and say what it has to do with what they
+are hiring for: what you built, what it did, and why that is the experience
+this role wants.]
+
+[Close on what you would bring that the resume cannot show on its own, and
+say plainly that you would welcome the chance to talk.]
+
+Thank you for your time and consideration.
+
+\vspace{12pt}
+
+Sincerely, \\
+Christopher Pyle
+
+\end{document}
+$cover_letter$, true
+from users u
+where not exists (select 1 from cover_letter c where c.user_id = u.id);
