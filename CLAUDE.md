@@ -21,12 +21,22 @@ An **Application** is one job applied to, and the thing the app is organised
 around — the home page is the applications board, the resume library sits
 behind it at `/resumes`. An application carries a company, a status
 (`draft`/`applied`/`interviewing`/`offered`/`rejected`), freeform notes,
-untyped attachments, and two resume references: the live `resume_id` you
-tailor, and the `resume_pdf_id` snapshot pinned when you save that resume to
-the application. Logging one clones a resume named after the company. Two
-tables, deliberately: no company, event, task or contact tables (D-032).
+untyped attachments, two resume references — the live `resume_id` you tailor,
+and the `resume_pdf_id` snapshot pinned when you save that resume to the
+application — and a `cover_letter_id`. Logging one clones a resume named
+after the company; adding a cover letter copies the default letter the same
+way. No company, event, task or contact tables (D-032).
 `applied` is not a board column — it is a searchable table behind its own tab,
 because most applications are sent and never touched again (D-033).
+
+A **Cover letter** is the deliberate inversion of all that, and the fastest
+way to get this wrong is to make it symmetrical. It has no reuse, so it
+stores its entire LaTeX document in one `content` column: no template, no
+selections, no tokens, no snapshot table. Creating one copies the default
+**verbatim**; downloading one compiles the stored text on demand. Which is
+also why `GET /api/cover-letters/:id/pdf` is the single endpoint in this app
+where a LaTeX error is an HTTP error — there is no JSON envelope on a binary
+download (D-035).
 
 The consequence worth internalising: **a resume stores no text.** Editing a
 bullet is a global edit that instantly changes every resume that picked it.
@@ -49,10 +59,11 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    Middleware runs on the Edge runtime. `lib/auth.ts` is Web Crypto only.
 5. **Every query is scoped to a user.** Handlers begin with
    `const userId = await requireUserId(request)` (`lib/session.ts`) and pass
-   it down; the query layer filters on it. `user_id` lives only on the five
+   it down; the query layer filters on it. `user_id` lives only on the seven
    root tables (`template`, `experience`, `project`, `technical_skill_row`,
-   `resume`, `application`) — bullets, skills, bridge rows, PDF snapshots and
-   application files inherit their owner through a join to their parent. Isolation is enforced in the
+   `resume`, `cover_letter`, `application`) — bullets, skills, bridge rows,
+   PDF snapshots and application files inherit their owner through a join to
+   their parent. Isolation is enforced in the
    queries, **not** in `middleware.ts`, which runs on the Edge and cannot
    reach the database. Another user's id must read as "not found", never
    "forbidden". `lib/queries/isolation.test.ts` is the executable form of
@@ -86,7 +97,7 @@ one cannot:
   page default export taking a custom prop typechecks fine and fails the
   build. That bug reached `main` once.
 - `test` needs `DATABASE_URL` or 16 integration tests silently self-skip and
-  still report green. Expect **225 passing, 0 skipped**.
+  still report green. Expect **237 passing, 0 skipped**.
 - `smoke` reads live DB state and a prior Playwright run leaves edited
   content behind — hence the reseed before it.
 

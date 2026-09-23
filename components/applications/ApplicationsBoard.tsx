@@ -158,12 +158,20 @@ export default function ApplicationsBoard() {
           <p className="mt-1 text-sm text-ink-dim">
             Every job you have applied to, and where each one stands.
           </p>
-          <Link
-            href="/resumes"
-            className="mt-2 inline-block text-sm text-accent transition-opacity hover:opacity-80"
-          >
-            Resumes →
-          </Link>
+          <div className="mt-2 flex flex-wrap items-center gap-4">
+            <Link
+              href="/resumes"
+              className="text-sm text-accent transition-opacity hover:opacity-80"
+            >
+              Resumes →
+            </Link>
+            <Link
+              href="/cover-letters"
+              className="text-sm text-accent transition-opacity hover:opacity-80"
+            >
+              Cover letters →
+            </Link>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

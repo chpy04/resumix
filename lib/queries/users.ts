@@ -7,7 +7,8 @@
  */
 import { asc, eq, sql as raw } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { resume, template, users } from '../db/schema.ts';
+import { coverLetter, resume, template, users } from '../db/schema.ts';
+import { DEFAULT_COVER_LETTER } from '../render/default-cover-letter.ts';
 import { DEFAULT_TEMPLATE } from '../render/default-template.ts';
 import type { User } from '../types.ts';
 
@@ -72,14 +73,15 @@ export interface NewUser {
 
 /**
  * Creates a user and the minimum they need to be useful: their own copy of
- * the default template, and a "Default" resume bound to it with nothing
- * selected yet.
+ * the default template, a "Default" resume bound to it with nothing
+ * selected yet, and a "Default" cover letter.
  *
- * Both are per-user, not shared. A template is editable content like any
- * other, so two users sharing one row would mean either of them silently
- * rewriting the other's resumes. The empty Default resume matters because
- * `POST /api/resumes` clones it — without one, a new user could not create
- * their first resume at all.
+ * All three are per-user, not shared. A template is editable content like
+ * any other, so two users sharing one row would mean either of them
+ * silently rewriting the other's resumes. The empty Default resume matters
+ * because `POST /api/resumes` clones it — without one, a new user could not
+ * create their first resume at all — and the Default cover letter is what
+ * `POST /api/applications/:id/cover-letter` copies, for the same reason.
  *
  * One transaction: a user with no default template is a broken account, not
  * a partially-set-up one.
@@ -106,6 +108,17 @@ export async function provisionUser(newUser: NewUser): Promise<User> {
       })
       .returning({ id: template.id });
     if (!templateRow) throw new Error('failed to create default template');
+
+    const [coverLetterRow] = await tx
+      .insert(coverLetter)
+      .values({
+        name: 'Default',
+        content: DEFAULT_COVER_LETTER,
+        isDefault: true,
+        userId: userRow.id,
+      })
+      .returning({ id: coverLetter.id });
+    if (!coverLetterRow) throw new Error('failed to create default cover letter');
 
     const [resumeRow] = await tx
       .insert(resume)

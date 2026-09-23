@@ -6,13 +6,16 @@ import ApplicationFields, {
   type ApplicationDraft,
 } from '@/components/applications/ApplicationFields';
 import AttachmentsPanel from '@/components/applications/AttachmentsPanel';
+import CoverLetterPanel from '@/components/applications/CoverLetterPanel';
 import SentResumePanel from '@/components/applications/SentResumePanel';
 import StatusBadge from '@/components/applications/StatusBadge';
 import SaveStatusBadge from '@/components/editor/SaveStatusBadge';
 import {
+  addCoverLetterToApplication,
   ApiError,
   downloadApplicationPdf,
   getApplication,
+  listCoverLetters,
   listResumes,
   markApplicationApplied,
   updateApplication,
@@ -22,6 +25,7 @@ import type {
   ApplicationDetail,
   ApplicationFile,
   ApplicationStatus,
+  CoverLetterSummary,
   ResumeSummary,
 } from '@/lib/types';
 
@@ -51,10 +55,14 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
   const [detail, setDetail] = useState<ApplicationDetail | null>(null);
   const [draft, setDraft] = useState<ApplicationDraft | null>(null);
   const [resumes, setResumes] = useState<ResumeSummary[]>([]);
+  const [coverLetters, setCoverLetters] = useState<CoverLetterSummary[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [fieldStatus, setFieldStatus] = useState<SaveStatus>('idle');
   const [metaStatus, setMetaStatus] = useState<SaveStatus>('idle');
+
+  const [addingCoverLetter, setAddingCoverLetter] = useState(false);
+  const [coverLetterError, setCoverLetterError] = useState<string | null>(null);
 
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -65,14 +73,16 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
 
     async function load(): Promise<void> {
       try {
-        const [application, resumeList] = await Promise.all([
+        const [application, resumeList, coverLetterList] = await Promise.all([
           getApplication(applicationId),
           listResumes(),
+          listCoverLetters(),
         ]);
         if (cancelled) return;
         setDetail(application);
         setDraft(toDraft(application));
         setResumes(resumeList);
+        setCoverLetters(coverLetterList);
       } catch (error) {
         if (!cancelled) {
           setLoadError(
@@ -109,6 +119,7 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
       createAutosave<{
         status?: ApplicationStatus;
         resumeId?: string | null;
+        coverLetterId?: string | null;
         isArchived?: boolean;
       }>({
         debounceMs: 0,
@@ -131,6 +142,26 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
   const handleFilesChange = useCallback((files: ApplicationFile[]) => {
     setDetail((current) => (current ? { ...current, files } : current));
   }, []);
+
+  /** Copying the Default letter is a create, not a field edit, so it is a
+   *  plain awaited call rather than an autosave channel — there is nothing
+   *  to debounce and nothing to coalesce it with. */
+  async function handleAddCoverLetter(): Promise<void> {
+    setAddingCoverLetter(true);
+    setCoverLetterError(null);
+    try {
+      const updated = await addCoverLetterToApplication(applicationId);
+      setDetail(updated);
+      // The new letter belongs in the picker too, without a second round trip.
+      setCoverLetters(await listCoverLetters());
+    } catch (error) {
+      setCoverLetterError(
+        error instanceof ApiError ? error.message : 'Could not add a cover letter.',
+      );
+    } finally {
+      setAddingCoverLetter(false);
+    }
+  }
 
   async function handleMarkApplied(): Promise<void> {
     setApplying(true);
@@ -242,6 +273,14 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
             applying={applying}
             downloading={downloading}
             error={applyError}
+          />
+          <CoverLetterPanel
+            application={detail}
+            coverLetters={coverLetters}
+            onAdd={() => void handleAddCoverLetter()}
+            onLink={(coverLetterId) => metaSave.schedule({ coverLetterId })}
+            adding={addingCoverLetter}
+            error={coverLetterError}
           />
           <AttachmentsPanel
             applicationId={applicationId}

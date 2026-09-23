@@ -7,8 +7,10 @@ Content (experiences, projects, bullets, skills) is stored once **per user** —
 globally within that user's account, never shared between accounts. A
 **Resume** is a named selection + ordering of that content, bound to a **Template**
 (raw LaTeX with substitution tokens). An **Application** records one job
-applied to, and holds both the live resume it was tailored from and the PDF
-snapshot it was sent with (D-032). Rendering substitutes selected content into
+applied to, and holds the live resume it was tailored from, the PDF snapshot
+it was sent with (D-032), and its own **Cover Letter** — a single column of
+raw LaTeX, stored per letter precisely because nothing about a cover letter
+is shared (D-035). Rendering substitutes selected content into
 the template and POSTs the resulting `.tex` to a sidecar TeX Live container, which
 returns a PDF. Saved PDFs are snapshotted into Postgres so the home page can always
 hand back the exact bytes a resume was last saved with.
@@ -41,7 +43,7 @@ hand back the exact bytes a resume was last saved with.
 | DB (prod)     | a second `postgres:17` container, its own volume and port, in `docker-compose.prod.yml`                                                                               | production is a separate local instance, not a cloud one (D-031)       |
 | LaTeX         | sidecar container: TeX Live + Express `/compile`                                                                                                                      | real `pdflatex`; V1 template compiles unchanged                        |
 | PDF storage   | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                                                                                                          | one code path dev/prod; swap to Supabase Storage later                 |
-| Multi-tenancy | `user_id` on the six root tables; children inherit through their parent; every query takes a `userId`                                                                 | one source of truth per fact (D-018)                                   |
+| Multi-tenancy | `user_id` on the seven root tables; children inherit through their parent; every query takes a `userId`                                                               | one source of truth per fact (D-018)                                   |
 | Auth          | three modes behind one `requireUserId()`: `dev` (auto-login as the seeded user), `password` (shared password → HMAC token naming a user), `supabase` (OAuth, stubbed) | local dev needs no credentials; production keeps a real gate (D-019)   |
 | Drag + drop   | `@dnd-kit`                                                                                                                                                            | proven in V1                                                           |
 | PDF preview   | `react-pdf` (pdf.js)                                                                                                                                                  | proven in V1                                                           |
@@ -53,6 +55,8 @@ app/                     Next.js App Router
   page.tsx               home: the applications board (Pipeline | Applied)
   applications/[id]/     one application: fields, notes, files, its resume
   resumes/page.tsx       the resume library: grid + fuzzy search
+  cover-letters/         the cover letter library, same shape
+  cover-letter/[id]/     editor: one LaTeX textarea + live PDF
   resume/[id]/page.tsx   editor: content|template tabs + live PDF
                          ?application=<id> -> saves back to that application
   api/...                route handlers (see docs/API.md)
@@ -61,6 +65,7 @@ lib/
   db/schema.ts           Drizzle table definitions
   db/index.ts            connection singleton
   render/                template token substitution -> .tex  (pure, unit-tested)
+                         + default-cover-letter.ts, which no token ever touches
   latex.ts               client for the latex service
   storage.ts             PDF snapshot adapter
   auth.ts                password token mint/verify (Edge-safe)
@@ -68,7 +73,7 @@ lib/
   auth-supabase.ts       Supabase OAuth seam — NOT IMPLEMENTED, fails closed
   session.ts             requireUserId(request) — the one entry point to "who is calling"
   queries/users.ts       user lookup + first-login provisioning
-  filename.ts            Chris_Pyle_<Company>_Resume.pdf
+  filename.ts            Chris_Pyle_<Company>_{Resume,Cover_Letter}.pdf
 components/              React components
 drizzle/                 numbered .sql migrations
 scripts/seed.ts          seeds one user + the V1 resume content (the smoke test)

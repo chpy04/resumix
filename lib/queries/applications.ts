@@ -13,7 +13,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { nextAppliedAt } from '../applications/status.ts';
 import { db } from '../db/index.ts';
-import { application, resume, resumePdf } from '../db/schema.ts';
+import { application, coverLetter, resume, resumePdf } from '../db/schema.ts';
 import type {
   ApplicationDetail,
   ApplicationFile,
@@ -21,6 +21,7 @@ import type {
   ApplicationSummary,
 } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
+import { createCoverLetter } from './cover-letters.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
 import { createResume } from './resumes.ts';
 
@@ -40,6 +41,8 @@ export interface ApplicationPatch {
   status?: ApplicationStatus;
   /** `null` unlinks the resume; omitted leaves it alone. */
   resumeId?: string | null;
+  /** `null` unlinks the cover letter; the letter itself is untouched. */
+  coverLetterId?: string | null;
   isArchived?: boolean;
 }
 
@@ -53,6 +56,7 @@ function toSummary(row: ApplicationRow, sentPdf: SentPdfMeta | null): Applicatio
     appliedAt: row.appliedAt?.toISOString() ?? null,
     resumeId: row.resumeId,
     sentPdf,
+    coverLetterId: row.coverLetterId,
     isArchived: row.isArchived,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -149,6 +153,17 @@ async function assertOwnedResume(userId: string, resumeId: string): Promise<void
   if (!row) throw new BadRequestError(`unknown resume id: ${resumeId}`);
 }
 
+/** Scoped exactly like `assertOwnedResume`: another user's cover letter id
+ *  is a 400 that reads the same as a nonexistent one. */
+async function assertOwnedCoverLetter(userId: string, coverLetterId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: coverLetter.id })
+    .from(coverLetter)
+    .where(and(eq(coverLetter.id, coverLetterId), eq(coverLetter.userId, userId)))
+    .limit(1);
+  if (!row) throw new BadRequestError(`unknown cover letter id: ${coverLetterId}`);
+}
+
 /**
  * Logs an application, and — normally — gives it a resume of its own.
  *
@@ -206,6 +221,7 @@ export async function updateApplication(
   if (!existing) throw new NotFoundError(`application ${id} not found`);
 
   if (patch.resumeId) await assertOwnedResume(userId, patch.resumeId);
+  if (patch.coverLetterId) await assertOwnedCoverLetter(userId, patch.coverLetterId);
 
   const { status, ...rest } = patch;
   const [row] = await db
@@ -271,6 +287,34 @@ export async function recordApplied(
       // A re-send replaces the snapshot; not sending one leaves the last in place.
       ...(resumePdfId === null ? {} : { resumePdfId }),
     })
+    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .returning();
+  if (!row) throw new NotFoundError(`application ${id} not found`);
+
+  return detailFor(row);
+}
+
+/**
+ * Gives this application a cover letter of its own, copied from the user's
+ * default and named after the company.
+ *
+ * The resume equivalent happens at creation time (`createResumeFrom`),
+ * because an application always arrives with a resume to tailor. A cover
+ * letter is a later, optional decision — plenty of postings never ask for
+ * one — so it is its own action rather than a field on the create form.
+ *
+ * Replacing an existing link leaves the old letter in place, unarchived and
+ * still in the library. Nothing here destroys a document.
+ */
+export async function attachCoverLetter(userId: string, id: string): Promise<ApplicationDetail> {
+  const existing = await getApplicationRow(userId, id);
+  if (!existing) throw new NotFoundError(`application ${id} not found`);
+
+  const created = await createCoverLetter(userId, existing.company);
+
+  const [row] = await db
+    .update(application)
+    .set({ coverLetterId: created.id })
     .where(and(eq(application.id, id), eq(application.userId, userId)))
     .returning();
   if (!row) throw new NotFoundError(`application ${id} not found`);

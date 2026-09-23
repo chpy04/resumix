@@ -1,11 +1,14 @@
 'use client';
 
-interface NewResumeCardProps {
+interface NewDocumentCardProps {
+  /** What this creates — "New resume", "New cover letter". */
+  label: string;
   onClick: () => void;
 }
 
-/** Blank, always-pinned top-left card. Opens the new-resume dialog. */
-export default function NewResumeCard({ onClick }: NewResumeCardProps) {
+/** Blank, always-pinned top-left cell of a document grid. Opens that grid's
+ *  `NewDocumentDialog`. */
+export default function NewDocumentCard({ label, onClick }: NewDocumentCardProps) {
   return (
     <button
       type="button"
@@ -20,7 +23,7 @@ export default function NewResumeCard({ onClick }: NewResumeCardProps) {
       >
         <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
       </svg>
-      <span className="text-sm font-medium">New resume</span>
+      <span className="text-sm font-medium">{label}</span>
     </button>
   );
 }

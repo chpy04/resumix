@@ -5,6 +5,10 @@ import { useMemo, useState, type KeyboardEvent, type Ref, type UIEvent } from 'r
 interface TemplateEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /** What this field is called to a screen reader (and to Playwright).
+   *  The same editor serves the resume template and a cover letter, which
+   *  are not the same document to anyone reading the page. */
+  ariaLabel?: string;
   /** Owned by the parent, which focuses the field when a token is inserted. */
   ref?: Ref<HTMLTextAreaElement>;
 }
@@ -15,7 +19,12 @@ interface TemplateEditorProps {
  * gutter kept in sync via scroll position. Deliberately not CodeMirror/Monaco
  * — per the task brief, a plain textarea is enough for editing LaTeX here.
  */
-export default function TemplateEditor({ value, onChange, ref }: TemplateEditorProps) {
+export default function TemplateEditor({
+  value,
+  onChange,
+  ariaLabel = 'Template LaTeX',
+  ref,
+}: TemplateEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const lineCount = useMemo(() => value.split('\n').length, [value]);
 
@@ -57,7 +66,7 @@ export default function TemplateEditor({ value, onChange, ref }: TemplateEditorP
         onScroll={handleScroll}
         spellCheck={false}
         wrap="off"
-        aria-label="Template LaTeX"
+        aria-label={ariaLabel}
         // `whitespace-pre` (no wrapping) keeps one source line == one visual
         // line, which is what lets the gutter's row-per-`\n` count stay
         // aligned with the textarea's own scroll position above.

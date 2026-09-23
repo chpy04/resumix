@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
@@ -12,6 +12,7 @@ import {
   createSkillRow,
   downloadResumePdf,
   getResumeDetail,
+  renderResume,
   saveResumePdf,
   saveResumeToApplication,
   updateExperience,
@@ -566,6 +567,25 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
     }
   }
 
+  // -- Live preview ---------------------------------------------------------
+  // The pane re-renders whenever any of these three change; it never reads
+  // the key, only compares it. Selections and library are a change *signal*
+  // only — `POST /render` re-reads the resume's persisted state itself, and
+  // the one piece of client state it needs is the template draft, which
+  // rides along as `templateOverride` so unsaved LaTeX previews too.
+  const templateContent = state.status === 'ready' ? state.template.content : '';
+  const previewKey = useMemo(
+    () =>
+      state.status === 'ready'
+        ? JSON.stringify([selections, state.library, templateContent])
+        : 'loading',
+    [state, selections, templateContent],
+  );
+  const renderPreview = useCallback(
+    () => renderResume(resumeId, templateContent),
+    [resumeId, templateContent],
+  );
+
   // -- Resizable divider (cheap: raw mouse events, percentage split) --------
   useEffect(() => {
     function handleMouseMove(event: MouseEvent): void {
@@ -658,12 +678,7 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
         />
 
         <div style={{ width: `${100 - splitPercent}%` }} className="min-h-0 overflow-hidden p-3">
-          <PreviewPane
-            resumeId={resumeId}
-            templateContent={state.template.content}
-            selections={selections}
-            library={state.library}
-          />
+          <PreviewPane renderKey={previewKey} render={renderPreview} />
         </div>
       </div>
     </div>

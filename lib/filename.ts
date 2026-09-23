@@ -1,7 +1,8 @@
 /**
- * Download filename for a resume PDF: `<prefix>_<Company>_Resume.pdf`.
+ * Download filenames for the two documents an application sends:
+ * `<prefix>_<Company>_Resume.pdf` and `<prefix>_<Company>_Cover_Letter.pdf`.
  *
- * "Company" is the resume's own `name` field (there is no separate company
+ * "Company" is the document's own `name` field (there is no separate company
  * column — see docs/SCHEMA.md, `resume_pdf.filename`), snake_cased with the
  * first letter of each word capitalized, regardless of how the user typed
  * it. Pure and synchronous: no I/O.
@@ -33,7 +34,7 @@ export function slugifyForFilename(input: string): string {
 }
 
 /**
- * Builds `<prefix>_<Company>_Resume.pdf`. `prefix` defaults to
+ * Builds `<prefix>_<Company>_<Kind>.pdf`. `prefix` defaults to
  * `PDF_NAME_PREFIX` (falling back to `Chris_Pyle`).
  *
  * The company portion is normalized by `slugifyForFilename`. The prefix is
@@ -42,10 +43,21 @@ export function slugifyForFilename(input: string): string {
  * are stripped from it — a stray quote in the env var would otherwise truncate
  * the header value and break the download filename.
  */
-export function buildResumeFilename(resumeName: string, prefix?: string): string {
+function buildDocumentFilename(name: string, kind: string, prefix?: string): string {
   const raw = prefix ?? process.env.PDF_NAME_PREFIX ?? DEFAULT_PREFIX;
   const p = sanitizeForHeader(raw) || DEFAULT_PREFIX;
-  return `${p}_${slugifyForFilename(resumeName)}_Resume.pdf`;
+  return `${p}_${slugifyForFilename(name)}_${kind}.pdf`;
+}
+
+/** `<prefix>_<Company>_Resume.pdf`. */
+export function buildResumeFilename(resumeName: string, prefix?: string): string {
+  return buildDocumentFilename(resumeName, 'Resume', prefix);
+}
+
+/** `<prefix>_<Company>_Cover_Letter.pdf`, so the two documents an
+ *  application sends sort next to each other in a downloads folder. */
+export function buildCoverLetterFilename(coverLetterName: string, prefix?: string): string {
+  return buildDocumentFilename(coverLetterName, 'Cover_Letter', prefix);
 }
 
 /** Strips quotes, backslashes and control characters (including CR/LF). */

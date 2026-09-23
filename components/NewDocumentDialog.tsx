@@ -2,26 +2,33 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
-interface NewResumeDialogProps {
+interface NewDocumentDialogProps {
+  /** Heading, e.g. "New resume". Also the dialog's accessible name. */
+  title: string;
+  /** One line under it saying what the new document starts from. */
+  description: string;
   open: boolean;
   submitting: boolean;
   error: string | null;
-  onSubmit: (companyName: string) => void;
+  onSubmit: (name: string) => void;
   onClose: () => void;
 }
 
 /**
- * In-app modal for naming a new resume. Deliberately not `window.prompt()`
- * per spec — it needs to look and behave like the rest of the app (dark
- * theme, focus trap, Escape to close).
+ * In-app modal for naming a new document — a resume or a cover letter, both
+ * of which are created the same way: type the company, get a copy of your
+ * default. Deliberately not `window.prompt()` per spec: it needs to look and
+ * behave like the rest of the app (dark theme, focus trap, Escape to close).
  */
-export default function NewResumeDialog({
+export default function NewDocumentDialog({
+  title,
+  description,
   open,
   submitting,
   error,
   onSubmit,
   onClose,
-}: NewResumeDialogProps) {
+}: NewDocumentDialogProps) {
   const [name, setName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -69,15 +76,13 @@ export default function NewResumeDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="new-resume-title"
+        aria-labelledby="new-document-title"
         className="w-full max-w-sm rounded-lg border border-line bg-surface p-6 shadow-2xl"
       >
-        <h2 id="new-resume-title" className="text-base font-semibold text-ink">
-          New resume
+        <h2 id="new-document-title" className="text-base font-semibold text-ink">
+          {title}
         </h2>
-        <p className="mt-1 text-sm text-ink-dim">
-          What company is this for? Starts from your Default resume.
-        </p>
+        <p className="mt-1 text-sm text-ink-dim">{description}</p>
 
         <form onSubmit={handleSubmit} className="mt-4">
           <input

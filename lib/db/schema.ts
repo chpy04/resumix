@@ -315,6 +315,33 @@ export const resumePdf = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Cover letters
+//
+// The document *is* the row: `content` holds the whole LaTeX file, verbatim.
+// There is no template, no bridge table and no PDF snapshot, because a cover
+// letter has none of the sharing a resume has — it is written for one company
+// and nothing else can edit it (D-035).
+// ---------------------------------------------------------------------------
+
+export const coverLetter = pgTable(
+  'cover_letter',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    /** A complete LaTeX document, raw and unescaped (D-008). */
+    content: text('content').notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('ux_cover_letter_one_default_per_user').on(t.userId).where(eq(t.isDefault, true)),
+    index('ix_cover_letter_user_id').on(t.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Applications
 //
 // One row per application, plus its attachments — no company table, no event
@@ -346,6 +373,11 @@ export const application = pgTable(
     resumeId: uuid('resume_id').references(() => resume.id, { onDelete: 'set null' }),
     /** The immutable snapshot that actually went out; null until applied. */
     resumePdfId: uuid('resume_pdf_id').references(() => resumePdf.id, { onDelete: 'restrict' }),
+    /** This application's own cover letter — a private copy, so unlike the
+     *  resume it needs no frozen counterpart beside it (D-035). */
+    coverLetterId: uuid('cover_letter_id').references(() => coverLetter.id, {
+      onDelete: 'set null',
+    }),
     isArchived: boolean('is_archived').notNull().default(false),
     ...owner,
     ...timestamps,
@@ -354,6 +386,7 @@ export const application = pgTable(
     index('ix_application_user_id').on(t.userId),
     index('ix_application_resume_id').on(t.resumeId),
     index('ix_application_resume_pdf_id').on(t.resumePdfId),
+    index('ix_application_cover_letter_id').on(t.coverLetterId),
   ],
 );
 
@@ -384,6 +417,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   projects: many(project),
   skillRows: many(technicalSkillRow),
   resumes: many(resume),
+  coverLetters: many(coverLetter),
 }));
 
 export const experienceRelations = relations(experience, ({ many, one }) => ({
@@ -432,6 +466,10 @@ export const resumePdfRelations = relations(resumePdf, ({ one }) => ({
 export const applicationRelations = relations(application, ({ one, many }) => ({
   resume: one(resume, { fields: [application.resumeId], references: [resume.id] }),
   sentPdf: one(resumePdf, { fields: [application.resumePdfId], references: [resumePdf.id] }),
+  coverLetter: one(coverLetter, {
+    fields: [application.coverLetterId],
+    references: [coverLetter.id],
+  }),
   files: many(applicationFile),
 }));
 

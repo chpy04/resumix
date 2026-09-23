@@ -7,6 +7,8 @@
  *   - all content transcribed from docs/reference/v1-resume.tex (lib/seed-data/**)
  *   - a "Default" resume (is_default true) pointing at that template, with
  *     every piece of seeded content selected, in the reference resume's order
+ *   - a "Default" cover letter (is_default true), the letter every new one
+ *     is copied from (D-035)
  *
  * This is the project's smoke test: representing the user's real resume
  * within the schema is the acceptance bar.
@@ -31,6 +33,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from '../lib/db/schema.ts';
+import { DEFAULT_COVER_LETTER } from '../lib/render/default-cover-letter.ts';
 import { DEFAULT_TEMPLATE } from '../lib/render/default-template.ts';
 import { V1_EXPERIENCES, V1_PROJECTS, V1_SKILL_ROWS } from '../lib/seed-data/v1-resume.ts';
 
@@ -66,6 +69,7 @@ const ALL_SEEDED_TABLES = [
   'resume_experience_bullet',
   'resume_experience',
   'resume',
+  'cover_letter',
   'technical_skill',
   'technical_skill_row',
   'project_bullet',
@@ -128,6 +132,18 @@ async function main() {
             userId: user.id,
           })
           .returning({ id: schema.template.id }),
+      );
+
+      const letter = one(
+        await tx
+          .insert(schema.coverLetter)
+          .values({
+            name: 'Default',
+            content: DEFAULT_COVER_LETTER,
+            isDefault: true,
+            userId: user.id,
+          })
+          .returning({ id: schema.coverLetter.id }),
       );
 
       // ---- Experiences + bullets --------------------------------------
@@ -278,6 +294,7 @@ async function main() {
       return {
         userId: user.id,
         templateId: tpl.id,
+        coverLetterId: letter.id,
         resumeId: res.id,
         experienceCount: experiences.length,
         experienceBulletCount: experiences.reduce((n, e) => n + e.bulletIds.length, 0),
@@ -297,6 +314,7 @@ async function main() {
     console.log(`  projects: ${summary.projectCount} (${summary.projectBulletCount} bullets)`);
     console.log(`  technical skill rows: ${summary.skillRowCount} (${summary.skillCount} skills)`);
     console.log(`  resume: 1 (Default, id ${summary.resumeId}), every item selected and ordered`);
+    console.log(`  cover letter: 1 (Default, id ${summary.coverLetterId})`);
   } finally {
     await sql.end();
   }

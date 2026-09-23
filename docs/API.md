@@ -63,6 +63,9 @@ type Selections = {
   skills: Record<string, string[]>; // skillRowId -> skill ids
 };
 
+type CoverLetterSummary = { id; name; isDefault; isArchived; createdAt; updatedAt };
+type CoverLetter = CoverLetterSummary & { content: string }; // the whole LaTeX document
+
 type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
 
 type ApplicationSummary = {
@@ -74,6 +77,7 @@ type ApplicationSummary = {
   appliedAt: string | null; // null exactly while it is a draft
   resumeId: string | null; // the live resume being tailored
   sentPdf: { filename; createdAt } | null; // the frozen snapshot that went out
+  coverLetterId: string | null; // this application's own letter; no snapshot beside it
   isArchived;
   createdAt;
   updatedAt;
@@ -131,21 +135,57 @@ with `ok: false`. `POST /pdf` then returns the same failure shape `/render` does
 is no PDF to name or snapshot. Clients must branch on `.ok`, never on
 `response.ok` alone.
 
+## Cover letters
+
+| method | path                                   | body                               | returns                                             |
+| ------ | -------------------------------------- | ---------------------------------- | --------------------------------------------------- |
+| GET    | `/api/cover-letters?includeArchived=1` | —                                  | `CoverLetterSummary[]`, default first then newest   |
+| POST   | `/api/cover-letters`                   | `{ name, sourceCoverLetterId? }`   | `201 CoverLetter` — copies the default, verbatim    |
+| GET    | `/api/cover-letters/:id`               | —                                  | `CoverLetter`                                       |
+| PATCH  | `/api/cover-letters/:id`               | `{ name?, content?, isArchived? }` | `CoverLetter`                                       |
+| POST   | `/api/cover-letters/:id/render`        | `{ contentOverride? }`             | `RenderResult` — **preview only, saves nothing**    |
+| GET    | `/api/cover-letters/:id/pdf`           | —                                  | `application/pdf`, compiled from the **saved** text |
+
+Thinner than the resume surface by a whole layer, because a cover letter is
+its text: there are no selections to save and no snapshot to take (D-035).
+`content` may be empty — a letter you have cleared out to start over is a
+normal editor state. `sourceCoverLetterId` copies a letter other than the
+default; a source belonging to somebody else is a `400`, the same answer as
+one that does not exist.
+
+`isDefault` is **not** patchable. Which letter is the default is set at
+provisioning, and flipping it would need the old default cleared in the same
+transaction or the partial unique index rejects the write.
+
+**There is no DELETE**, and archiving the default is a `400`. With no PDF
+snapshot behind it, a letter's text is the only record of what was sent, and
+the default is what every new letter is copied from.
+
+**`GET /pdf` is the one place in the app where a LaTeX error is an HTTP
+error.** It compiles on demand and answers `400 { error }` when the stored
+text does not compile (and `502` when the sidecar itself is unreachable),
+because a binary download has no JSON envelope to carry `ok: false` in and a
+`.pdf` that is secretly an error object is worse than a status code. Every
+other render endpoint, `POST /render` included, keeps the `200 { ok: false }`
+contract.
+
 ## Applications
 
-| method | path                                  | body                                                                             | returns                                                            |
-| ------ | ------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| GET    | `/api/applications?includeArchived=1` | —                                                                                | `ApplicationSummary[]`, `created_at desc`                          |
-| POST   | `/api/applications`                   | `{ company, roleTitle?, postingUrl?, resumeId? }`                                | `201 ApplicationDetail`                                            |
-| GET    | `/api/applications/:id`               | —                                                                                | `ApplicationDetail`                                                |
-| PATCH  | `/api/applications/:id`               | `{ company?, roleTitle?, postingUrl?, notes?, status?, resumeId?, isArchived? }` | `ApplicationDetail`                                                |
-| POST   | `/api/applications/:id/apply`         | —                                                                                | `{ ok: true, application }` — renders, snapshots, pins             |
-| GET    | `/api/applications/:id/pdf`           | —                                                                                | `application/pdf` of the snapshot **that was sent**; `404` if none |
+| method | path                                  | body                                                                                             | returns                                                            |
+| ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| GET    | `/api/applications?includeArchived=1` | —                                                                                                | `ApplicationSummary[]`, `created_at desc`                          |
+| POST   | `/api/applications`                   | `{ company, roleTitle?, postingUrl?, resumeId? }`                                                | `201 ApplicationDetail`                                            |
+| GET    | `/api/applications/:id`               | —                                                                                                | `ApplicationDetail`                                                |
+| PATCH  | `/api/applications/:id`               | `{ company?, roleTitle?, postingUrl?, notes?, status?, resumeId?, coverLetterId?, isArchived? }` | `ApplicationDetail`                                                |
+| POST   | `/api/applications/:id/cover-letter`  | —                                                                                                | `201 ApplicationDetail` — copies the default letter and links it   |
+| POST   | `/api/applications/:id/apply`         | —                                                                                                | `{ ok: true, application }` — renders, snapshots, pins             |
+| GET    | `/api/applications/:id/pdf`           | —                                                                                                | `application/pdf` of the snapshot **that was sent**; `404` if none |
 
 `appliedAt` is deliberately not writable: it follows from `status`, stamped the
 first time an application leaves `draft` and never cleared (docs/SCHEMA.md).
-`resumeId: null` unlinks the resume; `postingUrl` must be empty or http(s),
-since it is rendered as a link.
+`resumeId: null` and `coverLetterId: null` unlink those documents without
+touching them; `postingUrl` must be empty or http(s), since it is rendered as
+a link.
 
 `createResumeFrom` clones that resume under the company's name and links the
 copy — the normal path, since a new application arrives with something to
@@ -170,6 +210,14 @@ exactly as for `POST /api/resumes/:id/pdf`. Branch on `.ok`.
 `GET /api/applications/:id/pdf` returns the bytes this application was sent
 with — never a fresh render, and never the resume's _latest_ snapshot either.
 
+**`POST /cover-letter` is "add a cover letter"**: it copies the caller's
+default letter under this application's company name and links it. Its own
+endpoint rather than a flag on create, because a letter is a later, optional
+decision than the resume — plenty of postings never ask for one. There is no
+counterpart to `POST /pdf` here: the letter is a private copy, so editing it
+_is_ saving it to the application, and `GET /api/cover-letters/:id/pdf`
+serves it (D-035).
+
 **There is no DELETE.** `{ "isArchived": true }` takes an application off the
 board. Deleting a resume that an application was sent with is refused with a
 `400`, because `resume_pdf` cascades from `resume` and that snapshot is the
@@ -184,7 +232,8 @@ only record of what went out.
 | PATCH  | `/api/application-files/:id`  | `{ isArchived }`      | `ApplicationFile`     |
 
 One form field, `file`, ≤ 4 MB, any type — multipart rather than JSON for the
-same reason `/api/feedback` uses it. Responses are always
+same reason `/api/feedback` uses it. A cover letter authored in this app is
+not an attachment; it is a `cover_letter` row with its own endpoints above. Responses are always
 `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff`, and
 the content type comes from a fixed list rather than the upload, so an
 uploaded HTML file cannot be served back as a live page on this origin.

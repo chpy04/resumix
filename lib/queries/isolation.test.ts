@@ -27,6 +27,12 @@ let addApplicationFile: typeof import('./application-files.ts').addApplicationFi
 let getApplicationFileBlob: typeof import('./application-files.ts').getApplicationFileBlob;
 let listApplicationFiles: typeof import('./application-files.ts').listApplicationFiles;
 let updateApplicationFile: typeof import('./application-files.ts').updateApplicationFile;
+let createCoverLetter: typeof import('./cover-letters.ts').createCoverLetter;
+let getCoverLetter: typeof import('./cover-letters.ts').getCoverLetter;
+let getDefaultCoverLetter: typeof import('./cover-letters.ts').getDefaultCoverLetter;
+let listCoverLetters: typeof import('./cover-letters.ts').listCoverLetters;
+let updateCoverLetter: typeof import('./cover-letters.ts').updateCoverLetter;
+let attachCoverLetter: typeof import('./applications.ts').attachCoverLetter;
 let createResume: typeof import('./resumes.ts').createResume;
 let deleteResume: typeof import('./resumes.ts').deleteResume;
 let getResumeDetail: typeof import('./resumes.ts').getResumeDetail;
@@ -50,8 +56,21 @@ let fixtures: typeof import('./test-fixtures.ts');
 if (!skip) {
   ({ BadRequestError, NotFoundError } = await import('./errors.ts'));
   ({ assembleLibrary } = await import('./library.ts'));
-  ({ createApplication, getApplicationDetail, listApplications, recordApplied, updateApplication } =
-    await import('./applications.ts'));
+  ({
+    attachCoverLetter,
+    createApplication,
+    getApplicationDetail,
+    listApplications,
+    recordApplied,
+    updateApplication,
+  } = await import('./applications.ts'));
+  ({
+    createCoverLetter,
+    getCoverLetter,
+    getDefaultCoverLetter,
+    listCoverLetters,
+    updateCoverLetter,
+  } = await import('./cover-letters.ts'));
   ({ addApplicationFile, getApplicationFileBlob, listApplicationFiles, updateApplicationFile } =
     await import('./application-files.ts'));
   ({
@@ -379,5 +398,67 @@ test("another user's attachments are unreachable by id", { skip }, async () => {
     assert.equal(bobsFiles[0]?.isArchived, false);
   } finally {
     await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Cover letters. A seventh root table, so the shape is the plainest one here:
+// `user_id` on the row, one WHERE clause, no join to reason about (D-035).
+// ---------------------------------------------------------------------------
+
+test("another user's cover letter is unreachable by id", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobLetter = await createCoverLetter(bob.id, `Bob Letter ${tag}`);
+  try {
+    assert.equal(await getCoverLetter(alice.id, bobLetter.id), null);
+    await assert.rejects(
+      () => updateCoverLetter(alice.id, bobLetter.id, { content: 'overwritten' }),
+      NotFoundError,
+    );
+    assert.ok(!(await listCoverLetters(alice.id, true)).some((l) => l.id === bobLetter.id));
+
+    // Copying one you cannot read is the same answer as copying one that
+    // does not exist — otherwise the 400/404 split would confirm it is real.
+    await assert.rejects(
+      () => createCoverLetter(alice.id, 'Stolen', bobLetter.id),
+      BadRequestError,
+    );
+
+    const untouched = await getCoverLetter(bob.id, bobLetter.id);
+    assert.notEqual(untouched?.content, 'overwritten');
+  } finally {
+    await fixtures.deleteCoverLetterRow(bobLetter.id);
+  }
+});
+
+test("an application cannot be pointed at another user's cover letter", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobLetter = await createCoverLetter(bob.id, `Bob Letter ${tag}`);
+  const aliceApplication = await createApplication(alice.id, { company: `Alice Co ${tag}` });
+  try {
+    await assert.rejects(
+      () => updateApplication(alice.id, aliceApplication.id, { coverLetterId: bobLetter.id }),
+      BadRequestError,
+    );
+    const still = await getApplicationDetail(alice.id, aliceApplication.id);
+    assert.equal(still?.coverLetterId, null);
+
+    // And the copy-and-link shortcut copies *Alice's* default, never Bob's.
+    const attached = await attachCoverLetter(alice.id, aliceApplication.id);
+    assert.ok(attached.coverLetterId);
+    const aliceDefault = await getDefaultCoverLetter(alice.id);
+    const copy = await getCoverLetter(alice.id, attached.coverLetterId!);
+    assert.equal(copy?.content, aliceDefault?.content);
+    assert.equal(copy?.name, attached.company);
+    // A copy is never itself the default — the partial unique index would
+    // reject the second one if it were.
+    assert.equal(copy?.isDefault, false);
+
+    await assert.rejects(() => attachCoverLetter(bob.id, aliceApplication.id), NotFoundError);
+
+    await fixtures.deleteCoverLetterRow(attached.coverLetterId!);
+  } finally {
+    await fixtures.deleteApplicationRow(aliceApplication.id);
+    await fixtures.deleteCoverLetterRow(bobLetter.id);
   }
 });

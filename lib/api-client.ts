@@ -16,6 +16,8 @@ import type {
   ApplicationStatus,
   ApplicationSummary,
   Bullet,
+  CoverLetter,
+  CoverLetterSummary,
   Experience,
   Project,
   RenderResult,
@@ -404,8 +406,8 @@ export function getApplication(id: string): Promise<ApplicationDetail> {
 }
 
 /** `PATCH /api/applications/:id` — the autosave target for every field on the
- *  detail page, plus the status picker and archiving. `resumeId: null`
- *  unlinks the resume. */
+ *  detail page, plus the status picker and archiving. `resumeId: null` and
+ *  `coverLetterId: null` unlink those documents without touching them. */
 export function updateApplication(
   id: string,
   patch: Partial<{
@@ -415,6 +417,7 @@ export function updateApplication(
     notes: string;
     status: ApplicationStatus;
     resumeId: string | null;
+    coverLetterId: string | null;
     isArchived: boolean;
   }>,
 ): Promise<ApplicationDetail> {
@@ -475,6 +478,74 @@ export function updateApplicationFile(
 
 export function downloadApplicationFile(id: string, filename: string): Promise<void> {
   return downloadFile(`/api/application-files/${id}`, filename);
+}
+
+// ---------------------------------------------------------------------------
+// Cover letters
+//
+// Thinner than the resume surface by a whole layer: there are no selections
+// to save and no snapshot to take, so a letter is fetched, PATCHed and
+// compiled, and that is the entire API (D-035).
+// ---------------------------------------------------------------------------
+
+/** `GET /api/cover-letters` — default first, then newest. */
+export function listCoverLetters(includeArchived = false): Promise<CoverLetterSummary[]> {
+  return requestJson<CoverLetterSummary[]>(
+    `/api/cover-letters${includeArchived ? '?includeArchived=1' : ''}`,
+  );
+}
+
+/** `POST /api/cover-letters` — copies the default under `name`. */
+export function createCoverLetter(
+  name: string,
+  sourceCoverLetterId?: string,
+): Promise<CoverLetter> {
+  return requestJson<CoverLetter>('/api/cover-letters', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ name, sourceCoverLetterId }),
+  });
+}
+
+/** `GET /api/cover-letters/:id` — the editor's whole payload, content included. */
+export function getCoverLetter(id: string): Promise<CoverLetter> {
+  return requestJson<CoverLetter>(`/api/cover-letters/${id}`);
+}
+
+export function updateCoverLetter(
+  id: string,
+  patch: Partial<{ name: string; content: string; isArchived: boolean }>,
+): Promise<CoverLetter> {
+  return requestJson<CoverLetter>(`/api/cover-letters/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/** `POST /api/cover-letters/:id/render` — preview only, saves nothing.
+ *  `contentOverride` is the editor's unsaved draft. */
+export function renderCoverLetter(id: string, contentOverride?: string): Promise<RenderResult> {
+  return requestJson<RenderResult>(`/api/cover-letters/${id}/render`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(contentOverride === undefined ? {} : { contentOverride }),
+  });
+}
+
+/** `GET /api/cover-letters/:id/pdf` — compiles the *saved* text and
+ *  downloads it. Throws `ApiError` with status 400 when that text does not
+ *  compile, which is the one endpoint where a LaTeX error is an HTTP error. */
+export function downloadCoverLetterPdf(id: string): Promise<void> {
+  return downloadFile(`/api/cover-letters/${id}/pdf`, `cover-letter-${id}.pdf`);
+}
+
+/** `POST /api/applications/:id/cover-letter` — copies the default letter
+ *  under the company's name and links it to the application. */
+export function addCoverLetterToApplication(id: string): Promise<ApplicationDetail> {
+  return requestJson<ApplicationDetail>(`/api/applications/${id}/cover-letter`, {
+    method: 'POST',
+  });
 }
 
 // ---------------------------------------------------------------------------
