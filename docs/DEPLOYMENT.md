@@ -114,17 +114,29 @@ Idempotent, and always in this order:
    is deploy output and is never edited by hand, so "whatever is on
    `origin/main`" is the only state it may be in. The script prints the
    commit range it is moving across.
-2. `docker compose build` — from the pulled tree, not from your checkout.
+2. `docker compose --profile tools build` — from the pulled tree, not from
+   your checkout. The profile flag is required, not cosmetic: `migrate` is a
+   profiled service and a plain `compose build` skips those silently, which
+   would migrate using the previous deploy's image.
 3. `pg_dump` into `~/.resumix/backups/` **before** anything touches the
    schema. The last 20 are kept.
 4. Migrations, via `docker compose run --rm migrate`. They run inside the
    image built from the same commit, so the schema applied always matches the
    code that will run against it.
-5. `docker compose up -d`, then poll `http://localhost:39000/login` until it
+5. A check that the schema is level with the commit being deployed: every
+   `drizzle/*.sql` in the pulled tree must appear in the database's
+   `_migrations`. Compared against the tree rather than by asking the
+   migrate container what is pending, because an image that predates a
+   migration does not carry the file and would answer "nothing pending"
+   quite honestly.
+6. `docker compose up -d`, then poll `http://localhost:39000/login` until it
    answers.
 
 Any step failing stops the deploy (`set -euo pipefail`); the currently
-running containers keep serving until step 5 actually swaps them.
+running containers keep serving until the final step actually swaps them.
+That ordering is the reason the schema check sits before the swap: shipping
+code ahead of its schema does not fail during the deploy, it fails later as
+500s from whichever query first touches a column that is not there.
 
 ## Operating it
 

@@ -149,7 +149,15 @@ pull_main() {
 
 build_images() {
   say "Building images from $(git -C "$SRC" rev-parse --short HEAD)"
-  compose build
+  # `--profile tools` is load-bearing, not tidiness. `migrate` sits in a
+  # non-default profile, and a plain `compose build` silently skips every
+  # service in one — no warning, exit 0. `compose run` then reuses whatever
+  # `resumix-migrate:prod` was left over from the previous deploy, so the
+  # migrations that run are the ones that shipped *last* time. Migrating
+  # with a stale image and then swapping in an app built from the new commit
+  # leaves new code against an old schema, which fails at the first query
+  # touching a new column rather than during the deploy.
+  compose --profile tools build
 }
 
 start_db() {
@@ -191,7 +199,10 @@ backup_db() {
 
 migrate_db() {
   say "Applying migrations"
-  compose run --rm migrate
+  # `--build` as well as the profile build above: belt and braces, because
+  # the failure this guards against is silent at deploy time and only shows
+  # up later as 500s from the running app.
+  compose run --rm --build migrate
 
   # Idempotent by design: scripts/seed.ts is a no-op once a user exists, so
   # this only does anything on the first deploy. --force is never passed
@@ -199,6 +210,24 @@ migrate_db() {
   # production means the real resume.
   say "Ensuring an owner exists (no-op after the first deploy)"
   compose run --rm migrate npm run db:seed
+
+  # The deploy's own check that code and schema agree, compared against the
+  # *checked-out tree* rather than against the migrate container. Asking the
+  # container "is anything pending?" cannot catch the case this exists for:
+  # a stale image does not carry the new file, so it would answer "no"
+  # perfectly honestly. The tree is what this commit ships, so it is the
+  # only thing that knows what the schema is supposed to contain.
+  say "Verifying the schema is level with this commit"
+  local expected applied missing
+  expected=$(cd "$SRC/drizzle" && ls -1 ./*.sql | xargs -n1 basename | sort)
+  applied=$(compose exec -T db psql -U resumix -d resumix -tAc \
+    'select filename from _migrations' 2>/dev/null | tr -d ' \r' | sed '/^$/d' | sort)
+  missing=$(comm -23 <(echo "$expected") <(echo "$applied") || true)
+  if [ -n "$missing" ]; then
+    die "schema is behind this commit — never applied: $(echo "$missing" | tr '\n' ' ')
+The migrate image is stale. Rebuild it and re-run:
+  cd $SRC && docker compose --env-file $ENV_FILE -f $COMPOSE_FILE run --rm --build migrate"
+  fi
 }
 
 swap() {
