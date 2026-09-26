@@ -139,66 +139,56 @@ locally and in CI/production where env vars are injected directly.
 
 This repo is maintained largely by AI agents, and the process is part of the
 repo rather than a convention someone remembers. Every piece of work a **human**
-asks for is one GitHub issue — agents never file their own — and that issue's
+asks for is one GitHub issue (agents never file their own), and that issue's
 `status:*` label is the only record of where it stands.
 
-Three skills in `.claude/skills/` each drive one phase, and a human invokes
-each by hand. They never call each other, so every phase boundary is a
-deliberate decision rather than a runaway chain.
+One agent takes each issue all the way to a PR, and the PR is the only human
+checkpoint. An issue labelled `plan-first` adds one more: the agent draws its
+plan on the Excalidraw board and waits for the human before building.
 
 ```mermaid
 flowchart TD
     H([human files an issue]) --> B
 
     B["status:backlog"]:::state
-    B -->|"/triage"| T{"epic label?"}
+    B -->|"scripts/herd.sh → /implement"| I
 
-    T -->|yes| C["Track C — epic<br/>requirements + diagram<br/>sub-issues into backlog"]:::work
-    T -->|no| S{"how big?"}
+    subgraph I["status:in-progress — one orchestrator, one worktree"]
+        direction TB
+        PL["planner subagent<br/>writes the plan"]:::work
+        OR{"orchestrator<br/>accepts plan?"}
+        IM["implementer subagent<br/>builds + commits"]:::work
+        VE{"verifier subagent<br/>ticket, plan, invariants,<br/>npm run verify"}
+        PL --> OR
+        OR -->|"no, ≤2 re-plans"| PL
+        OR -->|"yes, plan-first"| BD["draws the plan<br/>on the Excalidraw board"]:::work
+        OR -->|yes| IM
+        IM --> VE
+        VE -->|"FAIL, ≤3 rounds"| IM
+    end
 
-    S -->|"small, obvious"| A["Track A<br/>five-line plan"]:::work
-    S -->|"feature"| F["Track B<br/>plan + Excalidraw diagram"]:::work
-
-    A -->|self-approved| R
-    C --> P
-    F --> P
-
-    P["status:planning"]:::state
-    P -->|"human approves"| R
-
-    R["status:ready"]:::state
-    R -->|"/implement"| I
-
-    I["status:in-progress<br/><i>worktree + branch</i>"]:::state
-    I -->|"npm run verify green,<br/>PR opened"| V
-
-    V["status:in-review"]:::state
-    V -->|"/review-pr"| RV{"all comments<br/>answered?"}
-
-    RV -->|"changes requested"| I
-    RV -->|"green + answered"| M([human merges])
-
+    BD --> PR["status:plan-review"]:::state
+    PR -->|"human adds stickies,<br/>moves it to backlog"| B
+    VE -->|PASS| V["status:in-review<br/><i>PR open</i>"]:::state
+    I -.->|"ambiguous ticket,<br/>or out of rounds"| BL["status:blocked"]:::state
+    V --> M([human reviews + merges])
     M --> D["status:done"]:::state
 
     classDef state fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b
     classDef work fill:#f0fdf4,stroke:#16a34a,color:#052e16
 ```
 
-That is the **unattended** path, where the label has to carry the whole
-conversation. Working alongside an agent in a session is lighter: approval
-happens by saying so, a new request extends the issue you are already on
-rather than spawning another, and the agent goes straight to worktree, branch
-and PR while moving the label as it passes each step.
+That is the **unattended** path. Working alongside an agent in a session is
+lighter: approval happens by saying so, and the agent goes straight to
+worktree, branch and PR.
 
-Either way two transitions are deliberately **not** automated. A human moves
-`planning → ready` — that move _is_ the approval, and it is the one an agent
-may never make itself. And a human presses merge. Everything else is either an
-agent setting a label through `scripts/status.sh`, or
-`.github/workflows/status.yml` reacting to a PR event.
-
-`ready` and `in-progress` look redundant and are not: `ready` means the plan
-is approved, `in-progress` means an agent has actually claimed it. Keeping them
-apart is what makes a queue of approved-but-unstarted work visible.
+A human presses merge; nothing else in the process is manual. Everything else
+is an agent setting a label through `scripts/status.sh`, or
+`.github/workflows/status.yml` reacting to an issue or PR event — apart from
+answering a `plan-first` plan, which is moving the issue back to `backlog`
+(with sticky notes on the board to revise it, or none to approve it). The
+in-app feedback widget files issues the same way, with a **Create a plan
+first** switch that adds the label.
 
 ## Project layout
 
@@ -211,7 +201,8 @@ scripts/                 migrate.ts, seed.ts, smoke.ts, status.sh
 services/latex/          the pdflatex sidecar (Dockerfile + server.js)
 e2e/                     Playwright specs
 docs/                    architecture, contracts, decisions, deployment — see below
-.claude/skills/          triage, implement, review-pr — the lifecycle above
+.claude/skills/          /implement — the lifecycle above
+.claude/agents/          planner, implementer, verifier — its subagents
 ```
 
 ## Where to go next

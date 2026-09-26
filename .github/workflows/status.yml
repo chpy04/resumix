@@ -1,8 +1,8 @@
 # Keeps an issue's `status:*` label in step with git. Only the transitions that
 # are unambiguously inferable from an event live here -- a PR being opened means
 # "ready for review", a PR being merged means "done". The transitions that
-# depend on judgement (-> planning, -> in-progress, -> blocked) or on a human's
-# approval (-> ready) are deliberately absent: see the lifecycle in CLAUDE.md.
+# depend on judgement (-> in-progress, -> blocked) are deliberately absent:
+# see the lifecycle in .claude/rules/github.md.
 #
 # Runs on the default GITHUB_TOKEN. That is the point of D-026: status is a
 # label, an ordinary repository permission, so there is no secret to configure
@@ -15,8 +15,6 @@ on:
     types: [opened, reopened]
   pull_request_target:
     types: [opened, ready_for_review, reopened, closed]
-  pull_request_review:
-    types: [submitted]
 
 permissions:
   issues: write
@@ -35,9 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A freshly filed issue -- including one the in-app feedback widget files
-      # through POST /api/feedback -- lands in backlog, so nothing arrives
-      # without a status.
+      # A freshly filed issue lands in backlog, so nothing arrives without a
+      # status -- and backlog is a go-ahead: herd.sh runs /implement on every
+      # backlog issue (D-036). That includes the in-app feedback widget's
+      # issues. One that wants a human first carries `plan-first`, which
+      # /implement itself honours, so it still starts in backlog here.
       - name: Issue opened -> backlog
         if: github.event_name == 'issues'
         run: scripts/status.sh set "${{ github.event.issue.number }}" backlog
@@ -55,30 +55,18 @@ jobs:
           done
 
       # Merged closes the issue (via `Closes #n`) and finishes it. A PR closed
-      # *without* merging leaves its issue open, so it goes back to in-progress
-      # rather than to done.
-      - name: PR closed -> done or in-progress
+      # *without* merging is a human rejecting the attempt, so the issue goes
+      # to blocked -- not back to backlog, where herd.sh would immediately
+      # rerun the same attempt, and not in-progress, which nothing picks up.
+      - name: PR closed -> done or blocked
         if: >-
           github.event_name == 'pull_request_target'
           && github.event.action == 'closed'
         env:
           MERGED: ${{ github.event.pull_request.merged }}
         run: |
-          status="in-progress"
+          status="blocked"
           [ "$MERGED" = "true" ] && status="done"
           for issue in $(scripts/status.sh pr-issues "${{ github.event.pull_request.number }}"); do
             scripts/status.sh set "$issue" "$status"
-          done
-
-      # Changes requested sends the work back without a human touching a label.
-      # It returns to in-progress rather than a status of its own -- an agent
-      # reworking a PR is the same activity as an agent writing it. An approval
-      # deliberately does *not* move anything: the merge does.
-      - name: Changes requested -> in-progress
-        if: >-
-          github.event_name == 'pull_request_review'
-          && github.event.review.state == 'changes_requested'
-        run: |
-          for issue in $(scripts/status.sh pr-issues "${{ github.event.pull_request.number }}"); do
-            scripts/status.sh set "$issue" in-progress
           done

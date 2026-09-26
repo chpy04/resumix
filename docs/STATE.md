@@ -92,7 +92,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   Filed via `POST /api/feedback`. Screenshots are committed to the orphan
   `feedback-assets` branch and linked at their commit sha (D-021). Needs
   `GITHUB_TOKEN` and `GITHUB_REPO`; without them the endpoint fails closed
-  with a 503.
+  with a 503. A **Create a plan first** switch, off by default, adds the
+  `plan-first` label, so the agent drafts its plan on the Excalidraw board
+  and waits for approval instead of building straight to a PR (D-036).
 
 ## Users and isolation
 

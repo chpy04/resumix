@@ -568,6 +568,8 @@ export interface FeedbackInput {
   viewport?: string;
   userAgent?: string;
   screenshot?: File | null;
+  /** Ask the agent for a plan on the board before it builds anything. */
+  planFirst?: boolean;
 }
 
 /** `POST /api/feedback` — creates a GitHub issue. `503` means the deployment
@@ -579,6 +581,7 @@ export function submitFeedback(input: FeedbackInput): Promise<FeedbackResult> {
   form.set('url', input.url);
   if (input.viewport) form.set('viewport', input.viewport);
   if (input.userAgent) form.set('userAgent', input.userAgent);
+  if (input.planFirst) form.set('planFirst', 'true');
   if (input.screenshot) form.set('screenshot', input.screenshot, input.screenshot.name);
 
   return requestJson<FeedbackResult>('/api/feedback', { method: 'POST', body: form });

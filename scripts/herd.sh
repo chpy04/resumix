@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
 #
-# Open one Claude terminal per open issue, on the skill that issue's status
-# calls for.
+# Open one Claude terminal per backlog issue, running `/implement` on it.
 #
-# This is the unattended path of CLAUDE.md's lifecycle, driven from the
-# outside: the three skills each take exactly one issue and deliberately
-# refuse to scan the list, because "what gets worked on" is a human decision.
-# This script *is* that decision, made once and in the open -- it reads every
-# open issue, maps `status:*` to the one skill whose entry conditions that
-# status satisfies, and starts an agent per match.
+# This is the unattended path, driven from the outside. `/implement` takes
+# exactly one issue and deliberately refuses to scan the list, because "what
+# gets worked on" is a human decision. This script *is* that decision, made
+# once and in the open: filing an issue into backlog is the go-ahead, and
+# every backlog issue gets one agent that plans, builds, verifies and opens
+# a PR in a single pass (D-036). The PR is where a human looks -- unless the
+# issue is labelled `plan-first`, in which case the agent stops after drawing
+# its plan on the Excalidraw board, and the board is where a human looks first.
 #
-# There is no model in this loop. Every branch below is a label comparison or
-# a timestamp comparison, so two runs against the same tracker state launch
-# the same terminals. If it ever surprises you, `--dry-run` prints the whole
-# decision table without touching Herdr.
+# There is no model in this loop. Every branch below is a label comparison, so
+# two runs against the same tracker state launch the same terminals. If it
+# ever surprises you, `--dry-run` prints the whole decision table without
+# touching Herdr.
 #
-#   status:backlog     -> /triage <n>      no plan exists yet
-#   status:planning    -> /triage <n>      ONLY if feedback postdates the plan
-#   status:ready       -> /implement <n>   a human approved the plan
-#   status:in-review   -> /review-pr <pr>  the open PR that closes it
-#   status:in-progress -> skip             an agent already claimed it
-#   status:blocked     -> skip             waiting on a human decision
+#   status:backlog     -> /implement <n>   (with Excalidraw, if plan-first)
+#   status:in-progress -> skip   an agent already claimed it
+#   status:plan-review -> skip   its plan is on the board, waiting on you
+#   status:in-review   -> skip   a PR is open; that is yours to review
+#   status:blocked     -> skip   waiting on a human decision
 #
-# `planning` is the subtle one. It means a plan is written and sitting at the
-# human approval gate, which is not work an agent can advance -- except in the
-# one case `/triage` names as re-planning, where a human has left feedback and
-# somebody has to answer it. So a planning issue launches only when a comment
-# is newer than the last edit to the body the plan lives in. Absent that, the
-# issue is waiting on you and gets no terminal.
+# So an issue you are not ready to hand over should not sit in backlog --
+# set it to blocked (`scripts/status.sh set <n> blocked`) until it is, or
+# label it `plan-first` if what you want is to see the approach before the
+# code. Approving a plan is moving its issue back to backlog; close the
+# planning agent's tab first, or this script will leave it alone.
 #
 # Usage:
 #   scripts/herd.sh [--dry-run] [--workspace <id>]
 #
-# Requires: gh (authenticated), jq, and a running Herdr server.
+# Requires: gh (authenticated), jq, a running Herdr server, and -- for
+# plan-first issues only -- an `excalidraw` server in ~/.claude.json.
 
 set -euo pipefail
 
@@ -47,13 +47,22 @@ set -euo pipefail
 # bypassPermissions is what makes "unattended" true: /implement's merge gate
 # is `npm run verify`, and an agent that has to ask before running bash has
 # not been launched, it has been parked. The blast radius is bounded by the
-# skills themselves -- none of the three merges, force-pushes, or files an
-# issue, and each stops at its phase boundary.
+# skill itself -- it never merges, force-pushes or files an issue, and it
+# stops at the PR.
 CLAUDE_ARGS=(--strict-mcp-config --permission-mode bypassPermissions)
+
+# The one exception to "never an MCP server": a plan-first agent draws its
+# plan on the Excalidraw board, so it gets exactly that server and nothing
+# else. --mcp-config, unlike the user-scoped entry it is copied from, loads
+# without the approval prompt that --strict-mcp-config exists to avoid. The
+# entry carries its Authorization header, so the copy is private to you, like
+# ~/.claude.json itself, and is rewritten on every run rather than kept in
+# sync.
+MCP_CONFIG="${XDG_CACHE_HOME:-$HOME/.cache}/resumix/herd-mcp.json"
 
 REPO="${RESUMIX_REPO:-chpy04/resumix}"
 
-# The skills worktree themselves (`../resumix-wt/<n>/`), so every agent starts
+# The skill worktrees itself (`../resumix-wt/<n>/`), so every agent starts
 # in the main checkout and branches from there. Derived from this script
 # rather than $PWD so the script works when run from anywhere.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -95,34 +104,8 @@ herdr_api() {
   printf '%s' "$out"
 }
 
-# One query for both halves of the mapping: the issues, and the open PRs whose
-# `Closes #n` links tell an in-review issue which PR is its own. The links come
-# from closingIssuesReferences -- what GitHub itself will close -- rather than
-# a regex over the body, for the same reason `status.sh pr-issues` does.
 fetch() {
-  gh api graphql -f owner="${REPO%%/*}" -f repo="${REPO##*/}" -f query='
-    query($owner: String!, $repo: String!) {
-      repository(owner: $owner, name: $repo) {
-        issues(states: OPEN, first: 100) {
-          nodes {
-            number
-            title
-            body
-            createdAt
-            lastEditedAt
-            labels(first: 20) { nodes { name } }
-            comments(last: 1) { nodes { createdAt } }
-          }
-        }
-        pullRequests(states: OPEN, first: 100) {
-          nodes {
-            number
-            isDraft
-            closingIssuesReferences(first: 5) { nodes { number } }
-          }
-        }
-      }
-    }'
+  gh issue list --repo "$REPO" --state open --limit 200 --json number,title,labels
 }
 
 # The whole decision, in one place, as data. Emits TSV:
@@ -132,47 +115,24 @@ fetch() {
 # whitespace character, so bash's `read` folds a run of them into one
 # separator and an empty middle field would silently shift every later field
 # one to the left.
-#
-# ISO 8601 timestamps are all UTC and fixed-width here, so `>` on the strings
-# is a correct chronological compare and needs no date parsing.
 DECIDE='
-  .data.repository as $r
-  | ([ $r.pullRequests.nodes[]
-       | select(.isDraft | not) as $p
-       | $p.closingIssuesReferences.nodes[]
-       | { key: (.number | tostring), value: $p.number } ] | from_entries) as $prOf
-  | $r.issues.nodes[]
+  .[]
   | . as $i
-  | ([ .labels.nodes[].name ] | map(select(startswith("status:")))) as $labels
+  | ([ .labels[].name ] | map(select(startswith("status:")))) as $labels
   | ($labels[0] // "" | ltrimstr("status:")) as $s
-  | (.body | test("<!-- resumix:plan -->")) as $planned
-  | (.lastEditedAt // .createdAt) as $bodyAt
-  | (.comments.nodes[0].createdAt // "") as $commentAt
   | (if ($labels | length) == 0 then
        ["skip", "-", "-", "no status: label -- scripts/status.sh set \($i.number) backlog"]
      elif ($labels | length) > 1 then
        ["skip", "-", "-", "wears \($labels | join(" + ")) -- scripts/status.sh set \($i.number) <one>"]
      elif $s == "backlog" then
-       ["run", "triage", ($i.number | tostring), "unplanned"]
-     elif $s == "planning" then
-       (if ($planned | not) then
-          ["run", "triage", ($i.number | tostring), "status:planning with no plan in the body"]
-        elif ($commentAt != "" and $commentAt > $bodyAt) then
-          ["run", "triage", ($i.number | tostring), "feedback left since the plan"]
-        else
-          ["skip", "-", "-", "plan written, waiting on your approval"]
-        end)
-     elif $s == "ready" then
-       ["run", "implement", ($i.number | tostring), "plan approved"]
-     elif $s == "in-review" then
-       ($prOf[$i.number | tostring] as $pr
-        | if $pr == null then
-            ["skip", "-", "-", "status:in-review but no open non-draft PR closes it"]
-          else
-            ["run", "review-pr", ($pr | tostring), "PR #\($pr)"]
-          end)
+       ["run", "implement", ($i.number | tostring),
+        (if any($i.labels[]; .name == "plan-first") then "plan-first" else "backlog" end)]
      elif $s == "in-progress" then
        ["skip", "-", "-", "an agent already has it"]
+     elif $s == "plan-review" then
+       ["skip", "-", "-", "plan on the board, waiting on your review"]
+     elif $s == "in-review" then
+       ["skip", "-", "-", "PR open, waiting on your review"]
      elif $s == "blocked" then
        ["skip", "-", "-", "waiting on a human decision"]
      else
@@ -204,9 +164,28 @@ has_tab() {
   grep -q "^#$1 " <<<"$existing"
 }
 
+# Writes the Excalidraw-only MCP config once, the first time a plan-first
+# issue needs it. Fails that one launch, not the run, if there is no server
+# to copy.
+excalidraw_config() {
+  [ -n "${MCP_CONFIG_WRITTEN:-}" ] && return 0
+  local server
+  server=$(jq -c '.mcpServers.excalidraw // empty' "$HOME/.claude.json" 2>/dev/null) || server=""
+  [ -n "$server" ] || { echo "  ! no excalidraw server in ~/.claude.json" >&2; return 1; }
+  mkdir -p "$(dirname "$MCP_CONFIG")"
+  (umask 077 && jq -n --argjson s "$server" '{mcpServers: {excalidraw: $s}}' >"$MCP_CONFIG")
+  MCP_CONFIG_WRITTEN=1
+}
+
 launch() {
-  local num="$1" skill="$2" arg="$3" label pane out
+  local num="$1" skill="$2" arg="$3" reason="$4" label pane out
+  local args=("${CLAUDE_ARGS[@]}")
   label="#$num $skill"
+
+  if [ "$reason" = "plan-first" ]; then
+    excalidraw_config || { echo "  ! cannot give #$num the Excalidraw board" >&2; return 1; }
+    args+=(--mcp-config "$MCP_CONFIG")
+  fi
 
   out=$(herdr_api herdr tab create \
     --workspace "$WORKSPACE" --cwd "$ROOT" --label "$label" --no-focus) ||
@@ -218,7 +197,7 @@ launch() {
   # Returns only once Herdr has detected Claude in that pane and considers it
   # ready for input, so the prompt below cannot race the agent's startup.
   herdr_api herdr agent start "issue-$num" --kind claude --pane "$pane" \
-    -- "${CLAUDE_ARGS[@]}" >/dev/null ||
+    -- "${args[@]}" >/dev/null ||
     { echo "  ! claude did not come up in $pane for #$num" >&2; return 1; }
 
   herdr_api herdr agent prompt "issue-$num" "/$skill $arg" >/dev/null ||
@@ -261,7 +240,7 @@ while IFS=$'\t' read -r num action skill arg reason title; do
   printf -- '+ #%-4s %-46.46s  /%s %s (%s)\n' "$num" "$title" "$skill" "$arg" "$reason"
   if [ "$DRY_RUN" -eq 1 ]; then
     ran=$((ran + 1))
-  elif launch "$num" "$skill" "$arg"; then
+  elif launch "$num" "$skill" "$arg" "$reason"; then
     ran=$((ran + 1))
   else
     # One issue failing to launch is not a reason to abandon the rest.

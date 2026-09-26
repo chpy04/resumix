@@ -3,8 +3,8 @@ import { login } from './support.ts';
 
 /**
  * The GitHub call itself is stubbed at the network boundary: the assertion
- * worth making here is that the widget collects the right four things (kind,
- * description, page URL, screenshot) and puts them on the wire. Actually
+ * worth making here is that the widget collects the right five things (kind,
+ * description, page URL, screenshot, plan first) and puts them on the wire. Actually
  * filing an issue would need a live token and would litter the real repo,
  * and `lib/feedback/github.test.ts` already covers the request sequence.
  */
@@ -73,6 +73,12 @@ test('a bug report carries the description, the current URL, and the screenshot'
   // The page being reported on is captured without the user doing anything.
   await expect(dialog.getByText('http://localhost:3100/')).toBeVisible();
 
+  // Off by default; switching it on is what labels the issue `plan-first`.
+  const planFirst = dialog.getByRole('switch', { name: /create a plan first/i });
+  await expect(planFirst).not.toBeChecked();
+  await dialog.getByText('Create a plan first').click();
+  await expect(planFirst).toBeChecked();
+
   await dialog.getByRole('textbox').fill('The download button does nothing on the Default card.');
   await dialog
     .getByTestId('feedback-screenshot-input')
@@ -91,6 +97,7 @@ test('a bug report carries the description, the current URL, and the screenshot'
   expect(sent).toContain('The download button does nothing on the Default card.');
   expect(sent).toContain('http://localhost:3100/');
   expect(sent).toContain('filename="bug.png"');
+  expect(sent).toMatch(/name="planFirst"\r\n\r\ntrue/);
 });
 
 test('a feature request from the editor records that page, not the home page', async ({ page }) => {
@@ -118,6 +125,8 @@ test('a feature request from the editor records that page, not the home page', a
   expect(sent).toContain(editorUrl);
   // Nothing was attached, so no file part should be on the wire.
   expect(sent).not.toContain('name="screenshot"');
+  // Plan first is off unless asked for, so the issue goes straight to an agent.
+  expect(sent).not.toContain('name="planFirst"');
 });
 
 test('feedback cannot be sent empty, and is not offered before login', async ({ page }) => {
