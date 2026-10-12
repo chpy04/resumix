@@ -8,6 +8,10 @@ node_modules
 .env
 .env.*
 prod.env
+# The applying Claude's workspace (D-038). The `.env` line above matches only
+# at the root, so without this `COPY . .` would carry agent/.env (a production
+# token) and agent/.browser-profile (live ATS sessions) into the images.
+agent
 
 # Nothing under here can affect a production build.
 e2e

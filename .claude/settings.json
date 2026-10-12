@@ -40,7 +40,20 @@
       "Bash(bash scripts/deploy-prod.sh:*)",
       "Bash(sh scripts/deploy-prod.sh:*)",
       "Bash(docker compose -f docker-compose.prod.yml:*)",
-      "Bash(docker compose --env-file:*)"
+      "Bash(docker compose --env-file:*)",
+
+      "Read(./agent/.env)",
+      "Read(./agent/.browser-profile/**)",
+      "Edit(./agent/career-ops/**)",
+      "Write(./agent/career-ops/**)",
+      "Read(./agent/career-ops-data/**)",
+      "Edit(./agent/career-ops-data/**)",
+      "Write(./agent/career-ops-data/**)",
+
+      "Bash(agent/claude.sh:*)",
+      "Bash(./agent/claude.sh:*)",
+      "Bash(bash agent/claude.sh:*)",
+      "Bash(sh agent/claude.sh:*)"
     ]
   }
 }
