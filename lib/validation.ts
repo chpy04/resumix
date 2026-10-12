@@ -8,7 +8,7 @@ import { MANUAL_STATUSES } from './applications/status.ts';
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
 
-function isHttpUrl(value: string): boolean {
+export function isHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';

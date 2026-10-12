@@ -248,14 +248,53 @@ tool and what comes back.
 
 ### Tool reference
 
-| tool   | arguments | returns                                               |
-| ------ | --------- | ----------------------------------------------------- |
-| `ping` | none      | the email of the account that owns the token, as text |
+Every tool but `ping` answers one text item of compact JSON whose keys are
+snake_case, like the arguments, so what one tool returns can be passed
+straight back into another (D-042). Text from the library is plain: LaTeX
+markup is stripped for display (`\textbf{x}` → `x`, `\$` → `$`), and the
+stored content stays raw (D-008).
+
+| tool                   | arguments                                                                                                                                                               | returns                                                                                                                                                                                                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ping`                 | none                                                                                                                                                                    | the email of the account that owns the token, as text                                                                                                                                                                                                                                    |
+| `get_library`          | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
+| `list_applications`    | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
+| `get_application`      | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at } }`. `selection` has `set_resume_selection`'s shape, or is null when no resume is linked       |
+| `create_application`   | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
+| `set_resume_selection` | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
+
+An archived application reads exactly like a missing one, or another
+user's: `No application <id>. Call list_applications to find its
+application_id.`
+
+**`set_resume_selection`** replaces the resume's whole selection, then
+compiles it. `selection` is the API's `Selections` in snake_case:
+`experience_bullets` maps an experience id to its bullet ids, `project_bullets`
+and `skills` likewise.
+
+- **Refused, writing nothing:** an application that has been sent (`applied`
+  or later); one with no resume, or linked to the Default resume; and any id
+  that is not in `get_library` (unknown, archived, or another user's), a
+  bullet keyed under an item that is not selected or not its parent, or an id
+  listed twice. The text lists every problem at once. These checks are the
+  tool's own; autosave still accepts archived ids already on a resume (D-011).
+- **`ok`** is `pages === 1`. More than one page is still a result, not an
+  error: the selection is saved, and `overflow` ranks bullets to drop, last
+  under its item first (the agent's order is its priority), then the longest,
+  then the lowest on the page. An item's only bullet is never offered.
+  `est_lines` is an estimate from the text's length.
+- **`isError`, with the selection saved:** a LaTeX error, with its first three
+  messages, or a sidecar that cannot be reached.
+- **`proposed_selection`** (C7) is written too, but only while the
+  application is `proposing`; each call then replaces the last.
 
 `npm run mcp:smoke` drives `initialize`, `tools/list` and the `ping` tool over
 real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
-token it mints and revokes itself. `npm run verify` runs it from
-`e2e/mcp.spec.ts`.
+token it mints and revokes itself. It then reads the library, creates an
+application, finds it with `list_applications` and `get_application`, and
+selects a small resume into it, which the real sidecar must compile to one
+page; the application is archived and its resume deleted when it ends.
+`npm run verify` runs it from `e2e/mcp.spec.ts`.
 
 ## Resumes
 

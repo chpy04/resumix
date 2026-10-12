@@ -23,3 +23,32 @@ test('every input schema is an object schema without $schema', () => {
     assert.ok(!('$schema' in tool.inputSchema), tool.name);
   }
 });
+
+test('the registry serves the library and application tools, in this order', () => {
+  assert.deepEqual(
+    TOOLS.map((t) => t.name),
+    [
+      'ping',
+      'get_library',
+      'list_applications',
+      'get_application',
+      'create_application',
+      'set_resume_selection',
+    ],
+  );
+});
+
+test('every input rejects unknown keys', () => {
+  // `z.strictObject` (.claude/rules/mcp.md): a misspelt key is an error.
+  for (const tool of TOOLS) assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
+});
+
+test('a tool that acts on one application takes it as a required application_id (C1)', () => {
+  for (const tool of TOOLS) {
+    const properties = Object.keys((tool.inputSchema.properties ?? {}) as object);
+    const named = properties.filter((p) => /application/.test(p));
+    if (named.length === 0) continue;
+    assert.deepEqual(named, ['application_id'], tool.name);
+    assert.ok((tool.inputSchema.required as string[]).includes('application_id'), tool.name);
+  }
+});

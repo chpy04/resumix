@@ -4,6 +4,11 @@
  * `tools/list`, the `ping` tool, and a `GET` (D-040). The unit tests prove the protocol without a server;
  * this proves the route, the token check and the database behind it.
  *
+ * Then it does what the agent does first (D-042): reads the library, logs an
+ * application, finds it again, and selects a small resume into it, which the
+ * real sidecar compiles. That application is archived and its resume
+ * deleted when the script ends, so later specs' boards stay as they were.
+ *
  * It needs a running server. `npm run verify` runs it from
  * `e2e/mcp.spec.ts`, against Playwright's own server; by hand, start
  * `npm run dev` and run `npm run mcp:smoke`.
@@ -22,15 +27,28 @@
  *   MCP_SMOKE_URL=http://localhost:3100/api/mcp npm run mcp:smoke
  */
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 
 import { sql } from '../lib/db/index.ts';
 import { createApiToken, revokeApiToken } from '../lib/queries/api-tokens.ts';
+import { getApplicationRow, updateApplication } from '../lib/queries/applications.ts';
+import { deleteResume } from '../lib/queries/resumes.ts';
 import { getFirstUser } from '../lib/queries/users.ts';
 
 const DEFAULT_URL = 'http://localhost:3000/api/mcp';
 // What a current client sends, written out rather than imported, so this
 // checks the server from the client's side.
 const PROTOCOL_VERSION = '2025-11-25';
+
+/** Every tool `tools/list` must offer. */
+const TOOL_NAMES = [
+  'ping',
+  'get_library',
+  'list_applications',
+  'get_application',
+  'create_application',
+  'set_resume_selection',
+];
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const PROD_WEB_PORT = '39000';
@@ -121,6 +139,114 @@ async function resultOf(response: Response): Promise<Record<string, unknown>> {
   return body.result;
 }
 
+type Mcp = ReturnType<typeof client>;
+
+interface ToolCallResult {
+  content: { type: string; text: string }[];
+  isError?: boolean;
+}
+
+async function callTool(mcp: Mcp, name: string, args: Record<string, unknown>) {
+  const response = await mcp.send(mcp.request('tools/call', { name, arguments: args }));
+  return (await resultOf(response)) as unknown as ToolCallResult;
+}
+
+/** A tool's JSON answer, which must not be an error. */
+async function callJson<T>(mcp: Mcp, name: string, args: Record<string, unknown>): Promise<T> {
+  const result = await callTool(mcp, name, args);
+  assert.equal(result.isError, undefined, `${name} failed: ${result.content[0]?.text}`);
+  return JSON.parse(result.content[0]?.text ?? '') as T;
+}
+
+interface LibraryJson {
+  experiences: { id: string; bullets: { id: string }[] }[];
+  projects: { id: string }[];
+  skill_rows: { id: string; skills: { id: string }[] }[];
+}
+
+/**
+ * The agent's first moves, one call to each library and application tool.
+ * The application it logs is archived, and its resume deleted, however this
+ * ends.
+ */
+async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
+  const library = await callJson<LibraryJson>(mcp, 'get_library', {});
+  assert.ok(library.experiences.length > 0, 'get_library: no experiences');
+  check(
+    `get_library returns ${library.experiences.length} experience(s), ` +
+      `${library.projects.length} project(s), ${library.skill_rows.length} skill row(s)`,
+  );
+
+  const tag = randomUUID().slice(0, 8);
+  const postingUrl = `https://jobs.example.test/mcp-smoke/${tag}`;
+  const created = await callJson<{ application_id: string; status: string }>(
+    mcp,
+    'create_application',
+    {
+      company: `MCP Smoke ${tag}`,
+      role_title: 'Smoke Tester',
+      posting_url: postingUrl,
+      job_description: 'A posting scripts/mcp-smoke.ts made up.',
+      agent_summary: 'Logged by the MCP smoke; archived when it ends.',
+      fit_score: 3.2,
+    },
+  );
+  const applicationId = created.application_id;
+  try {
+    assert.equal(created.status, 'proposing');
+    check('create_application logs one in proposing');
+
+    const listed = await callJson<{ application_id: string }[]>(mcp, 'list_applications', {
+      posting_url: postingUrl,
+    });
+    assert.deepEqual(
+      listed.map((a) => a.application_id),
+      [applicationId],
+    );
+    const got = await callJson<{ status: string }>(mcp, 'get_application', {
+      application_id: applicationId,
+    });
+    assert.equal(got.status, 'proposing');
+    check('list_applications finds it by posting_url, and get_application reads it back');
+
+    // Built from the live library, not from Default's selection: earlier
+    // specs may have archived some of what Default selects.
+    const experience = library.experiences.find((e) => e.bullets.length > 0);
+    const skillRow = library.skill_rows.find((r) => r.skills.length > 0);
+    assert.ok(experience?.bullets[0] && skillRow?.skills[0], 'nothing small to select');
+    const selection = {
+      experiences: [experience.id],
+      experience_bullets: { [experience.id]: [experience.bullets[0].id] },
+      projects: [],
+      project_bullets: {},
+      skill_rows: [skillRow.id],
+      skills: { [skillRow.id]: [skillRow.skills[0].id] },
+    };
+    const set = await callJson(mcp, 'set_resume_selection', {
+      application_id: applicationId,
+      selection,
+    });
+    assert.deepEqual(set, { ok: true, pages: 1, overflow: null });
+    check('set_resume_selection compiles a small selection to one page');
+
+    const refused = await callTool(mcp, 'set_resume_selection', {
+      application_id: applicationId,
+      selection: { ...selection, experiences: [experience.id, randomUUID()] },
+    });
+    assert.equal(refused.isError, true, 'an unknown id was accepted');
+    assert.match(refused.content[0]?.text ?? '', /^Nothing was written/);
+    const after = await callJson<{ selection: unknown }>(mcp, 'get_application', {
+      application_id: applicationId,
+    });
+    assert.deepEqual(after.selection, selection);
+    check('an unknown id is refused, and the selection is unchanged');
+  } finally {
+    const row = await getApplicationRow(userId, applicationId);
+    await updateApplication(userId, applicationId, { isArchived: true });
+    if (row?.resumeId) await deleteResume(userId, row.resumeId);
+  }
+}
+
 async function main() {
   const url = target();
   if (!url) {
@@ -182,10 +308,12 @@ async function main() {
 
     const list = await resultOf(await mcp.send(mcp.request('tools/list')));
     const tools = list.tools as { name: string; inputSchema: { type?: string } }[];
-    const pingTool = tools.find((t) => t.name === 'ping');
-    assert.ok(pingTool, `tools/list has no ping: ${tools.map((t) => t.name).join(', ')}`);
-    assert.equal(pingTool.inputSchema.type, 'object');
-    check(`tools/list has ${tools.length} tool(s), including ping`);
+    const names = tools.map((t) => t.name);
+    for (const name of TOOL_NAMES) {
+      assert.ok(names.includes(name), `tools/list has no ${name}: ${names.join(', ')}`);
+    }
+    for (const tool of tools) assert.equal(tool.inputSchema.type, 'object', tool.name);
+    check(`tools/list has ${tools.length} tool(s), including ${TOOL_NAMES.join(', ')}`);
 
     const call = await resultOf(
       await mcp.send(mcp.request('tools/call', { name: 'ping', arguments: {} })),
@@ -194,6 +322,8 @@ async function main() {
     const content = call.content as { type: string; text: string }[];
     assert.equal(content[0]?.text, user.email);
     check(`the ping tool answers ${user.email}`);
+
+    await smokeTools(mcp, user.id);
 
     const get = await mcp.send(null, { method: 'GET' });
     assert.equal(get.status, 405, `GET: expected 405, got ${get.status}`);
