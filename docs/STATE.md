@@ -49,12 +49,18 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 
 - **Web app** — Next.js 15 / React 19 / TypeScript / Tailwind v4, App Router.
   The home page is the applications board: a **Pipeline** tab holding the
-  statuses that still want something (draft, interviewing, offered) as a
-  drag-and-drop kanban, and an **Applied** tab holding everything that has
-  left it — applied or rejected — as a searchable table. Picking a card up
-  reveals two drop zones under the columns, `applied` and `rejected`, which
-  are the only way those statuses appear on the board (D-034). `/applications/[id]` is one application — fields, freeform notes,
-  attachments, the linked resume and the button that marks it applied.
+  statuses that still want something (draft, proposing, needs review, ready,
+  interviewing, offered) as a drag-and-drop kanban, and an **Applied** tab
+  holding everything that has left it — applied or rejected — as a
+  searchable table. Proposing, Needs review and Ready are the agent review
+  flow's columns: a card can be dragged out of them but never into them,
+  because only the flow sets those statuses, and Needs review is sorted by
+  the agent's fit score (D-041). Picking a card up reveals two drop zones
+  under the columns, `applied` and `rejected`, which are the only way those
+  statuses appear on the board (D-034). `/applications/[id]` is one
+  application — fields, freeform notes, attachments, the linked resume, the
+  button that marks it applied and, when the agent supplied them, its
+  summary and the job description, read-only.
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), `/cover-letters` is its counterpart for letters, and
   `/cover-letter/[id]` is a two-pane LaTeX editor over the one `content`

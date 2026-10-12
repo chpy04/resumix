@@ -216,19 +216,26 @@ in the way (D-032).
 
 ### `application`
 
-| column            | type                                         | notes                                                             |
-| ----------------- | -------------------------------------------- | ----------------------------------------------------------------- |
-| `user_id`         | uuid → `users(id)` not null                  | a root table, like `resume`                                       |
-| `company`         | text not null                                | plain text; two applications to one company are two rows          |
-| `role_title`      | text not null default `''`                   |                                                                   |
-| `posting_url`     | text not null default `''`                   | empty or http(s) — it is rendered as a link                       |
-| `notes`           | text not null default `''`                   | freeform; the only place unstructured detail goes                 |
-| `status`          | `application_status` not null                | `draft` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
-| `applied_at`      | timestamptz                                  | null exactly while nothing has been sent                          |
-| `resume_id`       | uuid → `resume(id)` on delete set null       | the **live** resume being tailored                                |
-| `resume_pdf_id`   | uuid → `resume_pdf(id)` on delete restrict   | the **frozen** snapshot that was sent                             |
-| `cover_letter_id` | uuid → `cover_letter(id)` on delete set null | this application's own letter                                     |
-| `is_archived`     | boolean not null default false               |                                                                   |
+| column                     | type                                                 | notes                                                                                                         |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `user_id`                  | uuid → `users(id)` not null                          | a root table, like `resume`                                                                                   |
+| `company`                  | text not null                                        | plain text; two applications to one company are two rows                                                      |
+| `role_title`               | text not null default `''`                           |                                                                                                               |
+| `posting_url`              | text not null default `''`                           | empty or http(s) — it is rendered as a link                                                                   |
+| `notes`                    | text not null default `''`                           | freeform; the only place unstructured detail goes                                                             |
+| `status`                   | `application_status` not null                        | `draft` \| `proposing` \| `needs_review` \| `ready` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
+| `applied_at`               | timestamptz                                          | null until it first reaches `applied` or a later stage                                                        |
+| `resume_id`                | uuid → `resume(id)` on delete set null               | the **live** resume being tailored                                                                            |
+| `resume_pdf_id`            | uuid → `resume_pdf(id)` on delete restrict           | the **frozen** snapshot that was sent                                                                         |
+| `cover_letter_id`          | uuid → `cover_letter(id)` on delete set null         | this application's own letter                                                                                 |
+| `job_description`          | text                                                 | the posting's text, from the agent; null when it supplied none                                                |
+| `agent_summary`            | text                                                 | the agent's evaluation, plain text; null when it supplied none                                                |
+| `fit_score`                | numeric(2,1), CHECK 0–5 (`ck_application_fit_score`) | the agent's 0.0–5.0 estimate of fit (C13); null when unscored                                                 |
+| `proposed_selection`       | jsonb                                                | the agent's original pick, in the API's `Selections` shape (C7)                                               |
+| `resume_approved_at`       | timestamptz                                          | null until the resume is approved in review (C11)                                                             |
+| `cover_letter_approved_at` | timestamptz                                          | null until the cover letter is approved in review (C11)                                                       |
+| `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11)                                                     |
+| `is_archived`              | boolean not null default false                       |                                                                                                               |
 
 **The two resume references are not redundant.** `resume_id` is the mutable
 thing you keep editing; `resume_pdf_id` is what the company actually received.
@@ -250,10 +257,25 @@ letter is a private copy that nothing else can edit, so the link _is_ the
 record (D-035). `set null` for the same reason `resume_id` is: an application
 that has lost its letter is still a true row about a job.
 
+**The statuses split in two (D-041).** `proposing`, `needs_review` and
+`ready` belong to the agent's review flow and are written only by it — the
+API refuses them in a PATCH, because `ready` vouches for approvals and a
+snapshot that a hand-set status would skip. The other five are the ones a
+person sets, in any order. The enum's own order is the order an application
+moves through: draft, proposing, needs_review, ready, applied, interviewing,
+offered, rejected.
+
 `applied_at` is not settable by the API. It follows from `status`
-(`lib/applications/status.ts`): stamped the first time an application leaves
-`draft`, never cleared afterwards — including when the status moves back,
-because the date something was sent is a fact and the status is an opinion.
+(`lib/applications/status.ts`): stamped the first time an application enters
+`applied` — or `interviewing`, `offered` or `rejected` without passing
+through `applied` — and never on entering `draft` or a flow status, since an
+application the agent is still proposing has not been sent anywhere. It is
+never cleared afterwards, including when the status moves back, because the
+date something was sent is a fact and the status is an opinion.
+
+The agent's columns are all nullable. Null means the agent never supplied
+that value, which a row logged by hand never has; it is a different fact
+from an empty string.
 
 ### `application_file`
 

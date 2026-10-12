@@ -5,6 +5,7 @@ import Link from 'next/link';
 import ApplicationFields, {
   type ApplicationDraft,
 } from '@/components/applications/ApplicationFields';
+import AgentSummaryPanel from '@/components/applications/AgentSummaryPanel';
 import AttachmentsPanel from '@/components/applications/AttachmentsPanel';
 import CoverLetterPanel from '@/components/applications/CoverLetterPanel';
 import SentResumePanel from '@/components/applications/SentResumePanel';
@@ -20,11 +21,11 @@ import {
   markApplicationApplied,
   updateApplication,
 } from '@/lib/api-client';
+import type { ManualStatus } from '@/lib/applications/status';
 import { combineStatuses, createAutosave, type SaveStatus } from '@/lib/editor/autosave';
 import type {
   ApplicationDetail,
   ApplicationFile,
-  ApplicationStatus,
   CoverLetterSummary,
   ResumeSummary,
 } from '@/lib/types';
@@ -43,7 +44,8 @@ function toDraft(application: ApplicationDetail): ApplicationDraft {
 }
 
 /**
- * The detail page: fields, notes, files, and the "mark as applied" action.
+ * The detail page: fields, notes, files, what the agent supplied, and the
+ * "mark as applied" action.
  *
  * Two autosave channels, aggregated into one badge the way the resume editor
  * does it — text fields debounce at 500ms, while the status picker, the
@@ -117,7 +119,7 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
   const metaSave = useMemo(
     () =>
       createAutosave<{
-        status?: ApplicationStatus;
+        status?: ManualStatus;
         resumeId?: string | null;
         coverLetterId?: string | null;
         isArchived?: boolean;
@@ -254,15 +256,22 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <ApplicationFields
-          draft={draft}
-          onDraftChange={handleDraftChange}
-          status={detail.status}
-          onStatusChange={(status) => metaSave.schedule({ status })}
-          resumeId={detail.resumeId}
-          resumes={resumes}
-          onResumeChange={(resumeId) => metaSave.schedule({ resumeId })}
-        />
+        <div className="flex flex-col gap-6">
+          <ApplicationFields
+            draft={draft}
+            onDraftChange={handleDraftChange}
+            status={detail.status}
+            onStatusChange={(status) => metaSave.schedule({ status })}
+            resumeId={detail.resumeId}
+            resumes={resumes}
+            onResumeChange={(resumeId) => metaSave.schedule({ resumeId })}
+          />
+          <AgentSummaryPanel
+            agentSummary={detail.agentSummary}
+            jobDescription={detail.jobDescription}
+            fitScore={detail.fitScore}
+          />
+        </div>
 
         <div className="flex flex-col gap-6">
           <SentResumePanel

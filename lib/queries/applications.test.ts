@@ -108,12 +108,12 @@ test('creating against a resume id that does not exist is a 400', { skip }, asyn
   );
 });
 
-test('leaving draft stamps applied_at, and later moves never touch it', { skip }, async () => {
+test('entering applied stamps applied_at, and later moves never touch it', { skip }, async () => {
   const userId = await fixtures.seedUserId();
   const created = await createApplication(userId, { company: `T-App ${fixtures.testTag()}` });
   try {
     const applied = await updateApplication(userId, created.id, { status: 'applied' });
-    assert.ok(applied.appliedAt, 'applied_at must be set when the status leaves draft');
+    assert.ok(applied.appliedAt, 'applied_at must be set when the status reaches applied');
 
     const interviewing = await updateApplication(userId, created.id, { status: 'interviewing' });
     assert.equal(interviewing.appliedAt, applied.appliedAt);
@@ -123,6 +123,88 @@ test('leaving draft stamps applied_at, and later moves never touch it', { skip }
     assert.equal(backToDraft.appliedAt, applied.appliedAt);
   } finally {
     await fixtures.deleteApplicationRow(created.id);
+  }
+});
+
+test(
+  'marking a ready application applied stamps applied_at for the first time',
+  { skip },
+  async () => {
+    const userId = await fixtures.seedUserId();
+    // Ready is a flow status: the API refuses to set it, so the row is written directly.
+    const row = await fixtures.insertTestApplication(userId, fixtures.testTag(), {
+      status: 'ready',
+    });
+    try {
+      assert.equal(row.appliedAt, null, 'reaching ready must not count as sent');
+
+      const applied = await recordApplied(userId, row.id, null);
+      assert.equal(applied.status, 'applied');
+      assert.ok(applied.appliedAt, 'leaving ready for applied is when it was sent');
+    } finally {
+      await fixtures.deleteApplicationRow(row.id);
+    }
+  },
+);
+
+test(
+  'the agent fields come back on the wire, and are null when logged by hand',
+  { skip },
+  async () => {
+    const userId = await fixtures.seedUserId();
+    const tag = fixtures.testTag();
+    const scored = await fixtures.insertTestApplication(userId, tag, {
+      status: 'needs_review',
+      fitScore: 4.3,
+      jobDescription: `Build things at ${tag}.\nShip them.`,
+      agentSummary: `Strong match for ${tag}.`,
+    });
+    const byHand = await createApplication(userId, { company: `T-App ${tag}` });
+
+    try {
+      const listed = await listApplications(userId, false);
+      const listedScored = listed.find((a) => a.id === scored.id);
+      // Strictly the number: postgres.js hands `numeric` back as a string, and
+      // the schema's `mode: 'number'` is what turns it into one.
+      assert.equal(listedScored?.fitScore, 4.3);
+      assert.equal(listedScored?.status, 'needs_review');
+      assert.equal(listed.find((a) => a.id === byHand.id)?.fitScore, null);
+
+      const detail = await getApplicationDetail(userId, scored.id);
+      assert.equal(detail?.fitScore, 4.3);
+      assert.equal(detail?.jobDescription, `Build things at ${tag}.\nShip them.`);
+      assert.equal(detail?.agentSummary, `Strong match for ${tag}.`);
+
+      assert.equal(byHand.fitScore, null);
+      assert.equal(byHand.jobDescription, null);
+      assert.equal(byHand.agentSummary, null);
+    } finally {
+      await fixtures.deleteApplicationRow(scored.id);
+      await fixtures.deleteApplicationRow(byHand.id);
+    }
+  },
+);
+
+test('a fit score above 5.0 is refused by the database (C13)', { skip }, async () => {
+  const userId = await fixtures.seedUserId();
+  let insertedId: string | null = null;
+  try {
+    await assert.rejects(
+      async () => {
+        // numeric(2,1) alone would store 5.1; only the CHECK stops it.
+        const row = await fixtures.insertTestApplication(userId, fixtures.testTag(), {
+          fitScore: 5.1,
+        });
+        insertedId = row.id;
+      },
+      (error: unknown) => {
+        // drizzle wraps the driver's error; the constraint name is on the cause.
+        const cause = (error as { cause?: { constraint_name?: string } }).cause;
+        return cause?.constraint_name === 'ck_application_fit_score';
+      },
+    );
+  } finally {
+    if (insertedId) await fixtures.deleteApplicationRow(insertedId);
   }
 });
 

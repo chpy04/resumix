@@ -68,7 +68,16 @@ type Selections = {
 type CoverLetterSummary = { id; name; isDefault; isArchived; createdAt; updatedAt };
 type CoverLetter = CoverLetterSummary & { content: string }; // the whole LaTeX document
 
-type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
+// The middle three are set only by the review flow; PATCH refuses them (D-041).
+type ApplicationStatus =
+  | 'draft'
+  | 'proposing'
+  | 'needs_review'
+  | 'ready'
+  | 'applied'
+  | 'interviewing'
+  | 'offered'
+  | 'rejected';
 
 type ApplicationSummary = {
   id;
@@ -76,10 +85,11 @@ type ApplicationSummary = {
   roleTitle;
   postingUrl;
   status: ApplicationStatus;
-  appliedAt: string | null; // null exactly while it is a draft
+  appliedAt: string | null; // null until it first reaches applied or a later stage
   resumeId: string | null; // the live resume being tailored
   sentPdf: { filename; createdAt } | null; // the frozen snapshot that went out
   coverLetterId: string | null; // this application's own letter; no snapshot beside it
+  fitScore: number | null; // the agent's 0.0–5.0 estimate; null when unscored
   isArchived;
   createdAt;
   updatedAt;
@@ -87,7 +97,12 @@ type ApplicationSummary = {
 
 type ApplicationFile = { id; filename; contentType; byteSize; isArchived; createdAt };
 
-type ApplicationDetail = ApplicationSummary & { notes: string; files: ApplicationFile[] };
+type ApplicationDetail = ApplicationSummary & {
+  notes: string;
+  jobDescription: string | null; // the posting's text, from the agent
+  agentSummary: string | null; // the agent's evaluation, plain text
+  files: ApplicationFile[];
+};
 ```
 
 ## Auth
@@ -219,10 +234,20 @@ contract.
 | GET    | `/api/applications/:id/pdf`           | —                                                                                                | `application/pdf` of the snapshot **that was sent**; `404` if none |
 
 `appliedAt` is deliberately not writable: it follows from `status`, stamped the
-first time an application leaves `draft` and never cleared (docs/SCHEMA.md).
+first time an application reaches `applied`, `interviewing`, `offered` or
+`rejected` — never on entering `draft` or a flow status — and never cleared
+(docs/SCHEMA.md).
 `resumeId: null` and `coverLetterId: null` unlink those documents without
 touching them; `postingUrl` must be empty or http(s), since it is rendered as
 a link.
+
+PATCH `status` accepts only the manual statuses: `draft`, `applied`,
+`interviewing`, `offered`, `rejected`. `proposing`, `needs_review` and `ready`
+are a `400`: only the review flow sets them, because `ready` vouches for
+approvals and a snapshot that a hand-set status would skip (D-041). An
+application already in one of them can still be PATCHed to any manual status.
+`jobDescription`, `agentSummary` and `fitScore` are read-only here; they
+arrive from the agent.
 
 `createResumeFrom` clones that resume under the company's name and links the
 copy — the normal path, since a new application arrives with something to
