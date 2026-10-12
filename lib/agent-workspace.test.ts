@@ -38,9 +38,10 @@ const RESUMIX_TOOL_PERMISSION = /mcp__resumix/;
 
 interface FindingOptions {
   /**
-   * Accept the record of approving the server rather than configuring it: its
-   * name in `enabledMcpjsonServers` and permissions for its tools. Only the
-   * root settings.local.json gets this; see mcpConfigFilesOutsideAgent.
+   * Check only what can connect: `mcpServers` definitions, for a resumix name
+   * or the endpoint, token or variables anywhere inside one. Approval lists
+   * and permission rules pass whatever they say. Only the root
+   * settings.local.json gets this; see mcpConfigFilesOutsideAgent.
    */
   approvalsAllowed?: boolean;
 }
@@ -50,16 +51,18 @@ function resumixMcpFindings(config: unknown, { approvalsAllowed = false }: Findi
   const flagged = (text: string) =>
     RESUMIX_MCP_STRING.test(text) || (!approvalsAllowed && RESUMIX_TOOL_PERMISSION.test(text));
 
-  const walk = (node: unknown, at: string): string[] => {
-    if (typeof node === 'string') return flagged(node) ? [`${at}: ${node}`] : [];
-    if (Array.isArray(node)) return node.flatMap((item, i) => walk(item, `${at}[${i}]`));
+  // `checked` is false only in the relaxed mode, outside every definition.
+  const walk = (node: unknown, at: string, checked: boolean): string[] => {
+    if (typeof node === 'string') return checked && flagged(node) ? [`${at}: ${node}`] : [];
+    if (Array.isArray(node)) return node.flatMap((item, i) => walk(item, `${at}[${i}]`, checked));
     if (node === null || typeof node !== 'object') return [];
 
     const findings: string[] = [];
     for (const [key, value] of Object.entries(node)) {
       const path = `${at}.${key}`;
       // A definition is flagged everywhere: it is what actually connects.
-      if (key === 'mcpServers' && value !== null && typeof value === 'object') {
+      const definitions = key === 'mcpServers' && value !== null && typeof value === 'object';
+      if (definitions) {
         for (const name of Object.keys(value)) {
           if (RESUMIX_SERVER_NAME.test(name)) findings.push(`${path}.${name}`);
         }
@@ -71,12 +74,12 @@ function resumixMcpFindings(config: unknown, { approvalsAllowed = false }: Findi
           }
         }
       }
-      if (flagged(key)) findings.push(path);
-      findings.push(...walk(value, path));
+      if (checked && flagged(key)) findings.push(path);
+      findings.push(...walk(value, path, checked || definitions));
     }
     return findings;
   };
-  return walk(config, '$');
+  return walk(config, '$', !approvalsAllowed);
 }
 
 function git(...args: string[]): string {
@@ -99,11 +102,12 @@ function mcpConfigFilesOutsideAgent(): string[] {
   // settings.json, in a root session and in one started in agent/ alike. It
   // exists only on a machine someone works on, never in CI or a worktree.
   //
-  // It is also where a session in agent/ writes what Chris approves: the
-  // server name in enabledMcpjsonServers and `mcp__resumix__*` permissions.
-  // Those are inert at the root, which has no `resumix` definition for them to
-  // switch on (the scan of the root .mcp.json makes sure of that), so in this
-  // file alone they pass. A definition, the endpoint or a token still fails.
+  // It is also where Claude Code writes what Chris approves, from agent/ and
+  // the root alike: the server name in enabledMcpjsonServers, `mcp__resumix__*`
+  // permissions, and Bash rules such as a dev `curl` of /api/mcp while he works
+  // on the server. None of that connects anything at the root, which has no
+  // `resumix` definition to switch on (the scan of the root .mcp.json makes
+  // sure of that), so in this file alone only server definitions are checked.
   if (existsSync(join(ROOT, LOCAL_SETTINGS))) {
     files.add(LOCAL_SETTINGS);
   }
@@ -162,6 +166,17 @@ test('approving the server is allowed in the root settings.local.json only', () 
   };
   assert.deepEqual(resumixMcpFindings(approvals, { approvalsAllowed: true }), []);
   assert.notDeepEqual(resumixMcpFindings(approvals), []);
+
+  // What a root session writes when he allows a dev curl while building the server.
+  const devCurl = { permissions: { allow: ['Bash(curl -s http://localhost:3000/api/mcp:*)'] } };
+  assert.deepEqual(resumixMcpFindings(devCurl, { approvalsAllowed: true }), []);
+  assert.notDeepEqual(resumixMcpFindings(devCurl), []);
+
+  // A definition is still a definition there.
+  const devServer = {
+    mcpServers: { local: { type: 'http', url: 'http://localhost:3000/api/mcp' } },
+  };
+  assert.notDeepEqual(resumixMcpFindings(devServer, { approvalsAllowed: true }), []);
 });
 
 test('agent/.mcp.json takes the Resumix URL and token from agent/.env, unfilled', () => {
