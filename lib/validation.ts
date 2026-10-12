@@ -3,7 +3,7 @@
  * of these and returns `400 { error }` on failure — see docs/API.md.
  */
 import { z } from 'zod';
-import { APPLICATION_STATUSES } from './applications/status.ts';
+import { MANUAL_STATUSES } from './applications/status.ts';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -201,7 +201,9 @@ export const renderCoverLetterSchema = z.object({
 // Everything but the company is optional and may be empty: an application is
 // logged the moment you see a posting, and filled in from there (D-032).
 // `appliedAt` is deliberately absent — it follows from `status`, and is set
-// by the query layer (`lib/applications/status.ts`).
+// by the query layer (`lib/applications/status.ts`). So are the agent's
+// fields (`jobDescription`, `agentSummary`, `fitScore`): they arrive with
+// the application from the agent, and the UI only shows them.
 // ---------------------------------------------------------------------------
 
 /** Empty (not yet known) or a real http(s) link — it is rendered as an `href`. */
@@ -231,7 +233,15 @@ export const patchApplicationSchema = z
     roleTitle: z.string().trim().optional(),
     postingUrl: optionalUrl.optional(),
     notes: z.string().optional(),
-    status: z.enum(APPLICATION_STATUSES).optional(),
+    /** Manual statuses only. `ready` vouches for approvals and a snapshot
+     *  that a hand-set status would skip, so the flow statuses are refused
+     *  here, not just hidden in the UI (D-041). */
+    status: z
+      .enum(MANUAL_STATUSES, {
+        error:
+          'must be draft, applied, interviewing, offered or rejected — proposing, needs_review and ready are set by the review flow',
+      })
+      .optional(),
     /** `null` unlinks the resume. */
     resumeId: uuid.nullable().optional(),
     /** `null` unlinks the cover letter, which survives in the library. */

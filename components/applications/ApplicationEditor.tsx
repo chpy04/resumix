@@ -20,11 +20,11 @@ import {
   markApplicationApplied,
   updateApplication,
 } from '@/lib/api-client';
+import type { ManualStatus } from '@/lib/applications/status';
 import { combineStatuses, createAutosave, type SaveStatus } from '@/lib/editor/autosave';
 import type {
   ApplicationDetail,
   ApplicationFile,
-  ApplicationStatus,
   CoverLetterSummary,
   ResumeSummary,
 } from '@/lib/types';
@@ -117,7 +117,7 @@ export default function ApplicationEditor({ applicationId }: ApplicationEditorPr
   const metaSave = useMemo(
     () =>
       createAutosave<{
-        status?: ApplicationStatus;
+        status?: ManualStatus;
         resumeId?: string | null;
         coverLetterId?: string | null;
         isArchived?: boolean;

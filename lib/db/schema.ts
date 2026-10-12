@@ -6,9 +6,12 @@
 import { eq, isNotNull, relations, sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   customType,
   index,
   integer,
+  jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -18,6 +21,7 @@ import {
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import type { Selections } from '../types.ts';
 
 /** Every row gets these; maintained by the shared `set_updated_at()` trigger. */
 const timestamps = {
@@ -350,8 +354,13 @@ export const coverLetter = pgTable(
 // every other non-root table (D-018).
 // ---------------------------------------------------------------------------
 
+/** Enum order is the order an application moves through. The three flow
+ *  statuses are set only by the review flow, never by hand (D-041). */
 export const applicationStatus = pgEnum('application_status', [
   'draft',
+  'proposing',
+  'needs_review',
+  'ready',
   'applied',
   'interviewing',
   'offered',
@@ -367,7 +376,8 @@ export const application = pgTable(
     postingUrl: text('posting_url').notNull().default(''),
     notes: text('notes').notNull().default(''),
     status: applicationStatus('status').notNull().default('draft'),
-    /** Null exactly while the application is still a draft. */
+    /** Null until the application first reaches `applied` or a later stage;
+     *  never stamped by a flow status, never cleared (D-041). */
     appliedAt: timestamp('applied_at', { withTimezone: true }),
     /** The live resume being tailored — keeps changing after it is sent. */
     resumeId: uuid('resume_id').references(() => resume.id, { onDelete: 'set null' }),
@@ -378,6 +388,19 @@ export const application = pgTable(
     coverLetterId: uuid('cover_letter_id').references(() => coverLetter.id, {
       onDelete: 'set null',
     }),
+    // What the agent supplies. Null, not '', when it never supplied one.
+    jobDescription: text('job_description'),
+    /** The agent's evaluation of the posting, as plain text. */
+    agentSummary: text('agent_summary'),
+    /** 0.0–5.0, one decimal place (C13). `mode: 'number'` is the one place
+     *  postgres.js's numeric string becomes a number. */
+    fitScore: numeric('fit_score', { precision: 2, scale: 1, mode: 'number' }),
+    /** The agent's original pick, so the review can reset to it (C7). */
+    proposedSelection: jsonb('proposed_selection').$type<Selections>(),
+    // Approval stamps, null until a human approves that part (C11).
+    resumeApprovedAt: timestamp('resume_approved_at', { withTimezone: true }),
+    coverLetterApprovedAt: timestamp('cover_letter_approved_at', { withTimezone: true }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
     isArchived: boolean('is_archived').notNull().default(false),
     ...owner,
     ...timestamps,
@@ -387,6 +410,7 @@ export const application = pgTable(
     index('ix_application_resume_id').on(t.resumeId),
     index('ix_application_resume_pdf_id').on(t.resumePdfId),
     index('ix_application_cover_letter_id').on(t.coverLetterId),
+    check('ck_application_fit_score', sql`${t.fitScore} between 0 and 5`),
   ],
 );
 

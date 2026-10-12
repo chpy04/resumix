@@ -163,7 +163,17 @@ export interface CoverLetter extends CoverLetterSummary {
 // and D-032 for why there is no company, event, task or contact type here.
 // ---------------------------------------------------------------------------
 
-export type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
+/** `proposing`, `needs_review` and `ready` are set only by the review flow
+ *  (D-041); the rest are the ones a person sets by hand. */
+export type ApplicationStatus =
+  | 'draft'
+  | 'proposing'
+  | 'needs_review'
+  | 'ready'
+  | 'applied'
+  | 'interviewing'
+  | 'offered'
+  | 'rejected';
 
 /** An attachment's metadata. The bytes are only ever streamed by
  *  `GET /api/application-files/:id`, never carried in a JSON payload. */
@@ -182,7 +192,8 @@ export interface ApplicationSummary {
   roleTitle: string;
   postingUrl: string;
   status: ApplicationStatus;
-  /** Null exactly while the application is still a draft. */
+  /** Null until the application first reaches `applied` or a later stage.
+   *  Never cleared, even if the status moves back. */
   appliedAt: string | null;
   /** The live resume this is being tailored from; null if none is linked. */
   resumeId: string | null;
@@ -193,15 +204,21 @@ export interface ApplicationSummary {
    *  the resume there is no frozen counterpart — the letter is a private
    *  copy nothing else can edit, so the link is the record (D-035). */
   coverLetterId: string | null;
+  /** The agent's 0.0–5.0 estimate of fit; null on anything logged by hand. */
+  fitScore: number | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-/** `GET /api/applications/:id` — the summary plus the two things the list
- *  view has no use for. */
+/** `GET /api/applications/:id` — the summary plus what the list view has no
+ *  use for. */
 export interface ApplicationDetail extends ApplicationSummary {
   notes: string;
+  /** The posting's text, as the agent captured it. Null when none was. */
+  jobDescription: string | null;
+  /** The agent's evaluation, as plain text with line breaks. */
+  agentSummary: string | null;
   files: ApplicationFile[];
 }
 
