@@ -10,11 +10,11 @@ hidden from the picker unless "show archived" is toggled on.
 
 ## Ownership — every row belongs to exactly one user
 
-The seven **root** tables carry `user_id uuid not null references users (id) on
+The eight **root** tables carry `user_id uuid not null references users (id) on
 delete restrict`:
 
 `template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`cover_letter`, `application`.
+`cover_letter`, `application`, `api_token`.
 
 Everything else infers its owner through its parent and carries **no**
 `user_id` of its own:
@@ -55,6 +55,29 @@ cascade would stop there.
 Named `users`, not `user`, because `user` is a reserved word in Postgres.
 **There is no password column and there never will be one** — authentication
 is external (see `docs/API.md`, "Auth modes").
+
+### `api_token`
+
+The credential an agent presents to `/api/mcp/**` (D-039). A root table, so
+one token belongs to exactly one user.
+
+| column         | type                        | notes                                                    |
+| -------------- | --------------------------- | -------------------------------------------------------- |
+| `user_id`      | uuid → `users(id)` not null | whose account the token acts as                          |
+| `label`        | text not null               | which agent or machine holds it                          |
+| `token_hash`   | text not null               | hex sha-256 of the `rmx_…` secret; unique                |
+| `last_used_at` | timestamptz                 | stamped on every successful call; null until the first   |
+| `revoked_at`   | timestamptz                 | null while the token works; set once and **never** reset |
+
+**Only the hash is stored.** The secret is shown once, by
+`npm run token:create`, and nothing can recover it afterwards. Unsalted
+sha-256 is enough because the secret is 32 random bytes rather than something
+a person chose, and a deterministic hash is what lets `ux_api_token_token_hash`
+be the lookup.
+
+**Tokens are revoked, never deleted.** `revoked_at` ends a token; the row
+stays, so `label`, `last_used_at` and `revoked_at` remain a record of what had
+access and when. Revoking twice keeps the first date.
 
 ## Content tables (per-user)
 

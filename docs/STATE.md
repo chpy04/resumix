@@ -71,7 +71,7 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   live PDF preview and a LaTeX template tab on the right.
   `/resume/[id]?application=<id>` is the same editor in **application mode**,
   where back returns to the application and saving writes the PDF to it.
-- **Database** — Postgres, 18 tables, Drizzle for typed queries and
+- **Database** — Postgres, 20 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
   the pool on first query, because `next build` evaluates every route module
@@ -104,9 +104,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
 
 ## Users and isolation
 
-Every query is scoped to a user. `user_id` sits on the seven root tables
+Every query is scoped to a user. `user_id` sits on the eight root tables
 (`template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`cover_letter`, `application`); every other table inherits its owner through a join to its
+`cover_letter`, `application`, `api_token`); every other table inherits its owner through a join to its
 parent (D-018). Every
 query function takes a `userId` and filters on it, and another user's id reads
 as "not found", never "forbidden". Isolation is enforced in the query layer,
@@ -126,6 +126,11 @@ Authentication is three modes behind one `requireUserId()`, selected by
 - **`supabase`** — a written seam that is **not implemented**.
   `lib/auth-supabase.ts` fails closed. Everything downstream of "who is this?"
   already works against a `users` row.
+
+`/api/mcp/**` is outside all three: it takes only an `rmx_` API token in
+`Authorization: Bearer`, in every mode including `dev`, minted and revoked
+from the command line (`npm run token:create`, `token:revoke`) and stored as
+a sha-256 hash (D-039).
 
 ## Verification
 

@@ -59,9 +59,11 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    Middleware runs on the Edge runtime. `lib/auth.ts` is Web Crypto only.
 5. **Every query is scoped to a user.** Handlers begin with
    `const userId = await requireUserId(request)` (`lib/session.ts`) and pass
-   it down; the query layer filters on it. `user_id` lives only on the seven
+   it down; the query layer filters on it. `/api/mcp/**` handlers begin with
+   `requireMcpUserId(request)` instead, which takes only an `rmx_` API token,
+   in every auth mode (D-039). `user_id` lives only on the eight
    root tables (`template`, `experience`, `project`, `technical_skill_row`,
-   `resume`, `cover_letter`, `application`) — bullets, skills, bridge rows,
+   `resume`, `cover_letter`, `application`, `api_token`) — bullets, skills, bridge rows,
    PDF snapshots and application files inherit their owner through a join to
    their parent. Isolation is enforced in the
    queries, **not** in `middleware.ts`, which runs on the Edge and cannot

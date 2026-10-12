@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { generateApiTokenSecret } from './api-tokens.ts';
 import { mintToken, verifyPassword, verifyToken } from './auth.ts';
 
 const SECRET = 'test-auth-secret';
@@ -150,4 +151,12 @@ test('malformed tokens are rejected without throwing', async () => {
   assert.equal(await verifyToken('', SECRET), null);
   assert.equal(await verifyToken('not-a-token', SECRET), null);
   assert.equal(await verifyToken('a.b.c', SECRET), null);
+});
+
+test('an rmx_ API token is not a password-mode token', async () => {
+  // The exact call middleware makes on every non-MCP route in password mode,
+  // so this is what keeps an agent's token off the rest of the API (D-039).
+  const apiToken = generateApiTokenSecret();
+  assert.equal(await verifyToken(apiToken, SECRET), null);
+  assert.equal(await withEnv({ AUTH_SECRET: SECRET }, () => verifyToken(apiToken)), null);
 });
