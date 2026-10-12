@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 
 /*
+ * agent/ is not part of the app (D-038). Tailwind's automatic source detection
+ * skips gitignored files, not this directory, so it would scan agent/ too,
+ * including the career-ops checkout that exists on some machines and not
+ * others: the same commit would then build different CSS on each.
+ */
+@source not '../agent';
+
+/*
  * The whole palette. Every colour in the app comes from one of these tokens
  * via a generated utility (`text-ink-dim`, `bg-danger-surface`, …) — see
  * .claude/rules/styling.md. Raw palette shades (`text-red-400`) and

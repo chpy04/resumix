@@ -27,3 +27,10 @@ scripts/.scratch/
 # per-machine overrides and runtime state are not.
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# agent/, the applying Claude's workspace (D-038). Its .env needs no line of
+# its own: the `.env` rule above has no slash, so it matches at any depth. The
+# browser profile holds live ATS sessions, and career-ops-data holds the
+# personal files career-ops would otherwise write into its submodule.
+agent/.browser-profile/
+agent/career-ops-data/
