@@ -26,7 +26,8 @@ const RESUMIX_SERVER_NAME = /resumix/i;
  * Anywhere else, only what is unmistakably the Resumix MCP: agent/.env's
  * variable names, the endpoint (dev's included, since no Resumix MCP belongs
  * at the root at all), an `rmx_` token, or a permission for one of its tools.
- * A bare "resumix" is not enough: the root deny list names `~/.resumix`.
+ * A bare "resumix" is not enough: it is also the repo's name, so ordinary
+ * paths and permissions contain it.
  */
 const RESUMIX_MCP_STRING = /RESUMIX_MCP_|\/api\/mcp\b|\brmx_\w|mcp__resumix/;
 
@@ -113,7 +114,7 @@ test('the guard passes config that does not reach Resumix', () => {
     mcpServers: { supabase: { type: 'http', url: 'https://mcp.supabase.com/mcp?features=docs' } },
   };
   assert.deepEqual(resumixMcpFindings(supabase), []);
-  assert.deepEqual(resumixMcpFindings({ permissions: { deny: ['Read(~/.resumix/**)'] } }), []);
+  assert.deepEqual(resumixMcpFindings({ permissions: { deny: ['Read(~/resumix/.env)'] } }), []);
 });
 
 test('the guard flags a Resumix endpoint under any name, the dev server included', () => {
