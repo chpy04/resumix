@@ -75,6 +75,11 @@ export default function ApplicationCard({ application }: ApplicationCardProps) {
             {application.roleTitle}
           </p>
         ) : null}
+        {application.fitScore !== null ? (
+          <p className="text-xs font-medium text-ink" title="The agent's estimate of fit, out of 5">
+            fit {application.fitScore.toFixed(1)}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-2">

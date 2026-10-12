@@ -1,6 +1,11 @@
 'use client';
 
-import { APPLICATION_STATUSES, statusLabel } from '@/lib/applications/status';
+import {
+  isFlowStatus,
+  MANUAL_STATUSES,
+  statusLabel,
+  type ManualStatus,
+} from '@/lib/applications/status';
 import type { ApplicationStatus, ResumeSummary } from '@/lib/types';
 
 export interface ApplicationDraft {
@@ -15,7 +20,8 @@ interface ApplicationFieldsProps {
   /** Debounced autosave — the caller sends the whole draft, never one field. */
   onDraftChange: (draft: ApplicationDraft) => void;
   status: ApplicationStatus;
-  onStatusChange: (status: ApplicationStatus) => void;
+  /** Only manual statuses can be picked; the review flow sets the others. */
+  onStatusChange: (status: ManualStatus) => void;
   resumeId: string | null;
   resumes: ResumeSummary[];
   onResumeChange: (resumeId: string | null) => void;
@@ -83,10 +89,17 @@ export default function ApplicationFields({
           <select
             value={status}
             aria-label="Status"
-            onChange={(event) => onStatusChange(event.target.value as ApplicationStatus)}
+            onChange={(event) => onStatusChange(event.target.value as ManualStatus)}
             className={fieldClass}
           >
-            {APPLICATION_STATUSES.map((value) => (
+            {/* A flow status cannot be picked, but the select still has to
+                show the real one rather than silently reading "Draft". */}
+            {isFlowStatus(status) ? (
+              <option value={status} disabled>
+                {statusLabel(status)}
+              </option>
+            ) : null}
+            {MANUAL_STATUSES.map((value) => (
               <option key={value} value={value}>
                 {statusLabel(value)}
               </option>

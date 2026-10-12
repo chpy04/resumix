@@ -16,12 +16,13 @@ import ApplicationCard from '@/components/applications/ApplicationCard';
 import DraggableCard from '@/components/applications/DraggableCard';
 import ExitZone from '@/components/applications/ExitZone';
 import KanbanColumn from '@/components/applications/KanbanColumn';
-import { EXIT_STATUSES, groupByStatus, statusForDrop } from '@/lib/applications/board';
-import type { ApplicationStatus, ApplicationSummary } from '@/lib/types';
+import { acceptsDrop, EXIT_STATUSES, groupByStatus, statusForDrop } from '@/lib/applications/board';
+import type { ManualStatus } from '@/lib/applications/status';
+import type { ApplicationSummary } from '@/lib/types';
 
 interface KanbanBoardProps {
   applications: ApplicationSummary[];
-  onStatusChange: (id: string, status: ApplicationStatus) => void;
+  onStatusChange: (id: string, status: ManualStatus) => void;
 }
 
 const EXIT_HINTS: Record<string, string> = {
@@ -34,9 +35,11 @@ const EXIT_HINTS: Record<string, string> = {
  *
  * Columns are the live statuses; the two exit zones under them appear only
  * while a card is in the air, because `applied` and `rejected` are where a
- * card *goes*, not somewhere you browse (D-034). Dropping is the only gesture
- * — there is no ordering within a column to persist, since an application
- * carries no sort_order.
+ * card *goes*, not somewhere you browse (D-034). Proposing, Needs review and
+ * Ready are columns you can drag *out of* but not into: only the review flow
+ * puts an application there (D-041). Dropping is the only gesture — there is
+ * no ordering within a column to persist, since an application carries no
+ * sort_order.
  *
  * The whole board is one screen: the columns stretch to fill everything above
  * the zone row and scroll internally, and the zone row's height is held in
@@ -82,12 +85,14 @@ export default function KanbanBoard({ applications, onStatusChange }: KanbanBoar
       onDragCancel={() => setActiveId(null)}
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-6">
           {columns.map((column) => (
             <KanbanColumn
               key={column.status}
               status={column.status}
               count={column.applications.length}
+              acceptsDrops={acceptsDrop(column.status)}
+              dragging={activeId !== null}
             >
               {column.applications.map((application) => (
                 <DraggableCard key={application.id} application={application} />

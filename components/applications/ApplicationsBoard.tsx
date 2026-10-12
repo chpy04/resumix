@@ -18,8 +18,9 @@ import {
   updateApplication,
 } from '@/lib/api-client';
 import { closedApplications } from '@/lib/applications/board';
+import type { ManualStatus } from '@/lib/applications/status';
 import { fuzzyFilter } from '@/lib/fuzzy';
-import type { ApplicationStatus, ApplicationSummary, ResumeSummary } from '@/lib/types';
+import type { ApplicationSummary, ResumeSummary } from '@/lib/types';
 
 type LoadState =
   | { status: 'loading' }
@@ -123,7 +124,7 @@ export default function ApplicationsBoard() {
     }
   }
 
-  function handleStatusChange(id: string, status: ApplicationStatus): void {
+  function handleStatusChange(id: string, status: ManualStatus): void {
     setState((current) =>
       current.status !== 'ready'
         ? current
@@ -298,8 +299,8 @@ function TabButton({
 
 function BoardSkeleton() {
   return (
-    <div className="grid min-h-0 flex-1 gap-4 sm:grid-cols-3" aria-hidden="true">
-      {Array.from({ length: 3 }).map((_, index) => (
+    <div className="grid min-h-0 flex-1 gap-4 sm:grid-cols-3 lg:grid-cols-6" aria-hidden="true">
+      {Array.from({ length: 6 }).map((_, index) => (
         <div key={index} className="animate-pulse rounded-lg border border-line bg-surface" />
       ))}
     </div>

@@ -11,15 +11,10 @@
  * from, and the immutable snapshot that was actually sent (D-032).
  */
 import { and, desc, eq } from 'drizzle-orm';
-import { nextAppliedAt } from '../applications/status.ts';
+import { nextAppliedAt, type ManualStatus } from '../applications/status.ts';
 import { db } from '../db/index.ts';
 import { application, coverLetter, resume, resumePdf } from '../db/schema.ts';
-import type {
-  ApplicationDetail,
-  ApplicationFile,
-  ApplicationStatus,
-  ApplicationSummary,
-} from '../types.ts';
+import type { ApplicationDetail, ApplicationFile, ApplicationSummary } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
@@ -38,7 +33,9 @@ export interface ApplicationPatch {
   roleTitle?: string;
   postingUrl?: string;
   notes?: string;
-  status?: ApplicationStatus;
+  /** A flow status is never patched in by hand; the review flow writes
+   *  those through its own query functions (D-041). */
+  status?: ManualStatus;
   /** `null` unlinks the resume; omitted leaves it alone. */
   resumeId?: string | null;
   /** `null` unlinks the cover letter; the letter itself is untouched. */
@@ -57,6 +54,7 @@ function toSummary(row: ApplicationRow, sentPdf: SentPdfMeta | null): Applicatio
     resumeId: row.resumeId,
     sentPdf,
     coverLetterId: row.coverLetterId,
+    fitScore: row.fitScore,
     isArchived: row.isArchived,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -68,7 +66,13 @@ function toDetail(
   sentPdf: SentPdfMeta | null,
   files: ApplicationFile[],
 ): ApplicationDetail {
-  return { ...toSummary(row, sentPdf), notes: row.notes, files };
+  return {
+    ...toSummary(row, sentPdf),
+    notes: row.notes,
+    jobDescription: row.jobDescription,
+    agentSummary: row.agentSummary,
+    files,
+  };
 }
 
 /** Newest first. The board regroups and re-sorts client-side

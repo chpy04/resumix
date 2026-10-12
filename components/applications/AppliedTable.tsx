@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ApiError, downloadApplicationPdf } from '@/lib/api-client';
-import { APPLICATION_STATUSES, statusLabel } from '@/lib/applications/status';
-import type { ApplicationStatus, ApplicationSummary } from '@/lib/types';
+import { MANUAL_STATUSES, statusLabel, type ManualStatus } from '@/lib/applications/status';
+import type { ApplicationSummary } from '@/lib/types';
 
 interface AppliedTableProps {
   applications: ApplicationSummary[];
   /** Moving a row out of Applied — a reply arrived — takes it off this table
    *  and back onto the board, so the parent owns the update. */
-  onStatusChange: (id: string, status: ApplicationStatus) => void;
+  onStatusChange: (id: string, status: ManualStatus) => void;
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -110,11 +110,13 @@ export default function AppliedTable({ applications, onStatusChange }: AppliedTa
                   value={application.status}
                   aria-label={`Status for ${application.company}`}
                   onChange={(event) =>
-                    onStatusChange(application.id, event.target.value as ApplicationStatus)
+                    onStatusChange(application.id, event.target.value as ManualStatus)
                   }
                   className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink outline-none focus:border-accent"
                 >
-                  {APPLICATION_STATUSES.map((status) => (
+                  {/* Every row here is applied or rejected, so the review
+                      flow's statuses never need showing (D-041). */}
+                  {MANUAL_STATUSES.map((status) => (
                     <option key={status} value={status}>
                       {statusLabel(status)}
                     </option>

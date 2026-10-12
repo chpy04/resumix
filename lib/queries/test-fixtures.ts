@@ -161,11 +161,19 @@ export async function deleteResumeRow(id: string): Promise<void> {
  *  visible on the board, so tests clean up after themselves like resumes do
  *  rather than filling a shared dev database with fixtures. Delete these
  *  *before* any resume they were sent with: the snapshot reference is
- *  `on delete restrict` on purpose. */
-export async function insertTestApplication(userId: string, tag: string) {
+ *  `on delete restrict` on purpose.
+ *
+ *  `overrides` writes straight to the row, which is the only way to put an
+ *  application into a flow status or give it the agent's fields: the API
+ *  refuses both (D-041). */
+export async function insertTestApplication(
+  userId: string,
+  tag: string,
+  overrides: Partial<typeof application.$inferInsert> = {},
+) {
   const [row] = await db
     .insert(application)
-    .values({ userId, company: `T-App Test Co ${tag}`, roleTitle: 'Test Engineer' })
+    .values({ userId, company: `T-App Test Co ${tag}`, roleTitle: 'Test Engineer', ...overrides })
     .returning();
   if (!row) throw new Error('failed to insert test application');
   return row;

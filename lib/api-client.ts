@@ -7,13 +7,13 @@
  * convention: it attaches the stored token and handles 401 -> logout.
  */
 
+import type { ManualStatus } from './applications/status.ts';
 import { authedFetch } from './auth-client.ts';
 import type { FeedbackKind } from './feedback/issue.ts';
 import type {
   ApplicationDetail,
   ApplicationFile,
   ApplicationPdfResult,
-  ApplicationStatus,
   ApplicationSummary,
   Bullet,
   CoverLetter,
@@ -407,7 +407,8 @@ export function getApplication(id: string): Promise<ApplicationDetail> {
 
 /** `PATCH /api/applications/:id` — the autosave target for every field on the
  *  detail page, plus the status picker and archiving. `resumeId: null` and
- *  `coverLetterId: null` unlink those documents without touching them. */
+ *  `coverLetterId: null` unlink those documents without touching them. Only
+ *  manual statuses: the server refuses the review flow's (D-041). */
 export function updateApplication(
   id: string,
   patch: Partial<{
@@ -415,7 +416,7 @@ export function updateApplication(
     roleTitle: string;
     postingUrl: string;
     notes: string;
-    status: ApplicationStatus;
+    status: ManualStatus;
     resumeId: string | null;
     coverLetterId: string | null;
     isArchived: boolean;
