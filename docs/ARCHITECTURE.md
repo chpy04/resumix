@@ -73,6 +73,7 @@ lib/
   auth-supabase.ts       Supabase OAuth seam — NOT IMPLEMENTED, fails closed
   api-tokens.ts          rmx_ API token format + sha-256 hash (node:crypto, never Edge)
   session.ts             requireUserId / requireMcpUserId — the two doors to "who is calling"
+  mcp/                   /api/mcp: JSON-RPC dispatcher + transport (pure), tools/ one module each
   queries/users.ts       user lookup + first-login provisioning
   filename.ts            Chris_Pyle_<Company>_{Resume,Cover_Letter}.pdf
 components/              React components
