@@ -101,6 +101,14 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   with a 503. A **Create a plan first** switch, off by default, adds the
   `plan-first` label, so the agent drafts its plan on the Excalidraw board
   and waits for approval instead of building straight to a PR (D-036).
+- **Agent endpoint** — `POST /api/mcp`, the Model Context Protocol over
+  streamable HTTP, hand-rolled and stateless: one JSON-RPC message per
+  request, no sessions, no SSE, no SDK (D-040). `lib/mcp/` is a pure
+  dispatcher plus a registry of zod-typed tools, one module each in
+  `lib/mcp/tools/`, listed in `docs/API.md`'s tool reference. A failing tool
+  answers with text telling the agent what to do next, never a protocol
+  error. It takes only an API token (below). `npm run mcp:smoke` drives it
+  over real HTTP, and the gate runs that from the e2e suite.
 
 ## Users and isolation
 

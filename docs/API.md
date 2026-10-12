@@ -151,6 +151,112 @@ never again, and the token's id, label and owner to stderr. The owner is
 neither, both scripts refuse. Both act on whatever database `DATABASE_URL`
 names, which is the dev one, through `.env`, unless you point them elsewhere.
 
+## MCP (`/api/mcp`)
+
+The agent's interface: the Model Context Protocol over its streamable-HTTP
+transport, hand-rolled in `lib/mcp/` with no SDK (D-040), behind the API
+token above.
+
+| method | path       | body                     | returns                                                      |
+| ------ | ---------- | ------------------------ | ------------------------------------------------------------ |
+| POST   | `/api/mcp` | one JSON-RPC 2.0 message | its JSON-RPC response as `application/json`, or a bare `202` |
+| GET    | `/api/mcp` | —                        | `405`, `Allow: POST`, once the token checks out              |
+
+**Stateless.** One message per POST, one answer. No `Mcp-Session-Id` is
+issued and one sent is ignored, no SSE stream is ever opened, and nothing
+carries over between requests, so `tools/list` works without an `initialize`
+first. `Accept` and `Content-Type` are not enforced; the answer is JSON
+either way.
+
+| status | when                                                                                                                                                                                                                       |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `200`  | a request (it has an `id`). The body is its JSON-RPC result, or a `-32601` / `-32602` error                                                                                                                                |
+| `202`  | a notification (no `id`), or a response from the client. Empty body                                                                                                                                                        |
+| `400`  | the body is not JSON (`-32700`); it is a batch, i.e. an array (`-32600`); it is not a JSON-RPC 2.0 message, or its `id` is not a string or number (`-32600`); an `MCP-Protocol-Version` header is not supported (`-32600`) |
+| `401`  | no live `rmx_` token: `{ "error": "unauthorized" }`, with no JSON-RPC envelope. MCP leaves auth to HTTP                                                                                                                    |
+| `405`  | `GET`                                                                                                                                                                                                                      |
+
+**Protocol versions:** `2025-11-25`, `2025-06-18` and `2025-03-26`.
+`initialize` echoes the client's `protocolVersion` when it is one of these
+and answers `2025-11-25` otherwise. Later requests carry the agreed version
+in `MCP-Protocol-Version`; a request without the header is accepted.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {},
+    "clientInfo": { "name": "example-client", "version": "1.0.0" }
+  }
+}
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": { "tools": { "listChanged": false } },
+    "serverInfo": { "name": "resumix", "version": "0.1.0" },
+    "instructions": "Resumix holds one person's resume library (…). Call ping first to check the connection."
+  }
+}
+```
+
+| method            | params                   | result                                                                       |
+| ----------------- | ------------------------ | ---------------------------------------------------------------------------- |
+| `initialize`      | `{ protocolVersion, … }` | as above; no string `protocolVersion` is `-32602`                            |
+| `ping`            | —                        | `{}`                                                                         |
+| `tools/list`      | —                        | `{ tools: [{ name, description, inputSchema }] }`: every tool, no pagination |
+| `tools/call`      | `{ name, arguments? }`   | a `ToolResult` (below); a malformed envelope or an unknown tool is `-32602`  |
+| `notifications/…` | anything                 | nothing: `202`                                                               |
+
+Any other method is `-32601`. The `ping` **method** is MCP's liveness check
+and touches nothing. The `ping` **tool**, called through `tools/call`, is the
+one that proves the token and the database work.
+
+**A JSON-RPC error means the message was wrong; everything that goes wrong
+inside a tool is a result.** A model reads tool results and can correct
+itself from them, so a failing tool answers `200` with `isError: true`:
+
+```ts
+type ToolResult = { content: { type: 'text'; text: string }[]; isError?: true };
+```
+
+- **Arguments that fail the tool's schema** list every problem as
+  `path: message`, then "Fix the arguments and call again; tools/list has the
+  schema." Unknown keys are rejected rather than dropped, so a typo such as
+  `applicationId` is reported by name.
+- **A missing row or a bad reference** from the query layer passes its
+  message through.
+- **Anything else** is "Resumix hit an internal error; retry once, then stop
+  and tell Chris." The real error goes to the server log only.
+
+`inputSchema` is JSON Schema generated from the tool's zod input, without
+`$schema`, and is always `type: "object"`.
+
+**Tool conventions (C1).** A tool that acts on an application takes
+`application_id` and nothing the server can work out from it: Resumix
+resolves that application's resume, cover letter and template itself.
+Another user's id reads as not found, as everywhere else. A failing tool's
+text says what the agent should do next. A description says when to call the
+tool and what comes back.
+
+### Tool reference
+
+| tool   | arguments | returns                                               |
+| ------ | --------- | ----------------------------------------------------- |
+| `ping` | none      | the email of the account that owns the token, as text |
+
+`npm run mcp:smoke` drives `initialize`, `tools/list` and the `ping` tool over
+real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
+token it mints and revokes itself. `npm run verify` runs it from
+`e2e/mcp.spec.ts`.
+
 ## Resumes
 
 | method | path               | body                     | returns                                                                                |
