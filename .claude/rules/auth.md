@@ -63,7 +63,7 @@ secret is 32 random bytes and only its sha-256 is stored, in `api_token`.
   `getAuthMode()`. Dev mode's "no login" is for a browser on this machine;
   honouring it here would hand the account to anything that reaches the port.
   No token is a `401`, always.
-- **Middleware lets `/api/mcp/**` through** (`isMcpPath`, `lib/auth-mode.ts`).
+- **Middleware lets these routes through** (`isMcpPath`, `lib/auth-mode.ts`).
   Only a database lookup can tell one token from another, so the handler does
   the whole check. Passing through is still fail-closed for that reason.
 - **The two credentials never cross.** `x-resumix-token` is not read under

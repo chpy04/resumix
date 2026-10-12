@@ -47,7 +47,7 @@ const userId = await requireUserId(request); // lib/session.ts
 
 First line of the handler body, then thread `userId` into the query
 function, which filters on it. `middleware.ts` guards `/api/*` (except
-`/api/auth`) but **cannot** say _which_ user is calling — it runs on the
+`/api/auth` and `/api/mcp/**`) but **cannot** say _which_ user is calling — it runs on the
 Edge runtime and has no database — so it is not what keeps accounts apart.
 Your `WHERE` clause is.
 
