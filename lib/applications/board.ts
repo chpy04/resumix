@@ -6,7 +6,7 @@
  * Pure so it can be tested without a browser or a database — the board
  * component only renders what this returns.
  */
-import { FLOW_STATUSES, MANUAL_STATUSES, type ManualStatus } from './status.ts';
+import { isFlowStatus, MANUAL_STATUSES, type ManualStatus } from './status.ts';
 import type { ApplicationStatus, ApplicationSummary } from '../types.ts';
 
 export interface BoardColumn {
@@ -102,7 +102,7 @@ export function closedApplications(
 /** Whether a column takes drops at all. The flow columns do not: only the
  *  review flow moves an application into them (C3). */
 export function acceptsDrop(status: ApplicationStatus): boolean {
-  return !(FLOW_STATUSES as readonly ApplicationStatus[]).includes(status);
+  return !isFlowStatus(status);
 }
 
 /**
