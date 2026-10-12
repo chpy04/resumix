@@ -58,8 +58,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   the agent's fit score (D-041). Picking a card up reveals two drop zones
   under the columns, `applied` and `rejected`, which are the only way those
   statuses appear on the board (D-034). `/applications/[id]` is one
-  application — fields, freeform notes, attachments, the linked resume and
-  the button that marks it applied.
+  application — fields, freeform notes, attachments, the linked resume, the
+  button that marks it applied and, when the agent supplied them, its
+  summary and the job description, read-only.
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), `/cover-letters` is its counterpart for letters, and
   `/cover-letter/[id]` is a two-pane LaTeX editor over the one `content`
