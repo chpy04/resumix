@@ -28,58 +28,57 @@ const RESUMIX_SERVER_NAME = /resumix/i;
 /**
  * Anywhere else, only what is unmistakably the Resumix MCP: agent/.env's
  * variable names, the endpoint (dev's included, since no Resumix MCP belongs
- * at the root at all), or an `rmx_` token. A bare "resumix" is not enough: it
- * is also the repo's name, so ordinary paths and permissions contain it.
+ * at the root at all), an `rmx_` token, or a permission for one of its tools.
+ * A bare "resumix" is not enough: it is also the repo's name, so ordinary
+ * paths and permissions contain it.
  */
-const RESUMIX_MCP_STRING = /RESUMIX_MCP_|\/api\/mcp\b|\brmx_\w/;
+const RESUMIX_MCP_STRING = /RESUMIX_MCP_|\/api\/mcp\b|\brmx_\w|mcp__resumix/;
 
-/** A permission for one of the Resumix MCP's tools (`mcp__resumix__get_library`). */
-const RESUMIX_TOOL_PERMISSION = /mcp__resumix/;
+/** The settings keys that record what was approved, rather than what runs. */
+const APPROVAL_KEYS = new Set(['permissions', 'enabledMcpjsonServers', 'disabledMcpjsonServers']);
 
 interface FindingOptions {
   /**
-   * Check only what can connect: `mcpServers` definitions, for a resumix name
-   * or the endpoint, token or variables anywhere inside one. Approval lists
-   * and permission rules pass whatever they say. Only the root
-   * settings.local.json gets this; see mcpConfigFilesOutsideAgent.
+   * Skip the top-level approval lists and permission rules, and check
+   * everything else as strictly as ever: `mcpServers`, and `env` too, which
+   * reaches every session and subprocess. Only the root settings.local.json
+   * gets this; see mcpConfigFilesOutsideAgent.
    */
   approvalsAllowed?: boolean;
 }
 
 /** Every place in a parsed config that points a session at Resumix's MCP. */
 function resumixMcpFindings(config: unknown, { approvalsAllowed = false }: FindingOptions = {}) {
-  const flagged = (text: string) =>
-    RESUMIX_MCP_STRING.test(text) || (!approvalsAllowed && RESUMIX_TOOL_PERMISSION.test(text));
+  if (approvalsAllowed && config !== null && typeof config === 'object' && !Array.isArray(config)) {
+    config = Object.fromEntries(Object.entries(config).filter(([key]) => !APPROVAL_KEYS.has(key)));
+  }
+  return findingsIn(config, '$');
+}
 
-  // `checked` is false only in the relaxed mode, outside every definition.
-  const walk = (node: unknown, at: string, checked: boolean): string[] => {
-    if (typeof node === 'string') return checked && flagged(node) ? [`${at}: ${node}`] : [];
-    if (Array.isArray(node)) return node.flatMap((item, i) => walk(item, `${at}[${i}]`, checked));
-    if (node === null || typeof node !== 'object') return [];
+function findingsIn(node: unknown, at: string): string[] {
+  if (typeof node === 'string') return RESUMIX_MCP_STRING.test(node) ? [`${at}: ${node}`] : [];
+  if (Array.isArray(node)) return node.flatMap((item, i) => findingsIn(item, `${at}[${i}]`));
+  if (node === null || typeof node !== 'object') return [];
 
-    const findings: string[] = [];
-    for (const [key, value] of Object.entries(node)) {
-      const path = `${at}.${key}`;
-      // A definition is flagged everywhere: it is what actually connects.
-      const definitions = key === 'mcpServers' && value !== null && typeof value === 'object';
-      if (definitions) {
-        for (const name of Object.keys(value)) {
-          if (RESUMIX_SERVER_NAME.test(name)) findings.push(`${path}.${name}`);
-        }
+  const findings: string[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    const path = `${at}.${key}`;
+    if (key === 'mcpServers' && value !== null && typeof value === 'object') {
+      for (const name of Object.keys(value)) {
+        if (RESUMIX_SERVER_NAME.test(name)) findings.push(`${path}.${name}`);
       }
-      if (key === 'enabledMcpjsonServers' && Array.isArray(value) && !approvalsAllowed) {
-        for (const name of value) {
-          if (typeof name === 'string' && RESUMIX_SERVER_NAME.test(name)) {
-            findings.push(`${path}: ${name}`);
-          }
-        }
-      }
-      if (checked && flagged(key)) findings.push(path);
-      findings.push(...walk(value, path, checked || definitions));
     }
-    return findings;
-  };
-  return walk(config, '$', !approvalsAllowed);
+    if (key === 'enabledMcpjsonServers' && Array.isArray(value)) {
+      for (const name of value) {
+        if (typeof name === 'string' && RESUMIX_SERVER_NAME.test(name)) {
+          findings.push(`${path}: ${name}`);
+        }
+      }
+    }
+    if (RESUMIX_MCP_STRING.test(key)) findings.push(path);
+    findings.push(...findingsIn(value, path));
+  }
+  return findings;
 }
 
 function git(...args: string[]): string {
@@ -107,7 +106,8 @@ function mcpConfigFilesOutsideAgent(): string[] {
   // permissions, and Bash rules such as a dev `curl` of /api/mcp while he works
   // on the server. None of that connects anything at the root, which has no
   // `resumix` definition to switch on (the scan of the root .mcp.json makes
-  // sure of that), so in this file alone only server definitions are checked.
+  // sure of that), so in this file alone approval lists and permission rules
+  // pass. Everything else is checked, `env` included.
   if (existsSync(join(ROOT, LOCAL_SETTINGS))) {
     files.add(LOCAL_SETTINGS);
   }
@@ -177,6 +177,17 @@ test('approving the server is allowed in the root settings.local.json only', () 
     mcpServers: { local: { type: 'http', url: 'http://localhost:3000/api/mcp' } },
   };
   assert.notDeepEqual(resumixMcpFindings(devServer, { approvalsAllowed: true }), []);
+});
+
+test('the guard flags Resumix values in settings env, in every file', () => {
+  // `env` reaches every session and subprocess, so these would override
+  // agent/.env and hand the production token to every Claude that builds.
+  const env = {
+    env: { RESUMIX_MCP_URL: 'https://prod.example/api/mcp', RESUMIX_MCP_TOKEN: 'rmx_abc' },
+  };
+  for (const mode of MODES) {
+    assert.notDeepEqual(resumixMcpFindings(env, mode), []);
+  }
 });
 
 test('agent/.mcp.json takes the Resumix URL and token from agent/.env, unfilled', () => {
