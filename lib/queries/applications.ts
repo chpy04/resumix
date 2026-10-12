@@ -14,11 +14,16 @@ import { and, desc, eq } from 'drizzle-orm';
 import { nextAppliedAt, type ManualStatus } from '../applications/status.ts';
 import { db } from '../db/index.ts';
 import { application, coverLetter, resume, resumePdf } from '../db/schema.ts';
-import type { ApplicationDetail, ApplicationFile, ApplicationSummary } from '../types.ts';
+import type {
+  ApplicationDetail,
+  ApplicationFile,
+  ApplicationSummary,
+  Selections,
+} from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
-import { createResume } from './resumes.ts';
+import { createResume, getDefaultResumeRow } from './resumes.ts';
 
 type ApplicationRow = typeof application.$inferSelect;
 
@@ -207,6 +212,84 @@ export async function createApplication(
   if (!row) throw new Error('failed to create application');
 
   return detailFor(row);
+}
+
+/**
+ * The agent's front door (D-042): an application that arrives in
+ * `proposing`, with the posting, the agent's evaluation and its score, and
+ * a copy of Default named after the company to propose a resume in.
+ *
+ * Always Default, never another resume: the agent picks from the library,
+ * and Default is the one every account has. `createResume` is the same clone
+ * `createResumeFrom` takes.
+ */
+export async function createProposedApplication(
+  userId: string,
+  input: {
+    company: string;
+    roleTitle: string;
+    postingUrl: string;
+    jobDescription: string;
+    agentSummary: string;
+    fitScore: number;
+  },
+): Promise<ApplicationDetail> {
+  const source = await getDefaultResumeRow(userId);
+  // Every account is provisioned with one, so this is a broken account. Said
+  // here, in words, because `createResume`'s own refusal is a plain `Error`,
+  // which would reach the agent as an anonymous internal error.
+  if (!source) {
+    throw new BadRequestError(
+      'This account has no Default resume to copy, so no application was created. ' +
+        'Stop and tell Chris.',
+    );
+  }
+  const created = await createResume(userId, input.company, source.id);
+
+  const [row] = await db
+    .insert(application)
+    .values({
+      userId,
+      company: input.company,
+      roleTitle: input.roleTitle,
+      postingUrl: input.postingUrl,
+      status: 'proposing',
+      jobDescription: input.jobDescription,
+      agentSummary: input.agentSummary,
+      fitScore: input.fitScore,
+      resumeId: created.id,
+    })
+    .returning();
+  if (!row) throw new Error('failed to create application');
+
+  return detailFor(row);
+}
+
+/**
+ * Records the agent's pick as `proposed_selection` (C7), and only while the
+ * application is still `proposing`: once it is in review, the pick it was
+ * proposed with is the baseline "Reset to agent pick" returns to, and later
+ * edits must not move it. The status test is in the WHERE clause, so a
+ * review that starts mid-call cannot be overwritten. Each call while
+ * proposing replaces the last. Returns whether a row was written.
+ */
+export async function setProposedSelection(
+  userId: string,
+  id: string,
+  selections: Selections,
+): Promise<boolean> {
+  const rows = await db
+    .update(application)
+    .set({ proposedSelection: selections })
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        eq(application.status, 'proposing'),
+      ),
+    )
+    .returning({ id: application.id });
+  return rows.length > 0;
 }
 
 /**

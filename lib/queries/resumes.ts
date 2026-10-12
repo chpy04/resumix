@@ -63,7 +63,9 @@ export async function getResumeSummary(userId: string, id: string): Promise<Resu
   return toSummary(row, pdfMeta.get(id) ?? null);
 }
 
-async function getDefaultResumeRow(userId: string): Promise<ResumeRow | null> {
+/** The one every new resume is copied from; `provisionUser` gives every
+ *  account one. */
+export async function getDefaultResumeRow(userId: string): Promise<ResumeRow | null> {
   const [row] = await db
     .select()
     .from(resume)
