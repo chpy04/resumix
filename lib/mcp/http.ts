@@ -9,6 +9,11 @@
  * client we serve sends. `Accept` and `Content-Type` are not enforced: the
  * answer is JSON whatever the client asked for, and curl should just work.
  *
+ * Two more departures from the spec: no `Origin` check (and so no 403),
+ * because every request needs an `rmx_` secret no browser holds, so a DNS
+ * rebinding attack stops at the 401; and no `WWW-Authenticate` on that 401,
+ * because there is no OAuth for a client to discover.
+ *
  * Plain Web `Request`/`Response`, so it runs under `node --test` without
  * Next. Authentication happens before this, in the route
  * (`requireMcpUserId`).

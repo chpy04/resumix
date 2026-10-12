@@ -43,8 +43,8 @@ export const someTool = defineTool({
 - **A description says when to call the tool and what comes back** (the
   board's D1). It is all the model reads before choosing a tool.
 - **`run` wraps an existing query function, scoped by `ctx.userId`.** The
-  data-access rules apply unchanged: nothing here imports `lib/db`, and
-  another user's id reads as not found. A tool that needs a new query adds it
+  data-access rules apply unchanged: no tool imports `lib/db`, and another
+  user's id reads as not found. A tool that needs a new query adds it
   to `lib/queries/`, with a case in `isolation.test.ts`.
 - **A tool failure is never a JSON-RPC error.** Return `toolError(text)`, and
   make the text say what to do next. A thrown `NotFoundError` or

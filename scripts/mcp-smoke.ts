@@ -1,7 +1,7 @@
 /**
- * Drives `/api/mcp` over real HTTP the way an MCP client does: no token,
- * `initialize`, `notifications/initialized`, `tools/list`, the `ping` tool,
- * and a `GET` (D-040). The unit tests prove the protocol without a server;
+ * Drives `/api/mcp` over real HTTP the way an MCP client does: requests
+ * with no token or a foreign one, `initialize`, `notifications/initialized`,
+ * `tools/list`, the `ping` tool, and a `GET` (D-040). The unit tests prove the protocol without a server;
  * this proves the route, the token check and the database behind it.
  *
  * It needs a running server. `npm run verify` runs it from
@@ -82,22 +82,28 @@ function client(url: URL, secret: string) {
       return { jsonrpc: '2.0', id: nextId++, method, ...(params ? { params } : {}) };
     },
 
+    /**
+     * `authorization` replaces the token's header (null sends none), and
+     * `body` replaces the encoded message, for the requests that must fail.
+     */
     async send(
       message: Record<string, unknown> | null,
-      options: { auth?: boolean; method?: string } = {},
+      options: { authorization?: string | null; body?: string; method?: string } = {},
     ): Promise<Response> {
       const headers: Record<string, string> = {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
       };
-      if (options.auth !== false) headers.authorization = `Bearer ${secret}`;
+      const authorization =
+        options.authorization === undefined ? `Bearer ${secret}` : options.authorization;
+      if (authorization !== null) headers.authorization = authorization;
       if (protocolVersion) headers['mcp-protocol-version'] = protocolVersion;
 
       try {
         return await fetch(url, {
           method: options.method ?? 'POST',
           headers,
-          body: message ? JSON.stringify(message) : undefined,
+          body: options.body ?? (message ? JSON.stringify(message) : undefined),
         });
       } catch (err) {
         throw new Error(`could not reach ${url} — is the dev server running?`, { cause: err });
@@ -139,9 +145,27 @@ async function main() {
       clientInfo: { name: 'resumix-mcp-smoke', version: '0' },
     });
 
-    const anonymous = await mcp.send(initialize, { auth: false });
+    // C2: only an rmx_ token opens the door, and it is checked first, before
+    // the body is parsed and before the method is considered.
+    const anonymous = await mcp.send(initialize, { authorization: null });
     assert.equal(anonymous.status, 401, `no token: expected 401, got ${anonymous.status}`);
     check('no token is 401');
+
+    const foreign = await mcp.send(initialize, { authorization: 'Bearer abc' });
+    assert.equal(foreign.status, 401, `Bearer abc: expected 401, got ${foreign.status}`);
+    check('a bearer credential that is not rmx_ is 401');
+
+    const unparsed = await mcp.send(null, { authorization: null, body: '{not json' });
+    assert.equal(unparsed.status, 401, `no token, bad JSON: expected 401, got ${unparsed.status}`);
+    check('no token is 401 even when the body is not JSON');
+
+    const anonymousGet = await mcp.send(null, { authorization: null, method: 'GET' });
+    assert.equal(
+      anonymousGet.status,
+      401,
+      `no token, GET: expected 401, got ${anonymousGet.status}`,
+    );
+    check('no token is 401 on GET too, not 405');
 
     const initResponse = await mcp.send(initialize);
     const init = await resultOf(initResponse);
