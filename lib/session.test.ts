@@ -9,6 +9,9 @@
  * own server process with a different `RESUMIX_AUTH_MODE`, and two
  * concurrent `next dev` servers cannot share a build directory (see
  * playwright.config.ts).
+ *
+ * So is the `/api/mcp/**` door, `requireMcpUser`, and for the same reason:
+ * its whole promise is that the mode makes no difference to it (D-039).
  */
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
@@ -16,7 +19,11 @@ import { after, test } from 'node:test';
 const skip = !process.env.DATABASE_URL;
 
 let mintToken: typeof import('./auth.ts').mintToken;
+let generateApiTokenSecret: typeof import('./api-tokens.ts').generateApiTokenSecret;
+let createApiToken: typeof import('./queries/api-tokens.ts').createApiToken;
+let revokeApiToken: typeof import('./queries/api-tokens.ts').revokeApiToken;
 let requireUser: typeof import('./session.ts').requireUser;
+let requireMcpUser: typeof import('./session.ts').requireMcpUser;
 let loginWithPassword: typeof import('./session.ts').loginWithPassword;
 let UnauthorizedError: typeof import('./queries/errors.ts').UnauthorizedError;
 let SupabaseAuthNotConfiguredError: typeof import('./auth-supabase.ts').SupabaseAuthNotConfiguredError;
@@ -24,7 +31,9 @@ let fixtures: typeof import('./queries/test-fixtures.ts');
 
 if (!skip) {
   ({ mintToken } = await import('./auth.ts'));
-  ({ loginWithPassword, requireUser } = await import('./session.ts'));
+  ({ generateApiTokenSecret } = await import('./api-tokens.ts'));
+  ({ createApiToken, revokeApiToken } = await import('./queries/api-tokens.ts'));
+  ({ loginWithPassword, requireMcpUser, requireUser } = await import('./session.ts'));
   ({ UnauthorizedError } = await import('./queries/errors.ts'));
   ({ SupabaseAuthNotConfiguredError } = await import('./auth-supabase.ts'));
   fixtures = await import('./queries/test-fixtures.ts');
@@ -71,6 +80,14 @@ function request(token?: string): Request {
   return new Request('http://localhost/api/session', {
     headers: token ? { 'x-resumix-token': token } : {},
   });
+}
+
+function mcpRequest(headers: Record<string, string> = {}): Request {
+  return new Request('http://localhost/api/mcp', { headers });
+}
+
+function bearer(secret: string): Record<string, string> {
+  return { authorization: `Bearer ${secret}` };
 }
 
 // --------------------------------------------------------------- dev mode
@@ -235,3 +252,98 @@ test(
     assert.equal(token, null);
   },
 );
+
+// ------------------------------------------------- /api/mcp: API tokens
+
+/** The environment each mode runs under here. Password mode gets a secret so
+ *  that a rejection below is about the token, not missing configuration. */
+const MODES = {
+  dev: { RESUMIX_AUTH_MODE: 'dev' },
+  password: { RESUMIX_AUTH_MODE: 'password', AUTH_SECRET: SECRET },
+  supabase: { RESUMIX_AUTH_MODE: 'supabase' },
+} as const;
+
+for (const [mode, env] of Object.entries(MODES)) {
+  test(`${mode} mode: a live API token resolves its owner`, { skip }, async () => {
+    // A fresh user rather than the seeded one, so that in dev mode a pass
+    // cannot come from the "first user" fallback by coincidence.
+    const owner = await fixtures.insertUser(fixtures.testTag());
+    const { secret } = await createApiToken(owner.id, `session test (${mode})`);
+
+    const resolved = await withEnv(env, () => requireMcpUser(mcpRequest(bearer(secret))));
+    assert.equal(resolved.id, owner.id);
+    if (mode === 'dev') assert.notEqual(resolved.id, await fixtures.seedUserId());
+  });
+
+  test(`${mode} mode: anything but a live API token is a 401`, { skip }, async () => {
+    const owner = await fixtures.insertUser(fixtures.testTag());
+    const { token, secret } = await createApiToken(owner.id, `session test (${mode})`);
+    await revokeApiToken(owner.id, token.id);
+
+    const refused: Record<string, Record<string, string>> = {
+      revoked: bearer(secret),
+      unknown: bearer(generateApiTokenSecret()),
+      missing: {},
+      basic: { authorization: `Basic ${secret}` },
+      'non-rmx bearer': bearer('some-other-token'),
+    };
+    for (const [why, headers] of Object.entries(refused)) {
+      await assert.rejects(
+        () => withEnv(env, () => requireMcpUser(mcpRequest(headers))),
+        UnauthorizedError,
+        `${why} must be refused`,
+      );
+    }
+  });
+}
+
+test('/api/mcp with no token is a 401 even in dev mode', { skip }, async () => {
+  // The same request that dev mode's `requireUser` waves through as the
+  // seeded user. The agent door must not inherit that.
+  const seeded = await withEnv(MODES.dev, () => requireUser(mcpRequest()));
+  assert.equal(seeded.id, await fixtures.seedUserId());
+
+  await assert.rejects(
+    () => withEnv(MODES.dev, () => requireMcpUser(mcpRequest())),
+    UnauthorizedError,
+  );
+});
+
+test('/api/mcp refuses a valid password-mode session token', { skip }, async () => {
+  const user = await fixtures.insertUser(fixtures.testTag());
+  const sessionToken = await mintToken(SECRET, user.id);
+
+  // Good enough for every other route...
+  const resolved = await withEnv(MODES.password, () => requireUser(request(sessionToken)));
+  assert.equal(resolved.id, user.id);
+
+  // ...but not this one, in either header.
+  await assert.rejects(
+    () =>
+      withEnv(MODES.password, () =>
+        requireMcpUser(mcpRequest({ 'x-resumix-token': sessionToken })),
+      ),
+    UnauthorizedError,
+  );
+  await assert.rejects(
+    () => withEnv(MODES.password, () => requireMcpUser(mcpRequest(bearer(sessionToken)))),
+    UnauthorizedError,
+  );
+});
+
+test('an API token is refused everywhere but /api/mcp', { skip }, async () => {
+  const owner = await fixtures.insertUser(fixtures.testTag());
+  const { secret } = await createApiToken(owner.id, 'session test (elsewhere)');
+
+  await assert.rejects(
+    () =>
+      withEnv(MODES.password, () =>
+        requireUser(new Request('http://localhost/api/resumes', { headers: bearer(secret) })),
+      ),
+    UnauthorizedError,
+  );
+  await assert.rejects(
+    () => withEnv(MODES.password, () => requireUser(request(secret))),
+    UnauthorizedError,
+  );
+});

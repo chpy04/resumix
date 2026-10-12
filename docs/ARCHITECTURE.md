@@ -43,7 +43,7 @@ hand back the exact bytes a resume was last saved with.
 | DB (prod)     | a second `postgres:17` container, its own volume and port, in `docker-compose.prod.yml`                                                                               | production is a separate local instance, not a cloud one (D-031)       |
 | LaTeX         | sidecar container: TeX Live + Express `/compile`                                                                                                                      | real `pdflatex`; V1 template compiles unchanged                        |
 | PDF storage   | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                                                                                                          | one code path dev/prod; swap to Supabase Storage later                 |
-| Multi-tenancy | `user_id` on the seven root tables; children inherit through their parent; every query takes a `userId`                                                               | one source of truth per fact (D-018)                                   |
+| Multi-tenancy | `user_id` on the eight root tables; children inherit through their parent; every query takes a `userId`                                                               | one source of truth per fact (D-018)                                   |
 | Auth          | three modes behind one `requireUserId()`: `dev` (auto-login as the seeded user), `password` (shared password → HMAC token naming a user), `supabase` (OAuth, stubbed) | local dev needs no credentials; production keeps a real gate (D-019)   |
 | Drag + drop   | `@dnd-kit`                                                                                                                                                            | proven in V1                                                           |
 | PDF preview   | `react-pdf` (pdf.js)                                                                                                                                                  | proven in V1                                                           |
@@ -71,7 +71,8 @@ lib/
   auth.ts                password token mint/verify (Edge-safe)
   auth-mode.ts           which auth scheme is in force (Edge-safe)
   auth-supabase.ts       Supabase OAuth seam — NOT IMPLEMENTED, fails closed
-  session.ts             requireUserId(request) — the one entry point to "who is calling"
+  api-tokens.ts          rmx_ API token format + sha-256 hash (node:crypto, never Edge)
+  session.ts             requireUserId / requireMcpUserId — the two doors to "who is calling"
   queries/users.ts       user lookup + first-login provisioning
   filename.ts            Chris_Pyle_<Company>_{Resume,Cover_Letter}.pdf
 components/              React components
@@ -90,12 +91,18 @@ request
   │
   ├─ middleware.ts (Edge)      cheap, DB-free: rejects a request with no valid
   │                            token in password mode. Knows nothing about users.
+  │                            Lets /api/mcp/** straight through.
   │
   └─ route handler
-       └─ requireUserId(request)          lib/session.ts
-            ├─ dev      -> first row in `users`
-            ├─ password -> token's `sub` claim, confirmed to still exist
-            └─ supabase -> verified JWT -> users.supabase_user_id   (stubbed)
+       ├─ requireUserId(request)          lib/session.ts
+       │    ├─ dev      -> first row in `users`
+       │    ├─ password -> token's `sub` claim, confirmed to still exist
+       │    └─ supabase -> verified JWT -> users.supabase_user_id   (stubbed)
+       │
+       ├─ requireMcpUserId(request)       /api/mcp/** only, every mode
+       │    └─ Authorization: Bearer rmx_… -> sha-256 -> live api_token row
+       │                                    -> its user_id, else 401
+       │
        └─ every query takes that id and filters by it
 ```
 

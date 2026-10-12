@@ -3,7 +3,8 @@
  *
  * Every other query module takes a `userId` and filters by it. This one
  * produces those ids, so it is the only module here that is not itself
- * user-scoped.
+ * user-scoped. (The one function elsewhere that also produces one is
+ * `authenticateApiToken`, in `api-tokens.ts`.)
  */
 import { asc, eq, sql as raw } from 'drizzle-orm';
 import { db } from '../db/index.ts';
@@ -56,6 +57,38 @@ export async function getUserBySupabaseUserId(supabaseUserId: string): Promise<U
 export async function countUsers(): Promise<number> {
   const [row] = await db.select({ n: raw<number>`count(*)::int` }).from(users);
   return row?.n ?? 0;
+}
+
+/** Why `resolveOwnerUser` declined to pick an account. Codes rather than
+ *  prose, because each caller words the fix differently. */
+export type OwnerRefusal =
+  | { reason: 'unknown-email'; email: string }
+  | { reason: 'no-users' }
+  | { reason: 'ambiguous'; userCount: number };
+
+/**
+ * The one account a single-owner credential belongs to: the user `email`
+ * names, otherwise the only user in the table.
+ *
+ * Shared by password login (`OWNER_EMAIL`) and the API token scripts
+ * (`--email`, else `OWNER_EMAIL`). With several users and no email it refuses
+ * rather than guessing, because handing out the wrong account is worse than
+ * handing out none.
+ */
+export async function resolveOwnerUser(
+  email?: string | null,
+): Promise<{ user: User } | OwnerRefusal> {
+  const wanted = email?.trim();
+  if (wanted) {
+    const user = await getUserByEmail(wanted);
+    return user ? { user } : { reason: 'unknown-email', email: wanted };
+  }
+
+  const total = await countUsers();
+  if (total > 1) return { reason: 'ambiguous', userCount: total };
+
+  const user = total === 1 ? await getFirstUser() : null;
+  return user ? { user } : { reason: 'no-users' };
 }
 
 /** Links an existing local user to a Supabase identity on first OAuth sign-in. */

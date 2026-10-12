@@ -1,10 +1,12 @@
 # API contract
 
 All routes live under `app/api/**/route.ts`. All are server-side and require a
-session except `POST /api/auth`.
+session except `POST /api/auth`, and `/api/mcp/**`, which requires an API token
+instead (see "API tokens" below).
 
 **Everything is scoped to the caller.** Every handler resolves a user via
-`requireUserId(request)` and passes that id to the query layer; there is no
+`requireUserId(request)` (`requireMcpUserId` under `/api/mcp/**`) and passes
+that id to the query layer; there is no
 ambient "current user" and no query runs without one. An id belonging to
 somebody else is answered exactly as a nonexistent one — `404` for a lookup,
 `400 unknown ... id` for a reference — never `403`, which would confirm the
@@ -98,6 +100,41 @@ type ApplicationDetail = ApplicationSummary & { notes: string; files: Applicatio
 The browser calls `GET /api/session` on load rather than treating a stored
 token as proof of a session: in `dev` mode there is no token at all, and the
 answer is whichever user the seed created.
+
+## API tokens (`/api/mcp/**`)
+
+The agent's surface has its own credential, and it is the only one accepted
+there (D-039):
+
+```
+Authorization: Bearer rmx_<43 base64url characters>
+```
+
+- **Every auth mode, `dev` included.** Middleware lets `/api/mcp/**` through
+  and the handler checks the token against `api_token` (`requireMcpUserId`).
+  There is no dev-mode bypass: with no token, `/api/mcp` is a `401` even where
+  the rest of the app needs no login at all.
+- A missing, malformed, unknown or revoked token is `401 { "error": "unauthorized" }`,
+  the same body for all four, so a `401` never confirms that a token existed.
+- `x-resumix-token` is ignored here. The password session cannot drive the
+  agent surface.
+- `rmx_` tokens are accepted nowhere else. Every other route reads only
+  `x-resumix-token` in `password` mode, and nothing at all in `dev` mode.
+- Every successful call stamps the token's `last_used_at`.
+
+There is no HTTP endpoint for managing tokens. They are minted and revoked
+from the command line:
+
+```bash
+TOKEN=$(npm run -s token:create -- --label laptop-agent [--email you@example.com])
+npm run token:revoke -- <id> [--email you@example.com]
+```
+
+`token:create` writes only the secret to stdout, where it is shown once and
+never again, and the token's id, label and owner to stderr. The owner is
+`--email`, else `OWNER_EMAIL`, else the only user; with several users and
+neither, both scripts refuse. Both act on whatever database `DATABASE_URL`
+names, which is the dev one, through `.env`, unless you point them elsewhere.
 
 ## Resumes
 

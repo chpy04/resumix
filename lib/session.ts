@@ -6,24 +6,32 @@
  * enforcement story: there is no ambient "current user", and no query can
  * run without one being named explicitly.
  *
+ * There are two doors, and a handler uses exactly one. `requireUserId` is
+ * the app's: it follows the auth mode. `requireMcpUserId` is the agent's,
+ * for `/api/mcp/**` only: it takes an `rmx_` API token and ignores the mode
+ * entirely (D-039). Neither accepts the other's credential.
+ *
  * Server-only — this touches the database, so it can never be imported from
  * `middleware.ts` (Edge) or from anything under `components/**`. Middleware
  * does the cheap, DB-free half of the check; this does the rest.
  *
  * The three modes are described in `lib/auth-mode.ts`.
  */
+import { apiTokenFromRequest } from './api-tokens.ts';
 import { getAuthMode } from './auth-mode.ts';
 import { getAuthSecret, mintToken, verifyPassword, verifyToken } from './auth.ts';
 import { verifySupabaseAccessToken } from './auth-supabase.ts';
+import { authenticateApiToken } from './queries/api-tokens.ts';
 import { UnauthorizedError } from './queries/errors.ts';
 import {
-  countUsers,
   getFirstUser,
   getUserByEmail,
   getUserById,
   getUserBySupabaseUserId,
   linkSupabaseUserId,
   provisionUser,
+  resolveOwnerUser,
+  type OwnerRefusal,
 } from './queries/users.ts';
 import type { User } from './types.ts';
 
@@ -106,6 +114,48 @@ export async function requireUserId(request: Request): Promise<string> {
 }
 
 /**
+ * `/api/mcp/**`: the caller is whoever owns the live `rmx_` token in
+ * `Authorization: Bearer`, or nobody (-> 401 via `withApiErrors`).
+ *
+ * Never consults `getAuthMode()`, and that is the point. Dev mode's "no
+ * login" is for a browser on this machine; were it honoured here, anything
+ * that could reach the port would get the whole account through the agent
+ * surface. `x-resumix-token` is never read either, so the shared-password
+ * session cannot drive it. Missing, unknown and revoked tokens get the same
+ * message, so a 401 never confirms that a token once existed.
+ */
+export async function requireMcpUser(request: Request): Promise<User> {
+  const secret = apiTokenFromRequest(request);
+  if (!secret) throw new UnauthorizedError('unauthorized');
+
+  const user = await authenticateApiToken(secret);
+  if (!user) throw new UnauthorizedError('unauthorized');
+  return user;
+}
+
+/** What `/api/mcp/**` handlers start with, as every other handler starts
+ *  with `requireUserId`. */
+export async function requireMcpUserId(request: Request): Promise<string> {
+  const user = await requireMcpUser(request);
+  return user.id;
+}
+
+/** The server log line for a login `resolveOwnerUser` refused. */
+function loginRefusal(refusal: OwnerRefusal): string {
+  switch (refusal.reason) {
+    case 'unknown-email':
+      return `[auth] OWNER_EMAIL="${refusal.email}" does not match any user — rejecting login.`;
+    case 'no-users':
+      return '[auth] no users exist — run `npm run db:seed`. Rejecting login.';
+    case 'ambiguous':
+      return (
+        `[auth] ${refusal.userCount} users exist but OWNER_EMAIL is unset, so the password gate cannot tell ` +
+        'which one to log in as. Set OWNER_EMAIL, or switch to RESUMIX_AUTH_MODE=supabase.'
+      );
+  }
+}
+
+/**
  * `POST /api/auth`, password mode only: check the shared password, then mint
  * a token bound to a specific user.
  *
@@ -121,32 +171,10 @@ export async function loginWithPassword(password: string): Promise<string | null
   const secret = getAuthSecret();
   if (!secret) return null; // verifyPassword already logged why
 
-  const ownerEmail = process.env.OWNER_EMAIL?.trim();
-  if (ownerEmail) {
-    const user = await getUserByEmail(ownerEmail);
-    if (!user) {
-      console.error(
-        `[auth] OWNER_EMAIL="${ownerEmail}" does not match any user — rejecting login.`,
-      );
-      return null;
-    }
-    return mintToken(secret, user.id);
-  }
-
-  const total = await countUsers();
-  if (total === 0) {
-    console.error('[auth] no users exist — run `npm run db:seed`. Rejecting login.');
+  const owner = await resolveOwnerUser(process.env.OWNER_EMAIL);
+  if (!('user' in owner)) {
+    console.error(loginRefusal(owner));
     return null;
   }
-  if (total > 1) {
-    console.error(
-      `[auth] ${total} users exist but OWNER_EMAIL is unset, so the password gate cannot tell ` +
-        'which one to log in as. Set OWNER_EMAIL, or switch to RESUMIX_AUTH_MODE=supabase.',
-    );
-    return null;
-  }
-
-  const user = await getFirstUser();
-  if (!user) return null;
-  return mintToken(secret, user.id);
+  return mintToken(secret, owner.user.id);
 }

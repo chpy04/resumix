@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getAuthMode, isDevAuth } from './auth-mode.ts';
+import { getAuthMode, isDevAuth, isMcpPath } from './auth-mode.ts';
 
 function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
   const previous: Record<string, string | undefined> = {};
@@ -57,4 +57,18 @@ test('an unrecognised mode throws rather than falling back to something permissi
 test('isDevAuth tracks getAuthMode', () => {
   assert.equal(withEnv({ RESUMIX_AUTH_MODE: 'dev' }, isDevAuth), true);
   assert.equal(withEnv({ RESUMIX_AUTH_MODE: 'password' }, isDevAuth), false);
+});
+
+test('isMcpPath is /api/mcp and everything under it', () => {
+  assert.equal(isMcpPath('/api/mcp'), true);
+  assert.equal(isMcpPath('/api/mcp/'), true);
+  assert.equal(isMcpPath('/api/mcp/files/x'), true);
+});
+
+test('isMcpPath is not a bare prefix match', () => {
+  // These get the ordinary middleware check, which in password mode means
+  // they still need `x-resumix-token`.
+  assert.equal(isMcpPath('/api/mcpx'), false);
+  assert.equal(isMcpPath('/api/mcp-tools'), false);
+  assert.equal(isMcpPath('/api/resumes'), false);
 });
