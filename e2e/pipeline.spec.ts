@@ -139,6 +139,20 @@ test('flow columns refuse drops, but a Ready card can still be sent', async ({ p
   await expect(page.getByTestId('kanban-column-draft').getByTestId(draftCard)).toBeVisible();
   await expect(page.getByTestId('kanban-column-ready').getByTestId(draftCard)).toHaveCount(0);
 
+  // The control: the same card, dragged the same way onto a column that does
+  // accept drops, moves. Without this, the refusals above would also pass if
+  // the drag had never started at all.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      response.url().endsWith(`/api/applications/${draft}`),
+  );
+  await dragCardOnto(page, draftCard, 'kanban-column-interviewing');
+  await expect(page.getByTestId('kanban-column-interviewing').getByTestId(draftCard)).toBeVisible();
+  expect((await saved).ok()).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId('kanban-column-interviewing').getByTestId(draftCard)).toBeVisible();
+
   // A Ready card leaves for Applied like any other, and only now counts as sent.
   const readyCard = `application-card-${ready}`;
   await expect(page.getByTestId('kanban-column-ready').getByTestId(readyCard)).toBeVisible();
