@@ -36,6 +36,7 @@ export async function POST(request: Request): Promise<Response> {
         url: stringField(form, 'url'),
         viewport: stringField(form, 'viewport'),
         userAgent: stringField(form, 'userAgent'),
+        planFirst: stringField(form, 'planFirst'),
       });
       if (!parsed.success) {
         const issue = parsed.error.issues[0];

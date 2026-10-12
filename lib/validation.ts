@@ -258,4 +258,9 @@ export const feedbackSchema = z.object({
   url: pageUrl,
   viewport: z.string().max(40).optional(),
   userAgent: z.string().max(500).optional(),
+  /** A multipart checkbox: `'true'` when on, absent when off. */
+  planFirst: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
 });

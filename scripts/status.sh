@@ -4,7 +4,7 @@
 #
 # Status lives in a `status:*` label on the issue itself (D-026). One
 # implementation, used from two places: agents run it by hand for the
-# transitions only they know about (-> planning, -> in-progress, -> blocked),
+# transitions only they know about (-> in-progress, -> blocked),
 # and .github/workflows/status.yml runs it for the ones inferable from git
 # events. Keeping it in one file is why the status can never disagree with
 # itself.
@@ -29,10 +29,12 @@ set -euo pipefail
 REPO="${RESUMIX_REPO:-chpy04/resumix}"
 PREFIX="status:"
 
-# The seven the lifecycle defines. Load-bearing: an unknown status is a typo,
-# and adding an unknown label via the API would have GitHub silently create it
-# in a random colour rather than fail.
-STATUSES=(backlog planning ready in-progress in-review blocked done)
+# The six the lifecycle defines (D-036 dropped planning and ready, and added
+# plan-review for `plan-first` issues).
+# Load-bearing: an unknown status is a typo, and adding an unknown label via
+# the API would have GitHub silently create it in a random colour rather than
+# fail.
+STATUSES=(backlog in-progress plan-review in-review blocked done)
 
 die() {
   echo "status: $*" >&2

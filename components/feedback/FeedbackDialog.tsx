@@ -17,6 +17,7 @@ export interface FeedbackDraft {
   kind: FeedbackKind;
   description: string;
   screenshot: File | null;
+  planFirst: boolean;
 }
 
 interface FeedbackDialogProps {
@@ -66,6 +67,7 @@ export default function FeedbackDialog({
 }: FeedbackDialogProps) {
   const [kind, setKind] = useState<FeedbackKind>('bug');
   const [description, setDescription] = useState('');
+  const [planFirst, setPlanFirst] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -77,6 +79,7 @@ export default function FeedbackDialog({
     if (!open) return undefined;
     setKind('bug');
     setDescription('');
+    setPlanFirst(false);
     setDragging(false);
     const id = requestAnimationFrame(() => textareaRef.current?.focus());
     return () => cancelAnimationFrame(id);
@@ -131,7 +134,7 @@ export default function FeedbackDialog({
     event.preventDefault();
     const trimmed = description.trim();
     if (trimmed.length === 0 || submitting) return;
-    onSubmit({ kind, description: trimmed, screenshot });
+    onSubmit({ kind, description: trimmed, screenshot, planFirst });
   }
 
   return (
@@ -197,6 +200,8 @@ export default function FeedbackDialog({
                 }}
                 onClear={() => onScreenshotChange(null)}
               />
+
+              <PlanFirstSwitch checked={planFirst} onChange={setPlanFirst} />
 
               <p className="mt-2 truncate text-xs text-ink-dim" title={pageUrl}>
                 Page: <span className="text-ink">{pageUrl}</span>
@@ -264,6 +269,52 @@ function KindOption({ value, label, checked, onSelect }: KindOptionProps) {
         {checked ? <span className="h-1.5 w-1.5 rounded-full bg-accent" /> : null}
       </span>
       {label}
+    </label>
+  );
+}
+
+/**
+ * Off by default, because off is the normal path: the issue goes straight
+ * from backlog to a PR with nobody in between. On adds `plan-first`, and the
+ * agent stops after drawing its plan on the Excalidraw board (D-036).
+ *
+ * A real checkbox with `role="switch"`, like `KindOption`'s hidden radio, so
+ * Space toggles it and assistive tech announces it as on/off.
+ */
+function PlanFirstSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-xs">
+      <input
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full border p-0.5 transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-accent ${
+          checked ? 'border-accent bg-accent' : 'border-line bg-surface-2'
+        }`}
+      >
+        <span
+          className={`h-2.5 w-2.5 rounded-full transition-transform ${
+            checked ? 'translate-x-3 bg-canvas' : 'bg-ink-dim'
+          }`}
+        />
+      </span>
+      <span>
+        <span className="text-ink">Create a plan first</span>
+        <span className="block text-ink-dim">
+          The agent drafts its plan on the Excalidraw board and waits for your OK before building.
+        </span>
+      </span>
     </label>
   );
 }

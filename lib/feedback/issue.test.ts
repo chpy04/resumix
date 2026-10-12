@@ -46,6 +46,11 @@ test('labels carry both the source and the kind', () => {
   assert.deepEqual(issueLabels('feature'), ['feedback', 'enhancement']);
 });
 
+test('plan first adds the label /implement plans on the board for', () => {
+  assert.deepEqual(issueLabels('bug', true), ['feedback', 'bug', 'plan-first']);
+  assert.deepEqual(issueLabels('feature', false), ['feedback', 'enhancement']);
+});
+
 test('the body leads with the type and the route, without the host', () => {
   const body = issueBody({
     kind: 'bug',

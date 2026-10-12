@@ -271,14 +271,16 @@ The only endpoint that writes somewhere other than the database.
 
 Form fields: `kind` (`bug` \| `feature`, required), `description` (required,
 ≤ 10 000 chars), `url` (required, the page being reported on — http(s) only),
-`viewport`, `userAgent`, and an optional `screenshot` file
-(`image/png` \| `jpeg` \| `gif` \| `webp`, ≤ 4 MB).
+`viewport`, `userAgent`, `planFirst` (`true` \| `false`, default `false`), and an
+optional `screenshot` file (`image/png` \| `jpeg` \| `gif` \| `webp`, ≤ 4 MB).
 
 Multipart rather than JSON because a base64 screenshot inside JSON would be
 ~33% larger against Vercel's 4.5 MB request-body limit. The widget downscales
 anything over 1 MB before sending.
 
-Creates a GitHub issue in `GITHUB_REPO`, labelled `feedback` + `bug`/`enhancement`.
+Creates a GitHub issue in `GITHUB_REPO`, labelled `feedback` + `bug`/`enhancement`,
+plus `plan-first` when `planFirst` is `true` — which makes `/implement` stop at a
+plan on the Excalidraw board instead of building straight through (D-036).
 The submitted `url` is split in the body: the route leads it, while the origin,
 the browser parsed out of `userAgent`, and the raw `userAgent` sit in the
 collapsed Environment block (D-024).

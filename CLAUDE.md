@@ -163,19 +163,20 @@ the issue list is the human's inbox, and an agent that files its own work
 item has quietly promoted its own idea to a commitment nobody made. Say it
 in your reply instead.
 
-**Unattended, through the skills.** `.claude/skills/` holds three —
-`/triage`, `/implement`, `/review-pr` — that carry a GitHub issue from
-backlog to open PR with nobody watching, and `scripts/herd.sh` starts one
-agent per open issue on the skill its `status:*` label calls for. They are
-deliberately heavy with ceremony, because the only thing that matters when
-no one is watching is an agent that **stops** where a human would otherwise
-have interrupted it.
+**Unattended, through `/implement`.** `.claude/skills/implement` takes one
+GitHub issue from backlog to an open PR with nobody watching.
+`scripts/herd.sh` starts one agent per `status:backlog` issue. That agent is
+an orchestrator: it hands planning, building and verification to the
+`planner`, `implementer` and `verifier` subagents in `.claude/agents/`, and
+loops build → verify until it passes. The PR is the only human checkpoint
+(D-036), unless the issue is labelled `plan-first`; then the agent stops
+after drawing its plan on the Excalidraw board and builds once a human moves
+the issue back to backlog.
 
-**That is not this.** Those rules live in the skill files and in
+**That is not this.** Those rules live in the skill, the agent files and
 `.claude/rules/github.md`, deliberately out of here, so an attended session
-never pays for them in context. Each skill is
-`disable-model-invocation: true` and fires only when something types
-`/triage 12` — never on its own, and never at another skill's request.
+never pays for them in context. The skill is `disable-model-invocation: true`
+and fires only when something types `/implement 12`, never on its own.
 
 ## Production is not yours
 

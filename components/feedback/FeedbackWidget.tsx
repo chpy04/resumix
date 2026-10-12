@@ -150,6 +150,7 @@ export default function FeedbackWidget() {
       const filed = await submitFeedback({
         kind: draft.kind,
         description: draft.description,
+        planFirst: draft.planFirst,
         url: pageUrl,
         viewport: `${window.innerWidth}x${window.innerHeight}`,
         userAgent: navigator.userAgent,

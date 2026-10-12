@@ -26,6 +26,7 @@ export interface FeedbackSubmission {
   viewport?: string | null;
   userAgent?: string | null;
   screenshot?: ScreenshotUpload | null;
+  planFirst?: boolean;
 }
 
 export interface FeedbackResult extends CreatedIssue {
@@ -70,7 +71,7 @@ export async function fileFeedback(submission: FeedbackSubmission): Promise<Feed
       screenshotError,
       submittedAt,
     }),
-    labels: issueLabels(submission.kind),
+    labels: issueLabels(submission.kind, submission.planFirst),
   });
 
   return { ...issue, screenshotUploaded: screenshotError === null };

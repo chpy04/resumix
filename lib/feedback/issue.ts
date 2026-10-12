@@ -32,12 +32,18 @@ export interface FeedbackIssueInput {
 
 /** The repo's own label vocabulary. `feedback` marks the widget as the source. */
 const KIND_LABEL: Record<FeedbackKind, string> = { bug: 'bug', feature: 'enhancement' };
+
+/** Tells `/implement` to put its plan on the Excalidraw board and wait for a
+ *  human before building (D-036). Must exist in the repo: an unknown label
+ *  422s the request and the issue is refiled with no labels at all. */
+export const PLAN_FIRST_LABEL = 'plan-first';
 const KIND_TITLE: Record<FeedbackKind, string> = { bug: 'Bug', feature: 'Feature' };
 
 const TITLE_SUMMARY_MAX = 72;
 
-export function issueLabels(kind: FeedbackKind): string[] {
-  return ['feedback', KIND_LABEL[kind]];
+export function issueLabels(kind: FeedbackKind, planFirst = false): string[] {
+  const labels = ['feedback', KIND_LABEL[kind]];
+  return planFirst ? [...labels, PLAN_FIRST_LABEL] : labels;
 }
 
 /**
