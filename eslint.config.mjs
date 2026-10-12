@@ -68,6 +68,9 @@ export default tseslint.config(
       'test-results/**',
       'playwright-report/**',
       'next-env.d.ts',
+      // The applying Claude's workspace, and the career-ops submodule inside
+      // it, which is third-party code we never edit (D-038).
+      'agent/**',
     ],
   },
 

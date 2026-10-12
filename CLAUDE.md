@@ -205,6 +205,15 @@ Editing the prod _lane_ is normal work: `Dockerfile`,
 `docker-compose.prod.yml`, `scripts/deploy-prod.sh` and `prod.env.example`
 are ordinary checked-in files. Changing them is fine. Running them is not.
 
+`agent/` is the same kind of lane. It belongs to a second Claude, the one
+that applies to jobs through production's MCP (D-038). Edit its files when a
+change asks for it, but never run anything there (no `claude`, no
+`agent/claude.sh`) and never read `agent/.env`. The Resumix MCP is configured
+in `agent/.mcp.json` and nowhere else: `lib/agent-workspace.test.ts` fails if
+a root `.mcp.json` or `.claude/settings*.json` names it. It cannot see
+`claude mcp add`, which writes to `~/.claude.json`, so never use that for
+Resumix.
+
 ## Branches and worktrees
 
 **Never commit to `main`.** Branch `feat/<slug>`, `fix/<slug>` or

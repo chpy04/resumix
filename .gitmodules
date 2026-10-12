@@ -1,0 +1,7 @@
+# career-ops, the toolkit the applying Claude in agent/ runs (D-038). Pinned to
+# tag career-ops-v1.36.0 (26384e5) and never edited here: personal files go in
+# $CAREER_OPS_DATA_DIR (agent/.env.example). Nothing in the build needs it, so
+# CI and worktrees leave it uninitialised; `git submodule update --init` fetches it.
+[submodule "agent/career-ops"]
+	path = agent/career-ops
+	url = https://github.com/career-ops-hq/career-ops.git
