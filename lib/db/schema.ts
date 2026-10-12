@@ -342,6 +342,33 @@ export const coverLetter = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// API tokens
+//
+// The credential `/api/mcp/**` accepts, in every auth mode (D-039). An eighth
+// root table. Only the hash is stored, and a token is revoked rather than
+// deleted, so the row outlives the secret as a record of who had access.
+// ---------------------------------------------------------------------------
+
+export const apiToken = pgTable(
+  'api_token',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    label: text('label').notNull(),
+    /** Hex sha-256 of the `rmx_…` secret (`lib/api-tokens.ts`). */
+    tokenHash: text('token_hash').notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    /** Set once and never cleared. */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('ux_api_token_token_hash').on(t.tokenHash),
+    index('ix_api_token_user_id').on(t.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Applications
 //
 // One row per application, plus its attachments — no company table, no event

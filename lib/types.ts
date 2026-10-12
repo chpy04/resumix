@@ -11,6 +11,17 @@ export interface User {
   name: string | null;
 }
 
+/** An API token's metadata (D-039). Deliberately has no field for the secret
+ *  or its hash: the secret exists only in `createApiToken`'s return value. */
+export interface ApiToken {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  /** Null while the token still works. */
+  revokedAt: string | null;
+}
+
 /** `GET /api/session` — who the browser is talking as, and how it got there. */
 export interface SessionInfo {
   user: User;
