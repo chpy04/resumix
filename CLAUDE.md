@@ -118,6 +118,7 @@ error messages name the rule file.
 | `styling.md`      | the same, plus `app/globals.css`             |
 | `render-latex.md` | `lib/render/**`, `lib/latex.ts`, `services/` |
 | `auth.md`         | the auth + middleware graph                  |
+| `mcp.md`          | `lib/mcp/**`, `app/api/mcp/**`               |
 | `testing.md`      | `**/*.test.ts`, `e2e/**`, `scripts/**`       |
 | `docs.md`         | `docs/**`                                    |
 | `github.md`       | `.github/**`, `scripts/status.sh`            |
