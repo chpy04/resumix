@@ -99,10 +99,14 @@ Then update `docs/API.md` in the same commit.
 
 **Resolve the caller and scope every query to them.** Start the handler body
 with `const userId = await requireUserId(request)` (`lib/session.ts`) and
-thread that id into the query function, which must filter on it.
-`middleware.ts` guards `/api/*` but cannot identify the user (Edge runtime,
-no database), so it is not what keeps accounts apart — your `WHERE` clause
-is. Answer another user's id with `NotFoundError`, never a 403, and add a
+thread that id into the query function, which must filter on it. Under
+`/api/mcp/**` start with `const userId = await requireMcpUserId(request)`
+instead, which takes only an `rmx_` API token, in every auth mode (D-039).
+`middleware.ts` guards `/api/*` (except `/api/auth` and `/api/mcp/**`) but
+cannot identify the user (Edge runtime, no database), so it is not what keeps
+accounts apart — your `WHERE` clause is. Under `/api/mcp/**` it checks
+nothing at all, so the handler's `requireMcpUserId` call is the whole gate.
+Answer another user's id with `NotFoundError`, never a 403, and add a
 case to `lib/queries/isolation.test.ts` for any new way to address someone
 else's row by id.
 

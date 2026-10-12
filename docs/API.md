@@ -1,10 +1,12 @@
 # API contract
 
 All routes live under `app/api/**/route.ts`. All are server-side and require a
-session except `POST /api/auth`.
+session except `POST /api/auth`, and `/api/mcp/**`, which requires an API token
+instead (see "API tokens" below).
 
 **Everything is scoped to the caller.** Every handler resolves a user via
-`requireUserId(request)` and passes that id to the query layer; there is no
+`requireUserId(request)` (`requireMcpUserId` under `/api/mcp/**`) and passes
+that id to the query layer; there is no
 ambient "current user" and no query runs without one. An id belonging to
 somebody else is answered exactly as a nonexistent one — `404` for a lookup,
 `400 unknown ... id` for a reference — never `403`, which would confirm the
@@ -66,7 +68,16 @@ type Selections = {
 type CoverLetterSummary = { id; name; isDefault; isArchived; createdAt; updatedAt };
 type CoverLetter = CoverLetterSummary & { content: string }; // the whole LaTeX document
 
-type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
+// The middle three are set only by the review flow; PATCH refuses them (D-041).
+type ApplicationStatus =
+  | 'draft'
+  | 'proposing'
+  | 'needs_review'
+  | 'ready'
+  | 'applied'
+  | 'interviewing'
+  | 'offered'
+  | 'rejected';
 
 type ApplicationSummary = {
   id;
@@ -74,10 +85,11 @@ type ApplicationSummary = {
   roleTitle;
   postingUrl;
   status: ApplicationStatus;
-  appliedAt: string | null; // null exactly while it is a draft
+  appliedAt: string | null; // null until it first reaches applied or a later stage
   resumeId: string | null; // the live resume being tailored
   sentPdf: { filename; createdAt } | null; // the frozen snapshot that went out
   coverLetterId: string | null; // this application's own letter; no snapshot beside it
+  fitScore: number | null; // the agent's 0.0–5.0 estimate; null when unscored
   isArchived;
   createdAt;
   updatedAt;
@@ -85,7 +97,12 @@ type ApplicationSummary = {
 
 type ApplicationFile = { id; filename; contentType; byteSize; isArchived; createdAt };
 
-type ApplicationDetail = ApplicationSummary & { notes: string; files: ApplicationFile[] };
+type ApplicationDetail = ApplicationSummary & {
+  notes: string;
+  jobDescription: string | null; // the posting's text, from the agent
+  agentSummary: string | null; // the agent's evaluation, plain text
+  files: ApplicationFile[];
+};
 ```
 
 ## Auth
@@ -98,6 +115,41 @@ type ApplicationDetail = ApplicationSummary & { notes: string; files: Applicatio
 The browser calls `GET /api/session` on load rather than treating a stored
 token as proof of a session: in `dev` mode there is no token at all, and the
 answer is whichever user the seed created.
+
+## API tokens (`/api/mcp/**`)
+
+The agent's surface has its own credential, and it is the only one accepted
+there (D-039):
+
+```
+Authorization: Bearer rmx_<43 base64url characters>
+```
+
+- **Every auth mode, `dev` included.** Middleware lets `/api/mcp/**` through
+  and the handler checks the token against `api_token` (`requireMcpUserId`).
+  There is no dev-mode bypass: with no token, `/api/mcp` is a `401` even where
+  the rest of the app needs no login at all.
+- A missing, malformed, unknown or revoked token is `401 { "error": "unauthorized" }`,
+  the same body for all four, so a `401` never confirms that a token existed.
+- `x-resumix-token` is ignored here. The password session cannot drive the
+  agent surface.
+- `rmx_` tokens are accepted nowhere else. Every other route reads only
+  `x-resumix-token` in `password` mode, and nothing at all in `dev` mode.
+- Every successful call stamps the token's `last_used_at`.
+
+There is no HTTP endpoint for managing tokens. They are minted and revoked
+from the command line:
+
+```bash
+TOKEN=$(npm run -s token:create -- --label laptop-agent [--email you@example.com])
+npm run token:revoke -- <id> [--email you@example.com]
+```
+
+`token:create` writes only the secret to stdout, where it is shown once and
+never again, and the token's id, label and owner to stderr. The owner is
+`--email`, else `OWNER_EMAIL`, else the only user; with several users and
+neither, both scripts refuse. Both act on whatever database `DATABASE_URL`
+names, which is the dev one, through `.env`, unless you point them elsewhere.
 
 ## Resumes
 
@@ -182,10 +234,20 @@ contract.
 | GET    | `/api/applications/:id/pdf`           | —                                                                                                | `application/pdf` of the snapshot **that was sent**; `404` if none |
 
 `appliedAt` is deliberately not writable: it follows from `status`, stamped the
-first time an application leaves `draft` and never cleared (docs/SCHEMA.md).
+first time an application reaches `applied`, `interviewing`, `offered` or
+`rejected` — never on entering `draft` or a flow status — and never cleared
+(docs/SCHEMA.md).
 `resumeId: null` and `coverLetterId: null` unlink those documents without
 touching them; `postingUrl` must be empty or http(s), since it is rendered as
 a link.
+
+PATCH `status` accepts only the manual statuses: `draft`, `applied`,
+`interviewing`, `offered`, `rejected`. `proposing`, `needs_review` and `ready`
+are a `400`: only the review flow sets them, because `ready` vouches for
+approvals and a snapshot that a hand-set status would skip (D-041). An
+application already in one of them can still be PATCHed to any manual status.
+`jobDescription`, `agentSummary` and `fitScore` are read-only here; they
+arrive from the agent.
 
 `createResumeFrom` clones that resume under the company's name and links the
 copy — the normal path, since a new application arrives with something to

@@ -10,11 +10,11 @@ hidden from the picker unless "show archived" is toggled on.
 
 ## Ownership — every row belongs to exactly one user
 
-The seven **root** tables carry `user_id uuid not null references users (id) on
+The eight **root** tables carry `user_id uuid not null references users (id) on
 delete restrict`:
 
 `template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`cover_letter`, `application`.
+`cover_letter`, `application`, `api_token`.
 
 Everything else infers its owner through its parent and carries **no**
 `user_id` of its own:
@@ -55,6 +55,29 @@ cascade would stop there.
 Named `users`, not `user`, because `user` is a reserved word in Postgres.
 **There is no password column and there never will be one** — authentication
 is external (see `docs/API.md`, "Auth modes").
+
+### `api_token`
+
+The credential an agent presents to `/api/mcp/**` (D-039). A root table, so
+one token belongs to exactly one user.
+
+| column         | type                        | notes                                                    |
+| -------------- | --------------------------- | -------------------------------------------------------- |
+| `user_id`      | uuid → `users(id)` not null | whose account the token acts as                          |
+| `label`        | text not null               | which agent or machine holds it                          |
+| `token_hash`   | text not null               | hex sha-256 of the `rmx_…` secret; unique                |
+| `last_used_at` | timestamptz                 | stamped on every successful call; null until the first   |
+| `revoked_at`   | timestamptz                 | null while the token works; set once and **never** reset |
+
+**Only the hash is stored.** The secret is shown once, by
+`npm run token:create`, and nothing can recover it afterwards. Unsalted
+sha-256 is enough because the secret is 32 random bytes rather than something
+a person chose, and a deterministic hash is what lets `ux_api_token_token_hash`
+be the lookup.
+
+**Tokens are revoked, never deleted.** `revoked_at` ends a token; the row
+stays, so `label`, `last_used_at` and `revoked_at` remain a record of what had
+access and when. Revoking twice keeps the first date.
 
 ## Content tables (per-user)
 
@@ -193,19 +216,26 @@ in the way (D-032).
 
 ### `application`
 
-| column            | type                                         | notes                                                             |
-| ----------------- | -------------------------------------------- | ----------------------------------------------------------------- |
-| `user_id`         | uuid → `users(id)` not null                  | a root table, like `resume`                                       |
-| `company`         | text not null                                | plain text; two applications to one company are two rows          |
-| `role_title`      | text not null default `''`                   |                                                                   |
-| `posting_url`     | text not null default `''`                   | empty or http(s) — it is rendered as a link                       |
-| `notes`           | text not null default `''`                   | freeform; the only place unstructured detail goes                 |
-| `status`          | `application_status` not null                | `draft` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
-| `applied_at`      | timestamptz                                  | null exactly while nothing has been sent                          |
-| `resume_id`       | uuid → `resume(id)` on delete set null       | the **live** resume being tailored                                |
-| `resume_pdf_id`   | uuid → `resume_pdf(id)` on delete restrict   | the **frozen** snapshot that was sent                             |
-| `cover_letter_id` | uuid → `cover_letter(id)` on delete set null | this application's own letter                                     |
-| `is_archived`     | boolean not null default false               |                                                                   |
+| column                     | type                                                 | notes                                                                                                         |
+| -------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `user_id`                  | uuid → `users(id)` not null                          | a root table, like `resume`                                                                                   |
+| `company`                  | text not null                                        | plain text; two applications to one company are two rows                                                      |
+| `role_title`               | text not null default `''`                           |                                                                                                               |
+| `posting_url`              | text not null default `''`                           | empty or http(s) — it is rendered as a link                                                                   |
+| `notes`                    | text not null default `''`                           | freeform; the only place unstructured detail goes                                                             |
+| `status`                   | `application_status` not null                        | `draft` \| `proposing` \| `needs_review` \| `ready` \| `applied` \| `interviewing` \| `offered` \| `rejected` |
+| `applied_at`               | timestamptz                                          | null until it first reaches `applied` or a later stage                                                        |
+| `resume_id`                | uuid → `resume(id)` on delete set null               | the **live** resume being tailored                                                                            |
+| `resume_pdf_id`            | uuid → `resume_pdf(id)` on delete restrict           | the **frozen** snapshot that was sent                                                                         |
+| `cover_letter_id`          | uuid → `cover_letter(id)` on delete set null         | this application's own letter                                                                                 |
+| `job_description`          | text                                                 | the posting's text, from the agent; null when it supplied none                                                |
+| `agent_summary`            | text                                                 | the agent's evaluation, plain text; null when it supplied none                                                |
+| `fit_score`                | numeric(2,1), CHECK 0–5 (`ck_application_fit_score`) | the agent's 0.0–5.0 estimate of fit (C13); null when unscored                                                 |
+| `proposed_selection`       | jsonb                                                | the agent's original pick, in the API's `Selections` shape (C7)                                               |
+| `resume_approved_at`       | timestamptz                                          | null until the resume is approved in review (C11)                                                             |
+| `cover_letter_approved_at` | timestamptz                                          | null until the cover letter is approved in review (C11)                                                       |
+| `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11)                                                     |
+| `is_archived`              | boolean not null default false                       |                                                                                                               |
 
 **The two resume references are not redundant.** `resume_id` is the mutable
 thing you keep editing; `resume_pdf_id` is what the company actually received.
@@ -227,10 +257,25 @@ letter is a private copy that nothing else can edit, so the link _is_ the
 record (D-035). `set null` for the same reason `resume_id` is: an application
 that has lost its letter is still a true row about a job.
 
+**The statuses split in two (D-041).** `proposing`, `needs_review` and
+`ready` belong to the agent's review flow and are written only by it — the
+API refuses them in a PATCH, because `ready` vouches for approvals and a
+snapshot that a hand-set status would skip. The other five are the ones a
+person sets, in any order. The enum's own order is the order an application
+moves through: draft, proposing, needs_review, ready, applied, interviewing,
+offered, rejected.
+
 `applied_at` is not settable by the API. It follows from `status`
-(`lib/applications/status.ts`): stamped the first time an application leaves
-`draft`, never cleared afterwards — including when the status moves back,
-because the date something was sent is a fact and the status is an opinion.
+(`lib/applications/status.ts`): stamped the first time an application enters
+`applied` — or `interviewing`, `offered` or `rejected` without passing
+through `applied` — and never on entering `draft` or a flow status, since an
+application the agent is still proposing has not been sent anywhere. It is
+never cleared afterwards, including when the status moves back, because the
+date something was sent is a fact and the status is an opinion.
+
+The agent's columns are all nullable. Null means the agent never supplied
+that value, which a row logged by hand never has; it is a different fact
+from an empty string.
 
 ### `application_file`
 

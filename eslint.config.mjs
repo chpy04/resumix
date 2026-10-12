@@ -13,6 +13,51 @@ import globals from 'globals';
 /** Relative specifier with no extension on the final segment (`./foo`). */
 const RELATIVE_WITHOUT_EXTENSION = String.raw`/^\.{1,2}\/(?:[^/]*\/)*[^./]+$/`;
 
+// `no-restricted-imports` patterns, named so the Edge blocks below can restate
+// them. Flat config does not merge a rule's options across blocks: the last
+// block to set a rule for a file replaces it wholesale, so an Edge block that
+// listed only its own bans would silently switch these off for its files.
+
+const NO_DB = {
+  group: ['**/lib/db', '**/lib/db/*', 'drizzle-orm', 'drizzle-orm/*', 'postgres'],
+  message:
+    'Only lib/queries/** and lib/storage.ts may reach the database. Add a query function there and call it. See .claude/rules/data-access.md.',
+};
+
+const APP_NO_RELATIVE = {
+  group: ['../*', '../../*', '../../../*'],
+  message:
+    'Under app/ and components/, import across directories with the `@/` alias, not a relative path. See .claude/rules/imports.md.',
+};
+
+const APP_NO_EXTENSION = {
+  // `regex`, not `group`: pattern groups are gitignore-style
+  // globs, so a regex written there silently matches nothing.
+  regex: String.raw`\.tsx?$`,
+  message:
+    'Under app/ and components/, omit the file extension — webpack resolves it. See .claude/rules/imports.md.',
+};
+
+const LIB_NO_ALIAS = {
+  group: ['@/*', '@/**'],
+  message:
+    'lib/ and scripts/ run under bare node, which cannot resolve the `@/` alias. Use a relative path with an explicit .ts extension. See .claude/rules/imports.md.',
+};
+
+const EDGE_NO_NODE_CRYPTO = ['node:crypto', 'crypto'].map((name) => ({
+  name,
+  message:
+    'This module runs on the Edge runtime, which has no node:crypto. Use Web Crypto (crypto.subtle). See .claude/rules/auth.md.',
+}));
+
+const EDGE_NO_SERVER_MODULES = {
+  // The ban ESLint cannot see transitively: these reach node:crypto or the
+  // database a file or two down, and `api-tokens` is the module that hashes.
+  group: ['**/session*', '**/api-tokens*', '**/queries/**', '**/db', '**/db/*'],
+  message:
+    'This module is in the middleware import graph, which runs on the Edge runtime: no session, API-token, query or DB modules, since they reach node:crypto or the database. See .claude/rules/auth.md.',
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -51,30 +96,7 @@ export default tseslint.config(
   {
     files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}', 'middleware.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['**/lib/db', '**/lib/db/*', 'drizzle-orm', 'drizzle-orm/*', 'postgres'],
-              message:
-                'Only lib/queries/** and lib/storage.ts may reach the database. Add a query function there and call it. See .claude/rules/data-access.md.',
-            },
-            {
-              group: ['../*', '../../*', '../../../*'],
-              message:
-                'Under app/ and components/, import across directories with the `@/` alias, not a relative path. See .claude/rules/imports.md.',
-            },
-            {
-              // `regex`, not `group`: pattern groups are gitignore-style
-              // globs, so a regex written there silently matches nothing.
-              regex: String.raw`\.tsx?$`,
-              message:
-                'Under app/ and components/, omit the file extension — webpack resolves it. See .claude/rules/imports.md.',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', { patterns: [NO_DB, APP_NO_RELATIVE, APP_NO_EXTENSION] }],
     },
   },
 
@@ -86,18 +108,7 @@ export default tseslint.config(
   {
     files: ['lib/**/*.ts', 'scripts/**/*.ts'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['@/*', '@/**'],
-              message:
-                'lib/ and scripts/ run under bare node, which cannot resolve the `@/` alias. Use a relative path with an explicit .ts extension. See .claude/rules/imports.md.',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', { patterns: [LIB_NO_ALIAS] }],
       'no-restricted-syntax': [
         'error',
         {
@@ -110,27 +121,29 @@ export default tseslint.config(
   },
 
   // -------------------------------------------------------------------------
-  // The middleware import graph runs on the Edge runtime.
+  // The middleware import graph runs on the Edge runtime. Two blocks because
+  // middleware.ts follows the app/ import style and the lib files the lib/
+  // one. Each restates its tree's patterns, for the reason given above the
+  // pattern constants at the top of this file.
   // -------------------------------------------------------------------------
   {
-    files: ['middleware.ts', 'lib/auth.ts'],
+    files: ['middleware.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            {
-              name: 'node:crypto',
-              message:
-                'This module runs on the Edge runtime, which has no node:crypto. Use Web Crypto (crypto.subtle). See .claude/rules/auth.md.',
-            },
-            {
-              name: 'crypto',
-              message:
-                'This module runs on the Edge runtime, which has no node:crypto. Use Web Crypto (crypto.subtle). See .claude/rules/auth.md.',
-            },
-          ],
+          paths: EDGE_NO_NODE_CRYPTO,
+          patterns: [EDGE_NO_SERVER_MODULES, NO_DB, APP_NO_RELATIVE, APP_NO_EXTENSION],
         },
+      ],
+    },
+  },
+  {
+    files: ['lib/auth.ts', 'lib/auth-mode.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: EDGE_NO_NODE_CRYPTO, patterns: [EDGE_NO_SERVER_MODULES, NO_DB, LIB_NO_ALIAS] },
       ],
     },
   },

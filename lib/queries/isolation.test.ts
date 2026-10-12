@@ -18,6 +18,9 @@ const skip = !process.env.DATABASE_URL;
 let BadRequestError: typeof import('./errors.ts').BadRequestError;
 let NotFoundError: typeof import('./errors.ts').NotFoundError;
 let assembleLibrary: typeof import('./library.ts').assembleLibrary;
+let authenticateApiToken: typeof import('./api-tokens.ts').authenticateApiToken;
+let createApiToken: typeof import('./api-tokens.ts').createApiToken;
+let revokeApiToken: typeof import('./api-tokens.ts').revokeApiToken;
 let createApplication: typeof import('./applications.ts').createApplication;
 let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
 let listApplications: typeof import('./applications.ts').listApplications;
@@ -56,6 +59,7 @@ let fixtures: typeof import('./test-fixtures.ts');
 if (!skip) {
   ({ BadRequestError, NotFoundError } = await import('./errors.ts'));
   ({ assembleLibrary } = await import('./library.ts'));
+  ({ authenticateApiToken, createApiToken, revokeApiToken } = await import('./api-tokens.ts'));
   ({
     attachCoverLetter,
     createApplication,
@@ -462,3 +466,26 @@ test("an application cannot be pointed at another user's cover letter", { skip }
     await fixtures.deleteCoverLetterRow(bobLetter.id);
   }
 });
+
+// ---------------------------------------------------------------------------
+// API tokens. An eighth root table, and the one whose rows are credentials:
+// reaching another user's token means acting as them, not just reading
+// their data (D-039).
+// ---------------------------------------------------------------------------
+
+test(
+  "another user's API token cannot be revoked, and still authenticates as them",
+  { skip },
+  async () => {
+    const { alice, bob } = await twoUsers();
+    const { token: bobToken, secret: bobSecret } = await createApiToken(bob.id, 'bob agent');
+
+    await assert.rejects(() => revokeApiToken(alice.id, bobToken.id), NotFoundError);
+
+    // Nothing was written: Bob's token still works, and it is still Bob's.
+    const caller = await authenticateApiToken(bobSecret);
+    assert.equal(caller?.id, bob.id);
+    assert.notEqual(caller?.id, alice.id);
+    assert.equal((await fixtures.getApiTokenRow(bobToken.id)).revokedAt, null);
+  },
+);
