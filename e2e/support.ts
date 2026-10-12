@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, type Download, type Page } from '@playwright/test';
+import postgres from 'postgres';
 // pdfjs-dist ships pure-JS text extraction that needs no canvas/DOM, so it
 // works fine directly under Node inside a Playwright test (not the browser
 // context). This is how "does the PDF actually contain X" is asserted —
@@ -66,6 +67,8 @@ export async function waitForSaved(page: Page): Promise<void> {
 // seeded content's stable names) and for verifying server-side truth
 // (rendered PDF bytes) that would otherwise require screenshot diffing.
 // Every mutation a test cares about proving still goes through the real UI.
+// `setApplicationPipelineState` is the one helper that writes to the
+// database instead, for setup no HTTP path allows.
 // ---------------------------------------------------------------------------
 
 /** The stored token, or null in `dev` auth mode where there isn't one. */
@@ -185,6 +188,41 @@ export async function createApplicationViaApi(
     body: input,
   });
   return created.id;
+}
+
+/**
+ * Puts an application into one of the review flow's statuses, with the
+ * agent's fields beside it, by writing the row directly.
+ *
+ * The one setup step that cannot go through HTTP: the API refuses flow
+ * statuses on purpose (D-041), and those fields arrive only from the agent.
+ * Same database `playwright.config.ts` hands the dev server. Fields left out
+ * are left as they are.
+ */
+export async function setApplicationPipelineState(
+  applicationId: string,
+  state: {
+    status: 'proposing' | 'needs_review' | 'ready';
+    fitScore?: number;
+    jobDescription?: string;
+    agentSummary?: string;
+  },
+): Promise<void> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  const columns: Record<string, string | number> = { status: state.status };
+  if (state.fitScore !== undefined) columns.fit_score = state.fitScore;
+  if (state.jobDescription !== undefined) columns.job_description = state.jobDescription;
+  if (state.agentSummary !== undefined) columns.agent_summary = state.agentSummary;
+
+  try {
+    const result = await sql`update application set ${sql(columns)} where id = ${applicationId}`;
+    if (result.count !== 1) throw new Error(`no application ${applicationId} to update`);
+  } finally {
+    await sql.end();
+  }
 }
 
 export function findExperienceId(detail: ResumeDetailLike, company: string): string {
