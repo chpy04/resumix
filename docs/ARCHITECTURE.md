@@ -79,6 +79,9 @@ drizzle/                 numbered .sql migrations
 scripts/seed.ts          seeds one user + the V1 resume content (the smoke test)
 services/latex/          Dockerfile + Express compile service
 docs/                    this directory — read STATE.md first
+agent/                   workspace of the Claude that applies to jobs (D-038): its own
+                         CLAUDE.md, the only Resumix MCP config, career-ops as a pinned
+                         submodule. tsc, eslint, prettier and the build all skip it
 ```
 
 ## The smoke test
