@@ -46,6 +46,9 @@
       "Read(./agent/.browser-profile/**)",
       "Edit(./agent/career-ops/**)",
       "Write(./agent/career-ops/**)",
+      "Read(./agent/career-ops-data/**)",
+      "Edit(./agent/career-ops-data/**)",
+      "Write(./agent/career-ops-data/**)",
 
       "Bash(agent/claude.sh:*)",
       "Bash(./agent/claude.sh:*)",
