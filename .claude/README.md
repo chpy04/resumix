@@ -22,7 +22,10 @@ Checked-in configuration for agents working in this repo.
   read-only and verification commands, so the merge gate can be run without a
   prompt per step. The `deny` half is a hard boundary, not a convenience: the
   production instance (`npm run deploy:prod`, `docker-compose.prod.yml`,
-  `~/.resumix/`) and `.env` files are off-limits. `scripts/deploy-prod.sh`
+  `~/.resumix/`) and `.env` files are off-limits, and so are the parts of
+  `agent/` that belong to the Claude that applies to jobs: its launcher
+  `agent/claude.sh`, its browser profile and the career-ops submodule
+  (D-038). `scripts/deploy-prod.sh`
   refuses independently when `CLAUDECODE` is set, so neither half is the only
   thing standing between an agent and real data — see CLAUDE.md, "Production
   is not yours".
