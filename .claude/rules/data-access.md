@@ -31,8 +31,9 @@ entirely unused, and was deleted.
 
 ## Every query takes a `userId`
 
-Ownership lives on the eight root tables (`template`, `experience`,
-`project`, `technical_skill_row`, `resume`, `cover_letter`, `application`, `api_token`). Everything else —
+Ownership lives on the nine root tables (`template`, `experience`,
+`project`, `technical_skill_row`, `resume`, `cover_letter`, `application`, `api_token`,
+`saved_answer`). Everything else —
 bullets, skills, bridge rows, PDF snapshots, application files — has **no**
 `user_id` and inherits its owner through a join to its parent (D-018). One source of truth per fact: a
 `user_id` on a bullet could contradict its experience's.

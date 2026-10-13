@@ -61,9 +61,9 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    `const userId = await requireUserId(request)` (`lib/session.ts`) and pass
    it down; the query layer filters on it. `/api/mcp/**` handlers begin with
    `requireMcpUserId(request)` instead, which takes only an `rmx_` API token,
-   in every auth mode (D-039). `user_id` lives only on the eight
+   in every auth mode (D-039). `user_id` lives only on the nine
    root tables (`template`, `experience`, `project`, `technical_skill_row`,
-   `resume`, `cover_letter`, `application`, `api_token`) — bullets, skills, bridge rows,
+   `resume`, `cover_letter`, `application`, `api_token`, `saved_answer`) — bullets, skills, bridge rows,
    PDF snapshots and application files inherit their owner through a join to
    their parent. Isolation is enforced in the
    queries, **not** in `middleware.ts`, which runs on the Edge and cannot
