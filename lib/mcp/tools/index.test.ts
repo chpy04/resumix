@@ -33,6 +33,7 @@ test('the registry serves the library and application tools, in this order', () 
       'list_applications',
       'get_application',
       'create_application',
+      'add_questions',
       'set_resume_selection',
       'submit_for_review',
     ],

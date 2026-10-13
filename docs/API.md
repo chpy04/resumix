@@ -285,14 +285,53 @@ stored content stays raw (D-008).
 | `ping`                 | none                                                                                                                                                                    | the email of the account that owns the token, as text                                                                                                                                                                                                                                    |
 | `get_library`          | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
 | `list_applications`    | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
-| `get_application`      | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at } }`. `selection` has `set_resume_selection`'s shape, or is null when no resume is linked       |
+| `get_application`      | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null with no resume      |
 | `create_application`   | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
+| `add_questions`        | `{ application_id, questions: [{ field_ref: { page, label, selector? }, prompt, kind, options?, required, is_eeo?, source?, answer_mode?, proposed_answer? }] }`        | `{ questions: [{ question_id, outcome, note? }] }`, in input order: `outcome` is `added`, `unchanged` or `redrafted`, and `note: "eeo_answer_dropped"` means a proposed EEO answer was dropped (C10)                                                                                     |
 | `set_resume_selection` | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
 | `submit_for_review`    | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
 
 An archived application reads exactly like a missing one, or another
 user's: `No application <id>. Call list_applications to find its
 application_id.`
+
+**`get_application`**'s `questions` are the ones `add_questions` recorded, in
+order: `[{ question_id, prompt, kind, options, field_ref, required, is_eeo,
+source, answer_mode, proposed_answer, answer, approved_at, redraft_note }]`,
+each shaped as in `ApplicationQuestion` (Types, above). `answer` is what will
+be typed into the form, Chris's edits included. A non-null `redraft_note` is
+Chris asking for a new draft of that answer, and says what to change.
+
+**`add_questions`** records the questions an application's form asks, with
+the answer the agent proposes for each (D-047). `kind` is `text`, `choice`,
+`multi`, `bool`, `file` or `letter`; `options` lists a choice or multi
+question's choices exactly as the form does. A `proposed_answer` comes with a
+`source` (`profile` or `agent`) and fits its kind as `PATCH
+/api/application-questions/:id` requires, or is an instruction
+(`answer_mode: "instruction"`, choice and multi only).
+
+- **Appends, de-duplicating on `field_ref`:** page plus label, case and
+  whitespace folded. A question already recorded is `unchanged`, approved or
+  not, and keeps the prompt, kind, options and answer it was first recorded
+  with. The exception is one with a `redraft_note`: re-sent with a new
+  `proposed_answer`, it is `redrafted`, the proposal replaces the answer and
+  the note is cleared.
+- **EEO (C10):** a question flagged `is_eeo`, or whose prompt names gender,
+  sex, race, ethnicity, Hispanic or Latino origin, veteran status, disability
+  or transgender identity, is recorded with no source and no answer, and a
+  proposal on it is dropped, not refused (`note: "eeo_answer_dropped"`). Chris
+  answers it in review.
+- **Refused, writing nothing, every problem listed:** two questions with the
+  same `field_ref`; options missing on a choice or multi question, or present
+  on another kind, or listed twice; a `proposed_answer` without a `source`, or
+  the reverse, or an empty one; an instruction on anything but choice or
+  multi; an answer that does not fit its kind; and any `proposed_answer` on a
+  `file` question, which Chris answers by picking an attachment. The resume
+  and cover letter upload fields are not questions; the apply packet uploads
+  them.
+- **Only while `proposing` or `needs_review`.** A `ready` application is
+  refused (Chris has approved it), and so are drafts and sent ones. A
+  question added to an application in review is one more thing to approve.
 
 **`set_resume_selection`** replaces the resume's whole selection, then
 compiles it. `selection` is the API's `Selections` in snake_case:
@@ -332,8 +371,10 @@ already in `needs_review`, it re-checks the pages and leaves it there.
 real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
 token it mints and revokes itself. It then reads the library, creates an
 application, finds it with `list_applications` and `get_application`,
-selects a small resume into it, which the real sidecar must compile to one
-page, and submits it for review, which `get_application` must then show as
+records two questions with `add_questions` (the EEO one's answer must be
+dropped, a re-send must be `unchanged`, and `get_application` must list
+both), selects a small resume into it, which the real sidecar must compile to
+one page, and submits it for review, which `get_application` must then show as
 `needs_review`; submitting an unknown id must be `isError`. The application
 is archived and its resume deleted when it ends. `npm run verify` runs it
 from `e2e/mcp.spec.ts`.
