@@ -231,7 +231,7 @@ in the way (D-032).
 | `job_description`          | text                                                 | the posting's text, from the agent; null when it supplied none                                                |
 | `agent_summary`            | text                                                 | the agent's evaluation, plain text; null when it supplied none                                                |
 | `fit_score`                | numeric(2,1), CHECK 0–5 (`ck_application_fit_score`) | the agent's 0.0–5.0 estimate of fit (C13); null when unscored                                                 |
-| `proposed_selection`       | jsonb                                                | the agent's original pick, in the API's `Selections` shape (C7)                                               |
+| `proposed_selection`       | jsonb                                                | the agent's pick (C7), as API `Selections`; each `set_resume_selection` while `proposing` overwrites it       |
 | `resume_approved_at`       | timestamptz                                          | null until the resume is approved in review (C11)                                                             |
 | `cover_letter_approved_at` | timestamptz                                          | null until the cover letter is approved in review (C11)                                                       |
 | `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11)                                                     |

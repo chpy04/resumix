@@ -36,6 +36,15 @@ export function toolText(text: string): ToolResult {
   return { content: [{ type: 'text', text }] };
 }
 
+/**
+ * A structured answer: one text item of compact JSON. Keys are snake_case,
+ * the casing of every tool's inputs, so what one tool returns can be passed
+ * straight back into another (D-042).
+ */
+export function toolJson(value: unknown): ToolResult {
+  return toolText(JSON.stringify(value));
+}
+
 export function toolError(text: string): ToolResult {
   return { content: [{ type: 'text', text }], isError: true };
 }

@@ -4,6 +4,18 @@
  * a test (.claude/rules/mcp.md).
  */
 import type { McpTool } from '../tool.ts';
+import { createApplication } from './create-application.ts';
+import { getApplication } from './get-application.ts';
+import { getLibrary } from './get-library.ts';
+import { listApplications } from './list-applications.ts';
 import { ping } from './ping.ts';
+import { setResumeSelection } from './set-resume-selection.ts';
 
-export const TOOLS: readonly McpTool[] = [ping];
+export const TOOLS: readonly McpTool[] = [
+  ping,
+  getLibrary,
+  listApplications,
+  getApplication,
+  createApplication,
+  setResumeSelection,
+];

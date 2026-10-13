@@ -46,6 +46,10 @@ export const someTool = defineTool({
   data-access rules apply unchanged: no tool imports `lib/db`, and another
   user's id reads as not found. A tool that needs a new query adds it
   to `lib/queries/`, with a case in `isolation.test.ts`.
+- **A structured answer is `toolJson(value)`**: one text item of compact
+  JSON with snake_case keys, the same casing as the inputs, so one tool's
+  output can be passed straight into another's arguments (D-042). Map wire
+  types to it field by field; never return a camelCase query result as is.
 - **A tool failure is never a JSON-RPC error.** Return `toolError(text)`, and
   make the text say what to do next. A thrown `NotFoundError` or
   `BadRequestError` becomes `isError` carrying its message. Any other throw

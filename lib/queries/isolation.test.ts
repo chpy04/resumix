@@ -12,6 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
+import { EMPTY_SELECTIONS } from '../types.ts';
 
 const skip = !process.env.DATABASE_URL;
 
@@ -22,6 +23,9 @@ let authenticateApiToken: typeof import('./api-tokens.ts').authenticateApiToken;
 let createApiToken: typeof import('./api-tokens.ts').createApiToken;
 let revokeApiToken: typeof import('./api-tokens.ts').revokeApiToken;
 let createApplication: typeof import('./applications.ts').createApplication;
+let createProposedApplication: typeof import('./applications.ts').createProposedApplication;
+let getApplicationRow: typeof import('./applications.ts').getApplicationRow;
+let setProposedSelection: typeof import('./applications.ts').setProposedSelection;
 let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
 let listApplications: typeof import('./applications.ts').listApplications;
 let recordApplied: typeof import('./applications.ts').recordApplied;
@@ -63,9 +67,12 @@ if (!skip) {
   ({
     attachCoverLetter,
     createApplication,
+    createProposedApplication,
     getApplicationDetail,
+    getApplicationRow,
     listApplications,
     recordApplied,
+    setProposedSelection,
     updateApplication,
   } = await import('./applications.ts'));
   ({
@@ -367,6 +374,54 @@ test("an application cannot be pointed at another user's resume", { skip }, asyn
   } finally {
     await fixtures.deleteApplicationRow(aliceApplication.id);
     await fixtures.deleteResumeRow(bobResume.id);
+  }
+});
+
+test(
+  "createProposedApplication clones your own Default, never another user's",
+  { skip },
+  async () => {
+    const { alice, bob, aliceExp, bobExp, tag } = await twoUsers();
+    const aliceDefault = await fixtures.getDefaultResumeRow(alice.id);
+    const bobDefault = await fixtures.getDefaultResumeRow(bob.id);
+    await replaceSelections(alice.id, aliceDefault.id, { experiences: [aliceExp.id] });
+    await replaceSelections(bob.id, bobDefault.id, { experiences: [bobExp.id] });
+
+    const created = await createProposedApplication(bob.id, {
+      company: `Bob Co ${tag}`,
+      roleTitle: 'Engineer',
+      postingUrl: 'https://jobs.example.test/bob',
+      jobDescription: 'Build.',
+      agentSummary: 'Fits.',
+      fitScore: 3.5,
+    });
+    try {
+      assert.ok(created.resumeId);
+      assert.ok(await getResumeRow(bob.id, created.resumeId));
+      assert.equal(await getResumeRow(alice.id, created.resumeId), null);
+      assert.deepEqual((await getSelections(created.resumeId)).experiences, [bobExp.id]);
+      assert.equal(await getApplicationDetail(alice.id, created.id), null);
+    } finally {
+      await fixtures.deleteApplicationRow(created.id);
+      if (created.resumeId) await fixtures.deleteResumeRow(created.resumeId);
+    }
+  },
+);
+
+test("setProposedSelection on another user's application writes nothing", { skip }, async () => {
+  const { alice, bob, aliceExp, tag } = await twoUsers();
+  const bobApplication = await fixtures.insertTestApplication(bob.id, tag, {
+    status: 'proposing',
+  });
+  try {
+    const written = await setProposedSelection(alice.id, bobApplication.id, {
+      ...EMPTY_SELECTIONS,
+      experiences: [aliceExp.id],
+    });
+    assert.equal(written, false);
+    assert.equal((await getApplicationRow(bob.id, bobApplication.id))?.proposedSelection, null);
+  } finally {
+    await fixtures.deleteApplicationRow(bobApplication.id);
   }
 });
 
