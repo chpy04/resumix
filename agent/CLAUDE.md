@@ -47,6 +47,10 @@ was not started through `./claude.sh`, and both are his to fix.
   `./install-career-ops-custom.sh` rewrites it from `career-ops-custom.md`
   at every launch and every `/resumix-propose`, so a house rule goes outside
   it.
+- `CAREER_OPS_ROOT` must stay unset. career-ops reads it before
+  `$CAREER_OPS_DATA_DIR`, so it would take its whole user layer, the routing
+  included, from somewhere else. `./claude.sh` drops any shell export of it,
+  and the installer refuses to run while `.env` points it elsewhere.
 
 ## Skills
 

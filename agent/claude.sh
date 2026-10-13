@@ -43,7 +43,10 @@ die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # Only .env may supply these. A stale value exported in the calling shell
 # would otherwise pass the check below and point the session somewhere else.
-unset RESUMIX_MCP_URL RESUMIX_MCP_TOKEN CAREER_OPS_DATA_DIR
+# CAREER_OPS_ROOT and CAREER_OPS_TRACKER are career-ops' own overrides, read
+# before CAREER_OPS_DATA_DIR: an export of either would move its user layer
+# or its tracker, and the Resumix routing with them.
+unset RESUMIX_MCP_URL RESUMIX_MCP_TOKEN CAREER_OPS_DATA_DIR CAREER_OPS_ROOT CAREER_OPS_TRACKER
 
 set -a
 # shellcheck source=/dev/null

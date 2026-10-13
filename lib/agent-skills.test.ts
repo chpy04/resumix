@@ -5,7 +5,15 @@
 // Pure: git, the filesystem and bash, never the database or the network.
 // The conventions it enforces are in .claude/rules/agent-skills.md.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -31,6 +39,14 @@ const TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
 
 /** The name the model sees for a Resumix tool, and so the one a skill writes. */
 const QUALIFIED_TOOL = /\bmcp__resumix__([a-z0-9_]+)/g;
+
+/**
+ * A code span opening on a snake_case name with a tool's verb, such as
+ * `suggest_bullet`: a tool, as far as a reader of the skill can tell. Names
+ * in TOOLS are caught as bare anyway; this catches the ones not in it.
+ */
+const TOOL_LIKE =
+  /`((?:get|set|list|create|update|delete|add|suggest|submit|mark|report)_[a-z0-9_]+)\b/g;
 
 function git(...args: string[]): string {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
@@ -122,6 +138,13 @@ test('a skill writes Resumix tools fully qualified, never bare', () => {
         `${file} names ${name} bare; write mcp__resumix__${name}, the name the model sees. ${RULES}`,
       );
     }
+    for (const [, name = ''] of text.matchAll(TOOL_LIKE)) {
+      assert.ok(
+        TOOL_NAMES.has(name),
+        `${file} names \`${name}\`, which reads as a Resumix tool but is not in TOOLS. Land the ` +
+          `tool first, or reword it. ${RULES}`,
+      );
+    }
   }
 });
 
@@ -196,7 +219,8 @@ test('the eval has three cases, each a posting and a checklist', () => {
 
 // The installer, run the way claude.sh runs it, against a throwaway data
 // directory. CAREER_OPS_DATA_DIR is always this test's own or absent, never
-// inherited, so a real one in the calling shell can never be written to.
+// inherited, so a real one in the calling shell can never be written to; the
+// same goes for career-ops' two overrides of it.
 const scratch = mkdtempSync(join(tmpdir(), 'resumix-agent-skills-'));
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -205,10 +229,13 @@ function dataDir(): string {
   return join(scratch, `data-${++dirs}`);
 }
 
-function install(dataDirValue: string | undefined) {
+function install(dataDirValue: string | undefined, extra: Record<string, string> = {}) {
   const env = { ...process.env };
   delete env.CAREER_OPS_DATA_DIR;
+  delete env.CAREER_OPS_ROOT;
+  delete env.CAREER_OPS_TRACKER;
   if (dataDirValue !== undefined) env.CAREER_OPS_DATA_DIR = dataDirValue;
+  Object.assign(env, extra);
   return spawnSync('bash', [join(ROOT, INSTALLER)], { cwd: scratch, env, encoding: 'utf8' });
 }
 
@@ -269,6 +296,23 @@ test('the installer refuses an unset or relative CAREER_OPS_DATA_DIR', () => {
     assert.notEqual(result.status, 0, `ran with CAREER_OPS_DATA_DIR=${value}`);
     assert.match(result.stderr, /start the session with \.\/claude\.sh/i);
     assert.equal(result.stdout, '');
+  }
+});
+
+test('the installer refuses a CAREER_OPS_ROOT that career-ops would read instead', () => {
+  const dir = dataDir();
+  const elsewhere = dataDir();
+
+  const result = install(dir, { CAREER_OPS_ROOT: elsewhere });
+  assert.notEqual(result.status, 0, 'installed with CAREER_OPS_ROOT pointing elsewhere');
+  assert.match(result.stderr, /Remove CAREER_OPS_ROOT from agent\/\.env/);
+  assert.equal(result.stdout, '');
+  assert.ok(!existsSync(dir) && !existsSync(elsewhere), 'it wrote something before refusing');
+
+  // The same directory, or a blank value, which career-ops ignores, is fine.
+  for (const root of [dir, ' ']) {
+    const same = install(dir, { CAREER_OPS_ROOT: root });
+    assert.equal(same.status, 0, same.stderr);
   }
 });
 

@@ -35,6 +35,13 @@ data_dir="${CAREER_OPS_DATA_DIR:-}"
 # where career-ops never reads it.
 [[ "$data_dir" == /* ]] ||
   die "CAREER_OPS_DATA_DIR is relative ($data_dir). Make it absolute in agent/.env, then start the session with ./claude.sh."
+# career-ops reads CAREER_OPS_ROOT before CAREER_OPS_DATA_DIR (ignoring it
+# only when it is blank), so with another value set it would take its whole
+# user layer from there and never see the routing written here.
+root="${CAREER_OPS_ROOT:-}"
+if [[ "$root" =~ [^[:space:]] && "$root" != "$data_dir" ]]; then
+  die "CAREER_OPS_ROOT is set ($root), so career-ops would read its user layer, house rules included, from there instead of CAREER_OPS_DATA_DIR ($data_dir), and skip the Resumix routing. Remove CAREER_OPS_ROOT from agent/.env, then start the session with ./claude.sh."
+fi
 
 target="$data_dir/modes/_custom.md"
 

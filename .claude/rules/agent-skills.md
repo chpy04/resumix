@@ -27,7 +27,11 @@ You write its files and never run them: no `claude` in `agent/`, no
 - **Resumix tools are written `mcp__resumix__<name>`,** the name the model
   sees, and never bare. A name may appear only once it is in `TOOLS`
   (`lib/mcp/tools/index.ts`), which is what `tools/list` serves; land the
-  tool first. The test fails on both.
+  tool first. The test fails on both: on any `mcp__resumix__` name not in
+  `TOOLS`, on a `TOOLS` name written bare, and in a skill on a code span
+  opening with a tool-like name (`get_`, `set_`, `list_`, `create_`,
+  `update_`, `delete_`, `add_`, `suggest_`, `submit_`, `mark_` or `report_`)
+  that `TOOLS` lacks. Reword a non-tool identifier rather than weaken it.
 - A skill chooses and orders library content. It never writes resume text,
   and nothing in `agent/` may tell the model to. The tools that would are on
   the NOT EXPOSED list in `.claude/rules/mcp.md`.
