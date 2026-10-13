@@ -171,8 +171,9 @@ export const patchTemplateSchema = z
 //
 // `content` may be empty: a letter you have cleared out to start over is a
 // normal editor state, and an empty document simply fails to compile the
-// same way a broken one does. `isDefault` is absent on purpose — see
-// `updateCoverLetter`.
+// same way a broken one does. So may `body`, which prints as nothing; it is
+// never null, because nothing turns a letter back into LaTeX only (D-046).
+// `isDefault` is absent on purpose — see `updateCoverLetter`.
 // ---------------------------------------------------------------------------
 
 export const createCoverLetterSchema = z.object({
@@ -185,6 +186,7 @@ export const patchCoverLetterSchema = z
   .object({
     name: nonEmpty.optional(),
     content: z.string().optional(),
+    body: z.string().optional(),
     isArchived: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
@@ -193,6 +195,7 @@ export const patchCoverLetterSchema = z
  *  the same trick `renderBodySchema` plays with `templateOverride`. */
 export const renderCoverLetterSchema = z.object({
   contentOverride: z.string().optional(),
+  bodyOverride: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------

@@ -321,7 +321,8 @@ export const resumePdf = pgTable(
 // ---------------------------------------------------------------------------
 // Cover letters
 //
-// The document *is* the row: `content` holds the whole LaTeX file, verbatim.
+// The document *is* the row: `content` holds the whole LaTeX file, verbatim,
+// and `body`, when set, the prose that goes at its `%%BODY%%` line (D-046).
 // There is no template, no bridge table and no PDF snapshot, because a cover
 // letter has none of the sharing a resume has — it is written for one company
 // and nothing else can edit it (D-035).
@@ -332,8 +333,12 @@ export const coverLetter = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
-    /** A complete LaTeX document, raw and unescaped (D-008). */
+    /** A complete LaTeX document, raw and unescaped (D-008): the whole
+     *  letter, or the shell around its one `%%BODY%%` line. */
     content: text('content').notNull(),
+    /** The letter's prose, plain text, escaped into the `%%BODY%%` line when
+     *  it renders. Null for a letter written entirely in LaTeX (D-046). */
+    body: text('body'),
     isDefault: boolean('is_default').notNull().default(false),
     isArchived: boolean('is_archived').notNull().default(false),
     ...owner,

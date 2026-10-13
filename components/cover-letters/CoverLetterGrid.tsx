@@ -96,8 +96,8 @@ export default function CoverLetterGrid() {
         <div>
           <h1 className="text-2xl font-semibold text-ink">Cover letters</h1>
           <p className="mt-1 text-sm text-ink-dim">
-            Each one is its own LaTeX document, copied from your Default and edited for the job.
-            Unlike a resume, editing one changes nothing else.
+            Each one is its own letter, copied from your Default and edited for the job. Unlike a
+            resume, editing one changes nothing else.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-4">
             <Link href="/" className="text-sm text-accent transition-opacity hover:opacity-80">

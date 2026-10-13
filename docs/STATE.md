@@ -36,14 +36,16 @@ template later never retroactively changes an already-saved resume.
 
 A **cover letter** is the counter-example to all of that, and the asymmetry
 is the point (D-035). It has no reuse — one letter, one company — so it
-stores its whole LaTeX document in one column: no template, no selections, no
-tokens, and no PDF snapshot, because nothing but editing that letter can
-change it. Creating one copies the default verbatim; downloading one compiles
-the stored text on demand.
+stores its own text: its LaTeX in `content` and, when it has one, its prose
+in a plain-text `body`, escaped into the one `%%BODY%%` line of that LaTeX
+(D-046). No template, no selections, no tokens, and no PDF snapshot, because
+nothing but editing that letter can change it. Creating one copies the
+default verbatim; downloading one compiles the stored text on demand.
 
 Content is substituted **verbatim and unescaped**: bullets legitimately
 contain `\textbf{}`, `\href{}{}`, `\$` and `\&`, because the user is authoring
-LaTeX (D-008). Content is never deleted, only archived (D-011).
+LaTeX (D-008). The one thing escaped is a cover letter's `body`, which was
+never LaTeX (D-046). Content is never deleted, only archived (D-011).
 
 ## The pieces
 
@@ -64,17 +66,18 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   `/applications/[id]/review` is where an application the agent submitted
   is reviewed, and Needs review and Ready cards open it: a stepper over the
   resume editor in review mode (the agent's picks badged, with Reset to
-  agent pick), the compiled cover letter when there is one, and a final
-  Approve. Each section is approved on its own, and editing it afterwards
-  unapproves it and sends a Ready application back to Needs review; library
-  and template edits do not. Final approval pins the resume snapshot, stores
+  agent pick), the cover letter's plain text beside its PDF when there is
+  one, and a final Approve. Each section is approved on its own, and editing
+  it afterwards unapproves it and sends a Ready application back to Needs
+  review; library and template edits do not. Final approval pins the resume snapshot, stores
   the letter's PDF as an attachment, makes the application Ready and copies
   `/resumix-apply <id>` (D-044).
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), `/cover-letters` is its counterpart for letters, and
-  `/cover-letter/[id]` is a two-pane LaTeX editor over the one `content`
-  column — the same textarea and the same live preview the resume editor
-  uses, with nothing on the left but the document. `/resume/[id]` is the
+  `/cover-letter/[id]` is a two-pane editor with the same live preview the
+  resume editor uses: a letter with a `%%BODY%%` line has Body (plain text)
+  and LaTeX tabs on the left, and one written entirely in LaTeX has only
+  the LaTeX textarea. `/resume/[id]` is the
   two-pane editor: content
   selection with `@dnd-kit` reordering and per-slice autosave on the left, a
   live PDF preview and a LaTeX template tab on the right.

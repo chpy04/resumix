@@ -2,9 +2,12 @@
 
 /**
  * Small, shared, presentation-only pieces used across the content-pane
- * sections. Nothing here talks to the network — see `ResumeEditor.tsx` for
- * the data/autosave wiring that owns the callbacks passed in.
+ * sections and the two editors. Nothing here talks to the network — see
+ * `ResumeEditor.tsx` for the data/autosave wiring that owns the callbacks
+ * passed in.
  */
+
+import type { ReactNode } from 'react';
 
 interface SelectToggleProps {
   checked: boolean;
@@ -130,6 +133,30 @@ export function ExpandChevron({ expanded, onClick, label }: ChevronProps) {
           strokeLinejoin="round"
         />
       </svg>
+    </button>
+  );
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+/** One tab of an editor's pane switcher: the resume's Content/Template, a
+ *  cover letter's Body/LaTeX. */
+export function TabButton({ active, onClick, children }: TabButtonProps) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`rounded-t-md border-b-2 px-3 py-1.5 text-sm transition-colors ${
+        active ? 'border-accent text-ink' : 'border-transparent text-ink-dim hover:text-ink'
+      }`}
+    >
+      {children}
     </button>
   );
 }
