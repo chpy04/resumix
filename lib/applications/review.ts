@@ -10,12 +10,26 @@
  * afterwards clears that section's stamp, and a `ready` application goes
  * back to `needs_review` (C3). Only this application's own writes count:
  * a library or template edit made elsewhere reopens nothing (C6).
+ *
+ * Questions are approved one by one, on their own rows, so the application
+ * has no stamp for them: changing an answer clears only the final approval
+ * (D-047).
  */
 import { statusLabel } from './status.ts';
 import type { ApplicationStatus } from '../types.ts';
 
-/** A part of the application Chris approves on its own. */
+/** A part of the application Chris approves on its own, with its own stamp. */
 export type ReviewSection = 'resume' | 'coverLetter';
+
+/** Everything an edit can reopen: the two sections, and the questions,
+ *  which are approved per row (D-047). */
+export type ApprovalSection = ReviewSection | 'questions';
+
+/** What the questions gate reads of each one. */
+export interface QuestionApprovalState {
+  required: boolean;
+  approvedAt: Date | string | null;
+}
 
 /** What the gates read. Timestamps are `Date` on a DB row and ISO strings on
  *  an `ApplicationDetail`; only their presence matters here, so both fit. */
@@ -25,6 +39,7 @@ export interface FinalApprovalState {
   resumeApprovedAt: Date | string | null;
   coverLetterId: string | null;
   coverLetterApprovedAt: Date | string | null;
+  questions: readonly QuestionApprovalState[];
 }
 
 export interface ReviewState extends FinalApprovalState {
@@ -54,6 +69,16 @@ export const FINAL_APPROVAL_CHECKS: readonly ((s: FinalApprovalState) => string 
     s.coverLetterId === null || s.coverLetterApprovedAt !== null
       ? null
       : 'Approve the cover letter first.',
+  // Step 3, or 2 without a letter: the questions. Only required ones gate;
+  // an optional one left unapproved is left blank (C3).
+  (s) => {
+    const open = s.questions.filter((q) => q.required && q.approvedAt === null).length;
+    if (open === 0) return null;
+    const step = s.coverLetterId === null ? 2 : 3;
+    return open === 1
+      ? `Approve the 1 required question still open in step ${step}.`
+      : `Approve the ${open} required questions still open in step ${step}.`;
+  },
 ];
 
 /** Why final approval is refused, or `[]` when it is not. */
@@ -61,10 +86,11 @@ export function finalApprovalProblems(s: FinalApprovalState): string[] {
   return FINAL_APPROVAL_CHECKS.flatMap((check) => check(s) ?? []);
 }
 
-/** Why approving one section is refused, or `null` when it is not. */
+/** Why approving one section, or any of its questions, is refused, or
+ *  `null` when it is not. */
 export function sectionApprovalProblem(
-  s: FinalApprovalState,
-  section: ReviewSection,
+  s: Pick<FinalApprovalState, 'status' | 'resumeId' | 'coverLetterId'>,
+  section: ApprovalSection,
 ): string | null {
   const status = notInReview(s.status);
   if (status) return status;
@@ -101,13 +127,17 @@ export interface ReopenPatch {
 /**
  * What changing `section` does to an application's approval: that section's
  * stamp and the final one are cleared, and `ready` goes back to
- * `needs_review`. `null` when nothing would change.
+ * `needs_review`. `null` when nothing would change. The questions have no
+ * stamp here, so changing one clears only the final approval.
  *
  * `approved_at` goes with it, so `ready` and a set `approved_at` stay the same
  * fact. The pinned snapshot is left alone until the next final approval
  * replaces it.
  */
-export function reopenedApproval(row: ApprovalStamps, section: ReviewSection): ReopenPatch | null {
+export function reopenedApproval(
+  row: ApprovalStamps,
+  section: ApprovalSection,
+): ReopenPatch | null {
   if (!(REOPENABLE_STATUSES as readonly ApplicationStatus[]).includes(row.status)) return null;
 
   const patch: ReopenPatch = {};
@@ -121,18 +151,21 @@ export function reopenedApproval(row: ApprovalStamps, section: ReviewSection): R
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
-export type ReviewStepKey = ReviewSection | 'approve';
+export type ReviewStepKey = ApprovalSection | 'approve';
 
 export interface ReviewStep {
   key: ReviewStepKey;
-  /** 1-based and contiguous: with no letter, Approve is step 2. */
+  /** 1-based and contiguous: with no letter and no questions, Approve is
+   *  step 2. */
   number: number;
   label: string;
   done: boolean;
 }
 
 /** The review page's stepper, in order. The cover letter step exists only
- *  when a letter is linked (C12); a questions step slots in before Approve. */
+ *  when a letter is linked (C12), and the questions step only when the form
+ *  has questions. It is done when every one is approved, optional ones too,
+ *  although final approval waits only for the required ones. */
 export function reviewSteps(s: ReviewState): ReviewStep[] {
   const steps: Omit<ReviewStep, 'number'>[] = [
     { key: 'resume', label: 'Resume', done: s.resumeApprovedAt !== null },
@@ -143,6 +176,15 @@ export function reviewSteps(s: ReviewState): ReviewStep[] {
             key: 'coverLetter' as const,
             label: 'Cover letter',
             done: s.coverLetterApprovedAt !== null,
+          },
+        ]),
+    ...(s.questions.length === 0
+      ? []
+      : [
+          {
+            key: 'questions' as const,
+            label: 'Questions',
+            done: s.questions.every((q) => q.approvedAt !== null),
           },
         ]),
     { key: 'approve', label: 'Approve', done: s.approvedAt !== null },

@@ -112,6 +112,16 @@ export function encodeAnswer(value: AnswerValue | null): string | null {
   return value.trim() === '' ? null : value;
 }
 
+function parseList(stored: string): string[] | null {
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) return parsed;
+  } catch {
+    // Not JSON.
+  }
+  return null;
+}
+
 export function decodeAnswer(
   kind: QuestionKind,
   mode: AnswerMode,
@@ -119,13 +129,18 @@ export function decodeAnswer(
 ): AnswerValue | null {
   if (stored === null) return null;
   if (kind !== 'multi' || mode === 'instruction') return stored;
-  try {
-    const parsed: unknown = JSON.parse(stored);
-    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) return parsed;
-  } catch {
-    // Not JSON: shown as one pick, which `answerProblem` then names.
-  }
-  return [stored];
+  // Not a list: shown as one pick, which `answerProblem` then names.
+  return parseList(stored) ?? [stored];
+}
+
+/**
+ * A proposal was made in a mode no column records: Chris may have switched
+ * the answer's mode since. So a multi question's proposal is its picks
+ * exactly when it reads as a list, and its words otherwise.
+ */
+export function decodeProposal(kind: QuestionKind, stored: string | null): AnswerValue | null {
+  if (stored === null || kind !== 'multi') return stored;
+  return parseList(stored) ?? stored;
 }
 
 /** Whether two answers would be stored the same. */

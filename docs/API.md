@@ -97,6 +97,26 @@ type ApplicationSummary = {
 
 type ApplicationFile = { id; filename; contentType; byteSize; isArchived; createdAt };
 
+// One question an application's form asks (D-047). An answer is a string,
+// or the options picked for a multi question; a file answer is an
+// ApplicationFile id, and an instruction is its words.
+type AnswerValue = string | string[];
+type ApplicationQuestion = {
+  id;
+  prompt;
+  kind: 'text' | 'choice' | 'multi' | 'bool' | 'file' | 'letter';
+  options: string[] | null; // choice and multi only
+  fieldRef: { page: number; label: string; selector: string | null };
+  required: boolean;
+  isEeo: boolean; // answered only by Chris (C10)
+  source: 'profile' | 'agent' | 'saved' | null; // who proposed it; null when nothing was
+  answerMode: 'value' | 'instruction';
+  proposedAnswer: AnswerValue | null;
+  answer: AnswerValue | null;
+  redraftNote: string | null; // set while Chris has asked the agent for a new draft
+  approvedAt: string | null; // cleared by any change to the answer
+};
+
 type ApplicationDetail = ApplicationSummary & {
   notes: string;
   jobDescription: string | null; // the posting's text, from the agent
@@ -107,6 +127,7 @@ type ApplicationDetail = ApplicationSummary & {
   approvedAt: string | null; // final approval, which made it ready; cleared with it
   pdfFilenames: { resume: string | null; coverLetter: string | null }; // what approval names the PDFs
   files: ApplicationFile[];
+  questions: ApplicationQuestion[]; // in the order they were added
 };
 ```
 
@@ -472,7 +493,9 @@ approve.").
 **`POST /approve`** is refused with a `400` listing what is left ("Approve the
 resume first. Approve the cover letter first.") unless the application is in
 `needs_review`, has a resume, and every section it shows is approved: the
-resume, and the cover letter when one is linked. It then compiles both
+resume, the cover letter when one is linked, and every **required** question
+("Approve the 2 required questions still open in step 3."). An optional
+question left unapproved is left blank. It then compiles both
 documents, writing nothing yet, and in one transaction stores a `resume_pdf`
 snapshot named after the company and pins it as `sentPdf` (the path `POST
 /pdf` takes), stores the letter's PDF as an `application/pdf` attachment named
@@ -481,8 +504,8 @@ earlier one of that name, and sets `approvedAt` and `ready`. A LaTeX failure,
 or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
 with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
 If an edit lands while the documents compile, the transaction finds the
-section unapproved again, rolls back, and answers `400` ("This application
-changed while it was being approved; review it again."). Final approval does
+section or the question unapproved again, rolls back, and answers `400`
+("This application changed while it was being approved; review it again."). Final approval does
 not enforce one page; `submit_for_review` does.
 
 **What reopens an approval.** These writes clear the approval of the section
@@ -495,7 +518,11 @@ one goes back to `needs_review`:
 - the letter: `PATCH /api/cover-letters/:id` with `content`;
 - `PATCH /api/applications/:id` changing `resumeId` or `coverLetterId`,
   unlinking included (a `status` in the same PATCH wins), and `POST
-/cover-letter`, which adds a section to approve.
+/cover-letter`, which adds a section to approve;
+- a question: `PATCH /api/application-questions/:id`, archiving the attachment
+  an approved file answer names, and the agent's `add_questions` when it adds
+  or redrafts one. These clear the question's own `approvedAt` and the
+  application's `approvedAt`; there is no application stamp for questions.
 
 Nothing else does: library edits (bullets, experiences, projects, skills),
 template edits and renaming a letter leave every approval in place, because a
@@ -504,6 +531,43 @@ is what gets sent. There is no diffing: a selection write that puts back what
 was there still reopens. Applications that have been sent (`applied` and
 later) are never reopened, and a reopened one keeps its pinned `sentPdf` until
 a new one is pinned.
+
+### Questions
+
+| method | path                                      | body                                     | returns                 |
+| ------ | ----------------------------------------- | ---------------------------------------- | ----------------------- |
+| PATCH  | `/api/application-questions/:id`          | `{ answer?, answerMode?, redraftNote? }` | `ApplicationQuestion`   |
+| POST   | `/api/applications/:id/questions/approve` | `{ questionIds }`                        | `ApplicationQuestion[]` |
+
+An application's form questions arrive from the agent (`add_questions`) and
+are answered and approved in the review's Questions step (D-047).
+
+**`PATCH /api/application-questions/:id`** edits one: `answer` (a string, a
+`string[]` of options for a multi question, or `null` to clear it),
+`answerMode`, and `redraftNote`. Every accepted write unapproves the question
+and, on an application in `needs_review` or `ready`, clears its `approvedAt`,
+so a `ready` one goes back to `needs_review`. There is no diffing. A `400`
+says why when:
+
+- the application has been sent (`applied` or later);
+- the answer does not fit the kind: a choice takes one of its `options`
+  exactly, a multi a list of distinct options, a bool `yes` or `no`, and a
+  file the id of a non-archived attachment of the same application (anything
+  else, another user's included, is `unknown attachment id`);
+- `answerMode: 'instruction'` is set on anything but a choice or multi
+  question. Switching the mode without sending an answer clears the answer;
+- `redraftNote` is set on anything but a non-EEO `text` or `letter` question.
+  The note is what the agent reads through `get_application`; `null` or a
+  blank note cancels the request.
+
+**`POST /api/applications/:id/questions/approve`** stamps `approvedAt` on
+exactly `questionIds`, and clears any redraft request on them. All or none:
+only in `needs_review`; an id that is not one of this application's questions
+is `unknown question id`; and each must have an answer that fits its kind, a
+file answer naming a live attachment. A refusal lists every problem at once,
+each prefixed with its prompt ("Work authorization: answer it first."). The
+ids are the ones the page showed, so a question the agent adds after the page
+loaded is never approved unseen.
 
 ### Attachments
 

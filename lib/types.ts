@@ -292,6 +292,8 @@ export interface ApplicationDetail extends ApplicationSummary {
    *  them; null for a document that is not linked. */
   pdfFilenames: { resume: string | null; coverLetter: string | null };
   files: ApplicationFile[];
+  /** The form's questions, in the order they were added (D-047). */
+  questions: ApplicationQuestion[];
 }
 
 /** What both `POST /api/applications/:id/pdf` (save the resume to the

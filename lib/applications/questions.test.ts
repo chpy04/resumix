@@ -5,6 +5,7 @@ import {
   approvalProblem,
   canRedraft,
   decodeAnswer,
+  decodeProposal,
   encodeAnswer,
   fieldKey,
   looksLikeEeo,
@@ -104,6 +105,14 @@ test('every kind stores its value as text, and multi stores a JSON array', () =>
   // An instruction is words, even on a multi question.
   assert.equal(decodeAnswer('multi', 'instruction', '["NYC"]'), '["NYC"]');
   assert.equal(decodeAnswer('text', 'value', '["NYC"]'), '["NYC"]');
+});
+
+test('a multi proposal reads as picks when it is a list, and as words when it is not', () => {
+  // The answer's mode may have been switched since the proposal was made.
+  assert.deepEqual(decodeProposal('multi', '["NYC"]'), ['NYC']);
+  assert.equal(decodeProposal('multi', 'Any east-coast office'), 'Any east-coast office');
+  assert.equal(decodeProposal('choice', 'Boston'), 'Boston');
+  assert.equal(decodeProposal('text', null), null);
 });
 
 test('whitespace and an empty pick are no answer at all', () => {
