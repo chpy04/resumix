@@ -116,9 +116,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   dispatcher plus a registry of zod-typed tools, one module each in
   `lib/mcp/tools/`, listed in `docs/API.md`'s tool reference. A failing tool
   answers with text telling the agent what to do next, never a protocol
-  error. It takes only an API token (below). The agent's last call on an
-  application is `submit_for_review`, which hands it to review only while
-  its resume and letter each fit on one page. `npm run mcp:smoke` drives it
+  error. It takes only an API token (below). `submit_for_review` moves an
+  application from Proposing to Needs review, and refuses while its resume
+  or its letter runs past one page. `npm run mcp:smoke` drives it
   over real HTTP, and the gate runs that from the e2e suite.
 
 ## Users and isolation
