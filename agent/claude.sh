@@ -43,7 +43,10 @@ die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # Only .env may supply these. A stale value exported in the calling shell
 # would otherwise pass the check below and point the session somewhere else.
-unset RESUMIX_MCP_URL RESUMIX_MCP_TOKEN CAREER_OPS_DATA_DIR
+# CAREER_OPS_ROOT and CAREER_OPS_TRACKER are career-ops' own overrides, read
+# before CAREER_OPS_DATA_DIR: an export of either would move its user layer
+# or its tracker, and the Resumix routing with them.
+unset RESUMIX_MCP_URL RESUMIX_MCP_TOKEN CAREER_OPS_DATA_DIR CAREER_OPS_ROOT CAREER_OPS_TRACKER
 
 set -a
 # shellcheck source=/dev/null
@@ -53,5 +56,10 @@ set +a
 for var in RESUMIX_MCP_URL RESUMIX_MCP_TOKEN CAREER_OPS_DATA_DIR; do
   [[ -n "${!var:-}" ]] || die "$var is empty in agent/.env. See agent/.env.example."
 done
+
+# career-ops hands its CV, cover-letter and tracker steps to Resumix only
+# through its gitignored modes/_custom.md, so the committed routing goes in at
+# every launch, before any mode can run (D-043).
+./install-career-ops-custom.sh
 
 exec claude --add-dir career-ops "$@"
