@@ -290,6 +290,25 @@ export async function renderResumeText(page: Page, resumeId: string): Promise<st
   return extractPdfText(result.pdfBase64);
 }
 
+/** A PDF endpoint's text, fetched from inside the page with its token, for
+ *  a download with no JSON envelope (`GET /api/cover-letters/:id/pdf`). */
+export async function fetchPdfText(page: Page, path: string): Promise<string> {
+  const token = await getAuthToken(page);
+  const result = await page.evaluate(
+    async ({ path, token }) => {
+      const res = await fetch(path, { headers: token ? { 'x-resumix-token': token } : {} });
+      let binary = '';
+      for (const byte of new Uint8Array(await res.arrayBuffer())) {
+        binary += String.fromCharCode(byte);
+      }
+      return { status: res.status, base64: btoa(binary) };
+    },
+    { path, token },
+  );
+  if (result.status !== 200) throw new Error(`GET ${path} -> ${result.status}`);
+  return extractPdfText(result.base64);
+}
+
 /** A browser download's bytes, base64-encoded — the input `extractPdfText`
  *  wants when the PDF came from a real click rather than the API. */
 export async function downloadAsBase64(download: Download): Promise<string> {

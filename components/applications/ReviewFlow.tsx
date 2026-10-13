@@ -8,12 +8,7 @@ import CoverLetterReviewStep from '@/components/applications/CoverLetterReviewSt
 import ResumeReviewStep from '@/components/applications/ResumeReviewStep';
 import ReviewHeader from '@/components/applications/ReviewHeader';
 import ReviewStepper from '@/components/applications/ReviewStepper';
-import {
-  ApiError,
-  approveApplicationSection,
-  getApplication,
-  getCoverLetter,
-} from '@/lib/api-client';
+import { ApiError, approveApplicationSection, getApplication } from '@/lib/api-client';
 import {
   initialStep,
   reopenedSections,
@@ -33,10 +28,10 @@ interface ReviewFlowProps {
  * The review page (D-044): one application, step by step: its resume, its
  * letter when it has one (C12), then final approval.
  *
- * This component owns the application and re-reads it after every approval
- * and every selection write, because a write can clear an approval on the
- * server (C3) and the stepper, the header's status and the buttons all
- * follow from what the server says. Responses that arrive out of order are
+ * This component owns the application and re-reads it after every approval,
+ * every selection write and every letter body write, because a write can
+ * clear an approval on the server (C3) and the stepper, the header's status
+ * and the buttons all follow from what the server says. Responses that arrive out of order are
  * dropped: only the latest request counts.
  *
  * The resume and letter steps stay mounted while hidden, so switching steps
@@ -45,7 +40,6 @@ interface ReviewFlowProps {
 export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [letterName, setLetterName] = useState<string | null>(null);
   const [active, setActive] = useState<ReviewStepKey>('resume');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [reopened, setReopened] = useState<ReadonlySet<ReviewSection>>(new Set());
@@ -84,20 +78,6 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       cancelled = true;
     };
   }, [applicationId, accept]);
-
-  const coverLetterId = application?.coverLetterId ?? null;
-  useEffect(() => {
-    let cancelled = false;
-    if (!coverLetterId) return;
-    getCoverLetter(coverLetterId)
-      .then((letter) => !cancelled && setLetterName(letter.name))
-      .catch(() => {
-        // The name is a label; the step still works without it.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [coverLetterId]);
 
   const refresh = useCallback(async () => {
     const request = ++latestRequest.current;
@@ -198,10 +178,10 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
         <div className={shown === 'coverLetter' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
           <CoverLetterReviewStep
             application={{ ...application, coverLetterId: application.coverLetterId }}
-            letterName={letterName}
             blockedBy={sectionApprovalProblem(application, 'coverLetter')}
             reopened={reopened.has('coverLetter')}
             onApprove={() => approveSection('coverLetter')}
+            onBodySaved={refresh}
           />
         </div>
       ) : null}
