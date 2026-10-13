@@ -201,9 +201,10 @@ export async function getApiTokenRow(id: string) {
   return row;
 }
 
-/** What `stubLatex` answers for one `.tex`: a page count, a LaTeX error, or
- *  a sidecar that cannot be reached. */
-export type StubbedCompile = number | 'error' | 'down';
+/** What `stubLatex` answers for one `.tex`: a page count, a LaTeX error
+ *  (`STUB_LATEX_ERROR`, or the errors given), or a sidecar that cannot be
+ *  reached. */
+export type StubbedCompile = number | 'error' | { errors: string[] } | 'down';
 
 /** The error the stub reports for `'error'`, so a test can look for it. */
 export const STUB_LATEX_ERROR = '! Undefined control sequence. l.7 \\nosuchmacro';
@@ -223,17 +224,21 @@ export function stubLatex(pagesFor: (tex: string) => StubbedCompile): {
   const original = { fetch: globalThis.fetch, url: process.env.LATEX_SERVICE_URL };
   process.env.LATEX_SERVICE_URL = 'http://latex.test';
 
-  globalThis.fetch = (async (_input: RequestInfo | URL, init: RequestInit = {}) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    // Anything else is a call this stub was never meant to answer.
+    if (String(input) !== 'http://latex.test/compile') {
+      throw new Error(`stubLatex: unexpected fetch of ${String(input)}`);
+    }
     const { tex } = JSON.parse(String(init.body)) as { tex: string };
     sent.push(tex);
     const answer = pagesFor(tex);
     // What a real `fetch` throws when nothing is listening.
     if (answer === 'down') throw new TypeError('fetch failed');
-    if (answer === 'error') {
+    if (answer === 'error' || typeof answer === 'object') {
       return Response.json({
         ok: false,
         pages: null,
-        errors: [STUB_LATEX_ERROR],
+        errors: answer === 'error' ? [STUB_LATEX_ERROR] : answer.errors,
         log: '',
         durationMs: 1,
       });
