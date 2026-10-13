@@ -6,6 +6,7 @@ import {
   initialStep,
   reopenedApproval,
   reopenedSections,
+  repinRefusal,
   reviewSteps,
   sectionApprovalProblem,
   type ReviewState,
@@ -215,4 +216,15 @@ test('reopenedSections names what an edit just unapproved, and nothing else', ()
     reopenedSections({ resumeApprovedAt: null, coverLetterApprovedAt: null }, both),
     [],
   );
+});
+
+test('only a Ready application refuses a new PDF, and says how to get one in', () => {
+  assert.equal(
+    repinRefusal('ready'),
+    "This application is Ready: its PDF is the one you approved, so a new one can't replace " +
+      'it. Edit the resume to send it back to review, then approve it again.',
+  );
+  for (const status of APPLICATION_STATUSES) {
+    if (status !== 'ready') assert.equal(repinRefusal(status), null, status);
+  }
 });

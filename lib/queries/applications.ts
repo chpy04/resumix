@@ -10,8 +10,12 @@
  * two nullable references instead — the live resume it is being tailored
  * from, and the immutable snapshot that was actually sent (D-032).
  */
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
-import { sectionApprovalProblem, type ReviewSection } from '../applications/review.ts';
+import { and, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
+import {
+  repinRefusal,
+  sectionApprovalProblem,
+  type ReviewSection,
+} from '../applications/review.ts';
 import { nextAppliedAt, type ManualStatus } from '../applications/status.ts';
 import { db, type Executor } from '../db/index.ts';
 import { buildCoverLetterFilename, buildResumeFilename } from '../filename.ts';
@@ -383,6 +387,10 @@ export async function updateApplication(
  * inside the application, save, and the application now holds those bytes.
  * Doing it before it is sent is normal — marking it applied is a separate,
  * later decision.
+ *
+ * Refused while `ready`: that PDF is the one final approval stored, and only
+ * another final approval replaces it (C4, D-044). The status test is in the
+ * WHERE clause, so an approval that lands first still wins.
  */
 export async function pinResumePdf(
   userId: string,
@@ -392,11 +400,23 @@ export async function pinResumePdf(
   const [row] = await db
     .update(application)
     .set({ resumePdfId })
-    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .where(
+      and(eq(application.id, id), eq(application.userId, userId), ne(application.status, 'ready')),
+    )
     .returning();
-  if (!row) throw new NotFoundError(`application ${id} not found`);
+  if (row) return detailFor(row);
 
-  return detailFor(row);
+  throw await repinFailure(userId, id);
+}
+
+/** Why a guarded re-pin wrote nothing: the row is missing (or someone
+ *  else's), or it is Ready. */
+async function repinFailure(userId: string, id: string): Promise<Error> {
+  const current = await getApplicationRow(userId, id);
+  if (!current) return new NotFoundError(`application ${id} not found`);
+  return new BadRequestError(
+    repinRefusal(current.status) ?? `application ${id} changed while saving; try again`,
+  );
 }
 
 /**
@@ -407,6 +427,9 @@ export async function pinResumePdf(
  * show for it. Called by `POST /api/applications/:id/apply` once the render
  * has actually produced a PDF; the compile itself lives in the route, as it
  * does for `POST /api/resumes/:id/pdf`.
+ *
+ * A new `resumePdfId` is refused while `ready`, as in `pinResumePdf`; sending
+ * a Ready application keeps the PDF that was approved.
  */
 export async function recordApplied(
   userId: string,
@@ -424,11 +447,17 @@ export async function recordApplied(
       // A re-send replaces the snapshot; not sending one leaves the last in place.
       ...(resumePdfId === null ? {} : { resumePdfId }),
     })
-    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        resumePdfId === null ? undefined : ne(application.status, 'ready'),
+      ),
+    )
     .returning();
-  if (!row) throw new NotFoundError(`application ${id} not found`);
+  if (row) return detailFor(row);
 
-  return detailFor(row);
+  throw await repinFailure(userId, id);
 }
 
 /**

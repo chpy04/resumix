@@ -425,13 +425,16 @@ a `400`, and passing neither leaves the application without one.
 **`POST /pdf` is "save this resume to the application".** It renders the
 linked resume, stores a `resume_pdf` snapshot, and points the application at
 it, leaving the status alone — this is what the resume editor calls when it
-was opened from an application. `400` if no resume is linked.
+was opened from an application. `400` if no resume is linked, and `400` on a
+Ready application, before anything is compiled: its PDF is the one final
+approval pinned, and only the next final approval replaces it (D-044).
 
 **`POST /apply` declares it sent**, which is what moves it off the pipeline
 board and into the Applied table. If nothing has been saved to the application
 yet it takes that snapshot first, so a sent application is never left with no
 record; if one is already pinned, that snapshot stands and nothing is
-re-rendered.
+re-rendered. Pinning a new snapshot is refused with a `400` on a Ready
+application, as `POST /pdf` is; sending one keeps the PDF that was approved.
 
 A LaTeX compile failure is **not** an HTTP error on either POST: it is
 `200 { ok: false, pages, errors, warnings, log }` and nothing is written,
@@ -500,7 +503,7 @@ global edit made elsewhere must not reopen anything (C6). The pinned snapshot
 is what gets sent. There is no diffing: a selection write that puts back what
 was there still reopens. Applications that have been sent (`applied` and
 later) are never reopened, and a reopened one keeps its pinned `sentPdf` until
-the next final approval replaces it.
+a new one is pinned.
 
 ### Attachments
 

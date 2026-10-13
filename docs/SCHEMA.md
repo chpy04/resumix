@@ -291,8 +291,9 @@ a `ready` row goes back to `needs_review`. Only writes that change what this
 application sends do that: its resume's selection, its letter's `content`,
 and relinking or unlinking `resume_id` or `cover_letter_id`. Library and
 template edits do not (C6). Rows that have been sent keep their stamps as
-history. A reopened row keeps its `resume_pdf_id` until the next final
-approval replaces it.
+history. A reopened row keeps its `resume_pdf_id` until a new one is pinned.
+While `ready`, nothing but final approval writes `resume_pdf_id`: saving the
+resume to the application, or sending it with a new snapshot, is refused.
 
 **The approved letter's PDF is an `application_file`.** Final approval
 compiles the letter and stores it as an attachment named like the letter's

@@ -174,3 +174,16 @@ export function reopenedSections(
   }
   return sections;
 }
+
+/**
+ * Why a new resume PDF may not be pinned to an application in `status`, or
+ * null when it may. A Ready application's pinned PDF is the one final
+ * approval stored, and only another final approval replaces it (C4).
+ */
+export function repinRefusal(status: ApplicationStatus): string | null {
+  if (status !== 'ready') return null;
+  return (
+    "This application is Ready: its PDF is the one you approved, so a new one can't replace " +
+    'it. Edit the resume to send it back to review, then approve it again.'
+  );
+}
