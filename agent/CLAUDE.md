@@ -41,4 +41,21 @@ was not started through `./claude.sh`, and both are his to fix.
   its skills; never edit it.
 - `$CAREER_OPS_DATA_DIR` holds your personal career-ops files (`cv.md`,
   `config/profile.yml`, `modes/_custom.md`, `data/`). Those are yours to
-  write, and they live outside the submodule so it stays untouched.
+  write, and they live outside the submodule so it stays untouched. The one
+  exception is the `resumix-routing` block in `modes/_custom.md`, which
+  hands career-ops' CV, cover-letter and tracker steps to Resumix.
+  `./install-career-ops-custom.sh` rewrites it from `career-ops-custom.md`
+  at every launch and every `/resumix-propose`, so a house rule goes outside
+  it.
+- `CAREER_OPS_ROOT` must stay unset. career-ops reads it before
+  `$CAREER_OPS_DATA_DIR`, so it would take its whole user layer, the routing
+  included, from somewhere else. `./claude.sh` drops any shell export of it,
+  and the installer refuses to run while `.env` points it elsewhere.
+
+## Skills
+
+- **`/resumix-propose <posting URL>`** is how a resume gets made, never
+  career-ops' CV modes. It scores the posting with career-ops, logs it in
+  Resumix, and picks library content until the resume fits on one page. Its
+  first step runs `./install-career-ops-custom.sh`, the one script here you
+  run.
