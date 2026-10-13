@@ -135,6 +135,39 @@ test(
   },
 );
 
+test(
+  'a reopen that races a final approval waits for it, then undoes it whole',
+  { skip },
+  async () => {
+    const s = await approved('needs_review');
+    try {
+      // A final approval mid-commit: the row is `ready`, and locked until it
+      // commits. The selection write starts while that lock is held.
+      const approval = await fixtures.holdApplicationWrite(s.app.id, {
+        status: 'ready',
+        approvedAt: STAMP,
+      });
+      const write = replaceSelections(s.user.id, s.resume.id, { experiences: [] });
+      try {
+        await approval.waitForWaiter();
+      } finally {
+        await approval.commit();
+      }
+      await write;
+
+      // Read before the approval committed, the patch would clear only the
+      // resume's stamp and leave a `ready` row with `approved_at` set.
+      const row = await s.read();
+      assert.equal(row?.status, 'needs_review');
+      assert.equal(row?.resumeApprovedAt, null);
+      assert.equal(row?.approvedAt, null, '`ready` and a set approved_at stay one fact');
+      assert.deepEqual(row?.coverLetterApprovedAt, STAMP);
+    } finally {
+      await s.cleanup();
+    }
+  },
+);
+
 test('in Needs review a write clears only its own section', { skip }, async () => {
   const s = await approved('needs_review');
   try {

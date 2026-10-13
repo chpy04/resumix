@@ -47,7 +47,14 @@ async function reopenWhere(
         inArray(application.status, [...REOPENABLE_STATUSES]),
         where,
       ),
-    );
+    )
+    // Locked, because the patch is computed from what this reads. A final
+    // approval in flight holds the row; without the lock this would read it
+    // as it was before (Needs review, nothing to clear but the resume's
+    // stamp), wait only at the UPDATE, and then clear that one stamp on a
+    // row that is now `ready`, leaving `approved_at` set. With it, the read
+    // waits for the approval to commit and sees `ready`.
+    .for('update');
 
   for (const row of rows) {
     const patch = reopenedApproval(row, section);

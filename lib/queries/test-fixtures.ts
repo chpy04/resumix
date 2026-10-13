@@ -259,6 +259,58 @@ export function stubLatex(pagesFor: (tex: string) => StubbedCompile): {
   };
 }
 
+/**
+ * Writes `patch` to an application inside a transaction that stays open,
+ * holding the row's lock, until `commit()`: how a test puts a concurrent
+ * writer exactly where it wants one. `waitForWaiter()` resolves once another
+ * connection is blocked on that lock, so what the test does next happens
+ * while it waits, not before or after.
+ */
+export async function holdApplicationWrite(
+  id: string,
+  patch: Partial<typeof application.$inferInsert>,
+) {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let locked!: (pid: number) => void;
+  const pid = new Promise<number>((resolve) => {
+    locked = resolve;
+  });
+
+  const done = db.transaction(async (tx) => {
+    await tx.update(application).set(patch).where(eq(application.id, id));
+    const [row] = await tx.execute<{ pid: number }>('select pg_backend_pid() as pid');
+    if (!row) throw new Error('no backend pid');
+    locked(row.pid);
+    await released;
+  });
+  const holder = await Promise.race([
+    pid,
+    done.then(() => {
+      throw new Error('the held transaction ended before it took the lock');
+    }),
+  ]);
+
+  return {
+    async waitForWaiter(): Promise<void> {
+      for (let attempt = 0; attempt < 400; attempt++) {
+        const [row] = await sql<{ waiting: number }[]>`
+          select count(*)::int as waiting from pg_stat_activity
+          where ${holder}::int = any(pg_blocking_pids(pid))`;
+        if ((row?.waiting ?? 0) > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`nothing waited on backend ${holder}'s lock`);
+    },
+    async commit(): Promise<void> {
+      release();
+      await done;
+    },
+  };
+}
+
 /** Every `resume_pdf` row a resume has, newest first, bytes excluded. */
 export async function listResumePdfIds(resumeId: string): Promise<string[]> {
   const rows = await db
