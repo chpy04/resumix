@@ -52,3 +52,39 @@ test('a tool that acts on one application takes it as a required application_id 
     assert.ok((tool.inputSchema.required as string[]).includes('application_id'), tool.name);
   }
 });
+
+/** Valid apart from the empty company. */
+const CREATE_ARGS = {
+  company: '',
+  role_title: 'Engineer',
+  posting_url: 'https://jobs.example.test/1',
+  job_description: 'Build.',
+  agent_summary: 'Fits.',
+};
+
+test('create_application advertises no multipleOf, and still holds fit_score to one decimal', async () => {
+  const tool = TOOLS.find((t) => t.name === 'create_application');
+  assert.ok(tool);
+  const properties = tool.inputSchema.properties as Record<string, Record<string, unknown>>;
+  assert.equal(properties.fit_score?.multipleOf, undefined, JSON.stringify(properties.fit_score));
+  assert.ok(!JSON.stringify(TOOLS.map((t) => t.inputSchema)).includes('multipleOf'));
+
+  // An empty company fails validation alongside the score, so no call ever
+  // reaches the database; the issue list then shows what fit_score made of it.
+  const issuesFor = async (fit_score: number) => {
+    const result = await tool.call({ userId: 'nobody' }, { ...CREATE_ARGS, fit_score });
+    assert.equal(result.isError, true);
+    return result.content[0]?.text ?? '';
+  };
+  for (let tenths = 0; tenths <= 50; tenths++) {
+    const score = tenths / 10;
+    assert.doesNotMatch(await issuesFor(score), /fit_score/, String(score));
+  }
+  for (const score of [4.25, 0.05, 3.333]) {
+    assert.match(
+      await issuesFor(score),
+      /fit_score: must have at most one decimal place, e.g\. 4\.3/,
+      String(score),
+    );
+  }
+});

@@ -16,10 +16,10 @@ import { assembleLibrary } from '../../queries/library.ts';
 import { renderResumeById } from '../../queries/render.ts';
 import { getResumeRow } from '../../queries/resumes.ts';
 import { replaceSelections } from '../../queries/selections.ts';
+import { findLiveApplication, noSuchApplication } from '../application.ts';
 import { suggestDrops } from '../overflow.ts';
 import { findSelectionProblems, selectionInput, toSelections } from '../selection.ts';
 import { defineTool, toolError, toolJson } from '../tool.ts';
-import { findLiveApplication, noSuchApplication } from './get-application.ts';
 
 export const setResumeSelection = defineTool({
   name: 'set_resume_selection',
@@ -41,7 +41,8 @@ export const setResumeSelection = defineTool({
     if (hasBeenSent(app.status)) {
       return toolError(
         `This application is ${app.status}: it has been sent, so its resume is no longer ` +
-          'tailored here. Nothing was written.',
+          'tailored here. Nothing was written. Leave it as it is, and call list_applications ' +
+          'to find one that is still being tailored.',
       );
     }
 

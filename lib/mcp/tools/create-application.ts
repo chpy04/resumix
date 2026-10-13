@@ -12,6 +12,11 @@ import { defineTool, toolJson } from '../tool.ts';
 
 const text = z.string().trim().min(1, 'is required');
 
+/** Tenths, tested with a tolerance: 0.7 * 10 is 7.000000000000001. */
+function hasOneDecimal(value: number): boolean {
+  return Math.abs(value * 10 - Math.round(value * 10)) < 1e-9;
+}
+
 export const createApplication = defineTool({
   name: 'create_application',
   description:
@@ -31,12 +36,17 @@ export const createApplication = defineTool({
     agent_summary: text.describe('Your evaluation of the fit, as plain text with line breaks.'),
     // numeric(2,1) (C13). Rejected rather than rounded: rounding would
     // silently move the card in Needs review, which sorts by this (D-042).
+    // A refine, not `.multipleOf(0.1)`, which `tools/list` would advertise as
+    // `multipleOf: 0.1`: a client checking that in floating point finds
+    // 4.3 % 0.1 ≈ 0.1 and refuses a valid score before it is ever sent.
     fit_score: z
       .number()
       .min(0, 'must be 0.0 to 5.0')
       .max(5, 'must be 0.0 to 5.0')
-      .multipleOf(0.1, 'must have at most one decimal place, e.g. 4.3')
-      .describe('How well this posting fits, 0.0 to 5.0, one decimal place.'),
+      .refine(hasOneDecimal, { message: 'must have at most one decimal place, e.g. 4.3' })
+      .describe(
+        'How well this posting fits, 0.0 to 5.0, with at most one decimal place (4.3, not 4.25).',
+      ),
   }),
   async run(ctx, args) {
     const created = await createProposedApplication(ctx.userId, {

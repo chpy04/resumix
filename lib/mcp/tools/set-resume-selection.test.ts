@@ -254,7 +254,10 @@ test(
       const defaultBefore = await getSelections(defaultResume.id);
       const resumeBefore = await getSelections(s.resume.id);
       const cases: [string, RegExp][] = [
-        [sent.id, /^This application is applied: it has been sent.*Nothing was written\.$/],
+        [
+          sent.id,
+          /^This application is applied: it has been sent.*Nothing was written\. Leave it as it is, and call list_applications/,
+        ],
         [
           unlinked.id,
           /has no resume to select into\. Nothing was written; ask Chris to link one\./,
