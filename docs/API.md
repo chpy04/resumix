@@ -105,6 +105,7 @@ type ApplicationDetail = ApplicationSummary & {
   resumeApprovedAt: string | null; // the resume approved in review; cleared when it changes
   coverLetterApprovedAt: string | null; // the same for the letter
   approvedAt: string | null; // final approval, which made it ready; cleared with it
+  pdfFilenames: { resume: string | null; coverLetter: string | null }; // what approval names the PDFs
   files: ApplicationFile[];
 };
 ```

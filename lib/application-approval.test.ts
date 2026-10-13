@@ -12,6 +12,7 @@ let approveApplication: typeof import('./application-approval.ts').approveApplic
 let BadRequestError: typeof import('./queries/errors.ts').BadRequestError;
 let approveSection: typeof import('./queries/applications.ts').approveSection;
 let getApplicationRow: typeof import('./queries/applications.ts').getApplicationRow;
+let getApplicationDetail: typeof import('./queries/applications.ts').getApplicationDetail;
 let recordFinalApproval: typeof import('./queries/applications.ts').recordFinalApproval;
 let createCoverLetter: typeof import('./queries/cover-letters.ts').createCoverLetter;
 let updateCoverLetter: typeof import('./queries/cover-letters.ts').updateCoverLetter;
@@ -23,7 +24,7 @@ let fixtures: typeof import('./queries/test-fixtures.ts');
 if (!skip) {
   ({ approveApplication } = await import('./application-approval.ts'));
   ({ BadRequestError } = await import('./queries/errors.ts'));
-  ({ approveSection, getApplicationRow, recordFinalApproval } = await import(
+  ({ approveSection, getApplicationDetail, getApplicationRow, recordFinalApproval } = await import(
     './queries/applications.ts'
   ));
   ({ createCoverLetter, updateCoverLetter } = await import('./queries/cover-letters.ts'));
@@ -123,6 +124,36 @@ test(
     }
   },
 );
+
+test('the PDF names the page shows come from the server, prefix and all', { skip }, async () => {
+  const s = await approvable();
+  const previous = process.env.PDF_NAME_PREFIX;
+  process.env.PDF_NAME_PREFIX = 'Server_Prefix';
+  const latex = fixtures.stubLatex(() => 1);
+  try {
+    const before = await getApplicationDetail(s.user.id, s.app.id);
+    const expected = {
+      resume: buildResumeFilename(s.company),
+      coverLetter: buildCoverLetterFilename(s.company),
+    };
+    assert.match(expected.resume, /^Server_Prefix_/);
+    assert.deepEqual(before?.pdfFilenames, expected);
+
+    // And they are the names approval stores the two PDFs under.
+    const result = await approveApplication(s.user.id, s.app.id);
+    assert.ok(result.ok);
+    assert.equal(result.application.sentPdf?.filename, expected.resume);
+    assert.deepEqual(
+      result.application.files.map((f) => f.filename),
+      [expected.coverLetter],
+    );
+  } finally {
+    latex.restore();
+    if (previous === undefined) delete process.env.PDF_NAME_PREFIX;
+    else process.env.PDF_NAME_PREFIX = previous;
+    await s.cleanup();
+  }
+});
 
 test('with no letter, approval needs only the resume and stores no file', { skip }, async () => {
   const s = await approvable(false);

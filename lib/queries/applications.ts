@@ -14,6 +14,7 @@ import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { sectionApprovalProblem, type ReviewSection } from '../applications/review.ts';
 import { nextAppliedAt, type ManualStatus } from '../applications/status.ts';
 import { db, type Executor } from '../db/index.ts';
+import { buildCoverLetterFilename, buildResumeFilename } from '../filename.ts';
 import { application, applicationFile, coverLetter, resume, resumePdf } from '../db/schema.ts';
 import { saveResumePdfSnapshot, type NewPdfSnapshot } from '../storage.ts';
 import type {
@@ -73,6 +74,7 @@ function toDetail(
   row: ApplicationRow,
   sentPdf: SentPdfMeta | null,
   files: ApplicationFile[],
+  coverLetterName: string | null,
 ): ApplicationDetail {
   return {
     ...toSummary(row, sentPdf),
@@ -83,6 +85,11 @@ function toDetail(
     resumeApprovedAt: row.resumeApprovedAt?.toISOString() ?? null,
     coverLetterApprovedAt: row.coverLetterApprovedAt?.toISOString() ?? null,
     approvedAt: row.approvedAt?.toISOString() ?? null,
+    // Named here, where `PDF_NAME_PREFIX` is set; the browser never sees it.
+    pdfFilenames: {
+      resume: row.resumeId ? buildResumeFilename(row.company) : null,
+      coverLetter: coverLetterName === null ? null : buildCoverLetterFilename(coverLetterName),
+    },
     files,
   };
 }
@@ -141,12 +148,27 @@ async function sentPdfMeta(resumePdfId: string | null): Promise<SentPdfMeta | nu
   return row ? { filename: row.filename, createdAt: row.createdAt.toISOString() } : null;
 }
 
+/** The linked letter's name, which names its PDF. */
+async function coverLetterName(
+  userId: string,
+  coverLetterId: string | null,
+): Promise<string | null> {
+  if (!coverLetterId) return null;
+  const [row] = await db
+    .select({ name: coverLetter.name })
+    .from(coverLetter)
+    .where(and(eq(coverLetter.id, coverLetterId), eq(coverLetter.userId, userId)))
+    .limit(1);
+  return row?.name ?? null;
+}
+
 async function detailFor(row: ApplicationRow): Promise<ApplicationDetail> {
-  const [sentPdf, files] = await Promise.all([
+  const [sentPdf, files, letterName] = await Promise.all([
     sentPdfMeta(row.resumePdfId),
     listApplicationFiles(row.userId, row.id),
+    coverLetterName(row.userId, row.coverLetterId),
   ]);
-  return toDetail(row, sentPdf, files);
+  return toDetail(row, sentPdf, files, letterName);
 }
 
 export async function getApplicationDetail(

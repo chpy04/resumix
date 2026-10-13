@@ -239,6 +239,9 @@ export interface ApplicationDetail extends ApplicationSummary {
   coverLetterApprovedAt: string | null;
   /** Set by the final approval that makes it `ready`; cleared with it. */
   approvedAt: string | null;
+  /** What final approval names the two PDFs, as the server's prefix makes
+   *  them; null for a document that is not linked. */
+  pdfFilenames: { resume: string | null; coverLetter: string | null };
   files: ApplicationFile[];
 }
 
