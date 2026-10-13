@@ -190,6 +190,39 @@ export async function createApplicationViaApi(
   return created.id;
 }
 
+/** `GET /api/applications/:id`, for asserting what the server holds. */
+export interface ApplicationDetailLike {
+  id: string;
+  status: string;
+  resumeId: string | null;
+  coverLetterId: string | null;
+  sentPdf: { filename: string } | null;
+  proposedSelection: ResumeDetailLike['selections'] | null;
+  resumeApprovedAt: string | null;
+  coverLetterApprovedAt: string | null;
+  approvedAt: string | null;
+  files: { filename: string; contentType: string; isArchived: boolean }[];
+}
+
+export function getApplicationDetail(
+  page: Page,
+  applicationId: string,
+): Promise<ApplicationDetailLike> {
+  return apiRequest<ApplicationDetailLike>(page, `/api/applications/${applicationId}`);
+}
+
+/** "Add a cover letter" through the real API: copies the default letter and
+ *  links it. Returns the new letter's id. */
+export async function addCoverLetterViaApi(page: Page, applicationId: string): Promise<string> {
+  const updated = await apiRequest<{ coverLetterId: string | null }>(
+    page,
+    `/api/applications/${applicationId}/cover-letter`,
+    { method: 'POST' },
+  );
+  if (!updated.coverLetterId) throw new Error(`no cover letter was linked to ${applicationId}`);
+  return updated.coverLetterId;
+}
+
 /**
  * Puts an application into one of the review flow's statuses, with the
  * agent's fields beside it, by writing the row directly.
@@ -206,6 +239,8 @@ export async function setApplicationPipelineState(
     fitScore?: number;
     jobDescription?: string;
     agentSummary?: string;
+    /** The agent's pick (C7), which the review page badges and resets to. */
+    proposedSelection?: ResumeDetailLike['selections'];
   },
 ): Promise<void> {
   const sql = postgres(
@@ -220,6 +255,9 @@ export async function setApplicationPipelineState(
   try {
     const result = await sql`update application set ${sql(columns)} where id = ${applicationId}`;
     if (result.count !== 1) throw new Error(`no application ${applicationId} to update`);
+    if (state.proposedSelection !== undefined) {
+      await sql`update application set proposed_selection = ${sql.json(state.proposedSelection)} where id = ${applicationId}`;
+    }
   } finally {
     await sql.end();
   }

@@ -34,8 +34,14 @@ test('the registry serves the library and application tools, in this order', () 
       'get_application',
       'create_application',
       'set_resume_selection',
+      'submit_for_review',
     ],
   );
+});
+
+test('no tool approves anything: approval happens only in the UI', () => {
+  // The board's NOT EXPOSED list (.claude/rules/mcp.md).
+  for (const tool of TOOLS) assert.doesNotMatch(tool.name, /^approve_/, tool.name);
 });
 
 test('every input rejects unknown keys', () => {

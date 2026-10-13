@@ -5,9 +5,10 @@
  * this proves the route, the token check and the database behind it.
  *
  * Then it does what the agent does first (D-042): reads the library, logs an
- * application, finds it again, and selects a small resume into it, which the
- * real sidecar compiles. That application is archived and its resume
- * deleted when the script ends, so later specs' boards stay as they were.
+ * application, finds it again, selects a small resume into it, which the
+ * real sidecar compiles, and submits it for review (D-044). That application
+ * is archived and its resume deleted when the script ends, so later specs'
+ * boards stay as they were.
  *
  * It needs a running server. `npm run verify` runs it from
  * `e2e/mcp.spec.ts`, against Playwright's own server; by hand, start
@@ -48,6 +49,7 @@ const TOOL_NAMES = [
   'get_application',
   'create_application',
   'set_resume_selection',
+  'submit_for_review',
 ];
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -240,6 +242,29 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     });
     assert.deepEqual(after.selection, selection);
     check('an unknown id is refused, and the selection is unchanged');
+
+    // The real sidecar counts the pages here too; there is no letter.
+    const submitted = await callJson(mcp, 'submit_for_review', { application_id: applicationId });
+    assert.deepEqual(submitted, {
+      application_id: applicationId,
+      status: 'needs_review',
+      resume_pages: 1,
+      cover_letter_pages: null,
+    });
+    const inReview = await callJson<{ status: string }>(mcp, 'get_application', {
+      application_id: applicationId,
+    });
+    assert.equal(inReview.status, 'needs_review');
+    check('submit_for_review moves it to needs_review, and get_application agrees');
+
+    const unknown = randomUUID();
+    const missing = await callTool(mcp, 'submit_for_review', { application_id: unknown });
+    assert.equal(missing.isError, true, 'an unknown application was submitted');
+    assert.equal(
+      missing.content[0]?.text,
+      `No application ${unknown}. Call list_applications to find its application_id.`,
+    );
+    check('submit_for_review on an unknown id is isError');
   } finally {
     const row = await getApplicationRow(userId, applicationId);
     await updateApplication(userId, applicationId, { isArchived: true });

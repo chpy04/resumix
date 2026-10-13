@@ -1,8 +1,8 @@
 /**
  * `set_resume_selection` against a real database, with the LaTeX sidecar
- * stubbed at `fetch`, as `lib/feedback/github.test.ts` stubs GitHub. CI's
- * test job has no sidecar, and the page count is the thing under test, so
- * the stub is what lets each test choose it.
+ * stubbed at `fetch` (`stubLatex`, in test-fixtures.ts). CI's test job has
+ * no sidecar, and the page count is the thing under test, so the stub is
+ * what lets each test choose it.
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -28,38 +28,6 @@ if (!skip) {
 after(async () => {
   if (!skip) await fixtures.closeTestDb();
 });
-
-type CompileReply = { ok: boolean; pages: number | null; errors?: string[] } | Error;
-
-/** Points `compileTex` at a fake sidecar that answers `reply`, recording
- *  every `.tex` it is sent. */
-function stubLatex(reply: CompileReply): { sent: string[]; restore: () => void } {
-  const sent: string[] = [];
-  const original = { fetch: globalThis.fetch, url: process.env.LATEX_SERVICE_URL };
-  process.env.LATEX_SERVICE_URL = 'http://latex.test';
-
-  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
-    assert.equal(String(input), 'http://latex.test/compile');
-    sent.push((JSON.parse(String(init.body)) as { tex: string }).tex);
-    if (reply instanceof Error) throw reply;
-    return Response.json({
-      ...(reply.ok ? { pdfBase64: 'JVBERi0xLjUK' } : {}),
-      errors: [],
-      log: '',
-      durationMs: 1,
-      ...reply,
-    });
-  }) as typeof fetch;
-
-  return {
-    sent,
-    restore: () => {
-      globalThis.fetch = original.fetch;
-      if (original.url === undefined) delete process.env.LATEX_SERVICE_URL;
-      else process.env.LATEX_SERVICE_URL = original.url;
-    },
-  };
-}
 
 /** A fresh account with live and archived content, and one application in
  *  `status` with a resume of its own. */
@@ -116,7 +84,7 @@ function json(result: { content: { text: string }[] }): unknown {
 
 test('writes all six slices, renders them, and answers ok on one page', { skip }, async () => {
   const s = await setup();
-  const latex = stubLatex({ ok: true, pages: 1 });
+  const latex = fixtures.stubLatex(() => 1);
   try {
     const result = await call(s.user.id, s.app.id, s.selection);
     assert.equal(result.isError, undefined, result.content[0]?.text);
@@ -138,7 +106,7 @@ test(
   { skip },
   async () => {
     const s = await setup('proposing');
-    const latex = stubLatex({ ok: true, pages: 1 });
+    const latex = fixtures.stubLatex(() => 1);
     try {
       await call(s.user.id, s.app.id, s.selection);
       const trimmed = { ...s.selection, experience_bullets: { [s.exp.id]: [s.first.id] } };
@@ -154,10 +122,10 @@ test(
 );
 
 test(
-  'outside proposing the selection is written but proposed_selection is not',
+  'outside proposing the selection is written but proposed_selection is not, and ready reopens',
   { skip },
   async () => {
-    const latex = stubLatex({ ok: true, pages: 1 });
+    const latex = fixtures.stubLatex(() => 1);
     try {
       for (const status of ['draft', 'needs_review', 'ready'] as const) {
         const s = await setup(status);
@@ -167,7 +135,9 @@ test(
           assert.deepEqual(await getSelections(s.resume.id), toSelections(s.selection));
           const row = await getApplicationRow(s.user.id, s.app.id);
           assert.equal(row?.proposedSelection, null, status);
-          assert.equal(row?.status, status, "the status is not this tool's to change");
+          // An edit to a ready application reopens it, as any selection
+          // write does (C3, D-044); the tool itself never sets a status.
+          assert.equal(row?.status, status === 'ready' ? 'needs_review' : status, status);
         } finally {
           await s.cleanup();
         }
@@ -185,7 +155,7 @@ test(
     const s = await setup();
     const bob = await fixtures.insertUser(`sel-bob-${fixtures.testTag()}`);
     const bobExp = await fixtures.insertExperience(bob.id, 'bob');
-    const latex = stubLatex({ ok: true, pages: 1 });
+    const latex = fixtures.stubLatex(() => 1);
     try {
       await call(s.user.id, s.app.id, s.selection);
       const before = await getSelections(s.resume.id);
@@ -249,7 +219,7 @@ test(
     });
     const bob = await fixtures.insertUser(`sel-bob-${fixtures.testTag()}`);
     const bobs = await fixtures.insertTestApplication(bob.id, 'bob', { status: 'proposing' });
-    const latex = stubLatex({ ok: true, pages: 1 });
+    const latex = fixtures.stubLatex(() => 1);
     try {
       const defaultBefore = await getSelections(defaultResume.id);
       const resumeBefore = await getSelections(s.resume.id);
@@ -285,7 +255,7 @@ test(
 
 test('two pages is ok:false, with bullets to drop', { skip }, async () => {
   const s = await setup();
-  const latex = stubLatex({ ok: true, pages: 2 });
+  const latex = fixtures.stubLatex(() => 2);
   try {
     const result = await call(s.user.id, s.app.id, s.selection);
     assert.equal(result.isError, undefined, result.content[0]?.text);
@@ -313,11 +283,9 @@ test('two pages is ok:false, with bullets to drop', { skip }, async () => {
 
 test('a LaTeX error is isError, with the selection saved', { skip }, async () => {
   const s = await setup();
-  const latex = stubLatex({
-    ok: false,
-    pages: null,
+  const latex = fixtures.stubLatex(() => ({
     errors: ['! Undefined control sequence. l.42', '! Missing } inserted.', '! a', '! b'],
-  });
+  }));
   try {
     const result = await call(s.user.id, s.app.id, s.selection);
     assert.equal(result.isError, true);
@@ -333,7 +301,7 @@ test('a LaTeX error is isError, with the selection saved', { skip }, async () =>
 
 test('an unreachable sidecar is isError, with the selection saved', { skip }, async () => {
   const s = await setup();
-  const latex = stubLatex(new TypeError('fetch failed'));
+  const latex = fixtures.stubLatex(() => 'down');
   try {
     const result = await call(s.user.id, s.app.id, s.selection);
     assert.equal(result.isError, true);

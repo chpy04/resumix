@@ -201,11 +201,13 @@ nothing about the company is substituted in.
 
 **There is no `cover_letter_pdf`.** `resume_pdf` exists because a resume's
 bytes can change without anyone touching that resume; a cover letter can only
-change if you edit that letter, so downloads compile `content` on demand and
-nothing is snapshotted. The consequence is that this text is the only record
-of what was sent, which is why removal is `is_archived` and there is no
-DELETE — and why the default row cannot be archived at all, since new letters
-are copied from it.
+change if you edit that letter, so downloads compile `content` on demand. The
+one PDF of a letter that is kept is the one final approval stores on its
+application as an `application_file` (see `application`, below), and that is
+an attachment, not a snapshot table (D-044). Otherwise this text is the only
+record of what was sent, which is why removal is `is_archived` and there is
+no DELETE — and why the default row cannot be archived at all, since new
+letters are copied from it.
 
 ## Applications
 
@@ -232,9 +234,9 @@ in the way (D-032).
 | `agent_summary`            | text                                                 | the agent's evaluation, plain text; null when it supplied none                                                |
 | `fit_score`                | numeric(2,1), CHECK 0–5 (`ck_application_fit_score`) | the agent's 0.0–5.0 estimate of fit (C13); null when unscored                                                 |
 | `proposed_selection`       | jsonb                                                | the agent's pick (C7), as API `Selections`; each `set_resume_selection` while `proposing` overwrites it       |
-| `resume_approved_at`       | timestamptz                                          | null until the resume is approved in review (C11)                                                             |
-| `cover_letter_approved_at` | timestamptz                                          | null until the cover letter is approved in review (C11)                                                       |
-| `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11)                                                     |
+| `resume_approved_at`       | timestamptz                                          | null until the resume is approved in review (C11); cleared when it changes                                    |
+| `cover_letter_approved_at` | timestamptz                                          | null until the cover letter is approved in review (C11); cleared when it changes                              |
+| `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11); cleared when either section reopens                |
 | `is_archived`              | boolean not null default false                       |                                                                                                               |
 
 **The two resume references are not redundant.** `resume_id` is the mutable
@@ -276,6 +278,30 @@ date something was sent is a fact and the status is an opinion.
 The agent's columns are all nullable. Null means the agent never supplied
 that value, which a row logged by hand never has; it is a different fact
 from an empty string.
+
+**The approval columns are the review flow's state (C11, D-044).**
+`resume_approved_at` and `cover_letter_approved_at` are stamped when Chris
+approves that section in `needs_review`. `approved_at` is stamped by the final
+approval that moves the application to `ready`, in the same transaction that
+stores a fresh `resume_pdf` snapshot and points `resume_pdf_id` at it. So
+`ready` and a set `approved_at` are one fact.
+
+Changing a section afterwards clears its stamp and `approved_at` with it, and
+a `ready` row goes back to `needs_review`. Only writes that change what this
+application sends do that: its resume's selection, its letter's `content`,
+and relinking or unlinking `resume_id` or `cover_letter_id`. Library and
+template edits do not (C6). Rows that have been sent keep their stamps as
+history. A reopened row keeps its `resume_pdf_id` until a new one is pinned.
+While `ready`, nothing but final approval writes `resume_pdf_id`: saving the
+resume to the application, or sending it with a new snapshot, is refused.
+
+**The approved letter's PDF is an `application_file`.** Final approval
+compiles the letter and stores it as an attachment named like the letter's
+download (`<prefix>_<Company>_Cover_Letter.pdf`, `application/pdf`). The
+approved letter is the application's one non-archived file with that name:
+approving again archives the earlier one rather than deleting it (D-011).
+There is no pointer column to it, because the board's data model has none
+(D-032).
 
 ### `application_file`
 

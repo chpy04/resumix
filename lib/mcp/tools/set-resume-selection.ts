@@ -37,7 +37,8 @@ export const setResumeSelection = defineTool({
 
     // Refused only once sent: draft, proposing, needs_review and ready are all
     // still being tailored. Sending an edited ready application back to
-    // review belongs to the approval flow (C3), not to this tool.
+    // review belongs to the approval flow (C3): `replaceSelections` does it,
+    // for this tool and the editor alike (D-044).
     if (hasBeenSent(app.status)) {
       return toolError(
         `This application is ${app.status}: it has been sent, so its resume is no longer ` +

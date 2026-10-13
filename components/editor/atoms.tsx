@@ -60,6 +60,19 @@ export function GlobalEditBadge({
   );
 }
 
+/** Marks a row the agent picked for this application (C7). Shown whether or
+ *  not it is still ticked, so an unticked one is easy to find again. */
+export function AgentPickBadge() {
+  return (
+    <span
+      title="The agent picked this for this application"
+      className="inline-block shrink-0 rounded-full border border-accent/50 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+    >
+      agent pick
+    </span>
+  );
+}
+
 export function ArchivedBadge() {
   return (
     <span className="inline-block shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] tracking-wide text-ink-dim uppercase">

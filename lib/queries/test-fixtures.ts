@@ -17,17 +17,19 @@
  * fully-provisioned account to test *against*.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { db, sql } from '../db/index.ts';
 import {
   apiToken,
   application,
+  applicationFile,
   coverLetter,
   experience,
   experienceBullet,
   project,
   projectBullet,
   resume,
+  resumePdf,
   technicalSkill,
   technicalSkillRow,
   users,
@@ -197,6 +199,140 @@ export async function getApiTokenRow(id: string) {
   const [row] = await db.select().from(apiToken).where(eq(apiToken.id, id)).limit(1);
   if (!row) throw new Error(`no api_token row ${id}`);
   return row;
+}
+
+/** What `stubLatex` answers for one `.tex`: a page count, a LaTeX error
+ *  (`STUB_LATEX_ERROR`, or the errors given), or a sidecar that cannot be
+ *  reached. */
+export type StubbedCompile = number | 'error' | { errors: string[] } | 'down';
+
+/** The error the stub reports for `'error'`, so a test can look for it. */
+export const STUB_LATEX_ERROR = '! Undefined control sequence. l.7 \\nosuchmacro';
+
+/**
+ * Points `compileTex` at a fake sidecar, the way `lib/feedback/github.test.ts`
+ * stubs GitHub: CI's test job has no sidecar, and the page count is usually
+ * the thing under test. `pagesFor` decides each answer from the `.tex` it
+ * was sent, so a test can tell a resume from a letter. Every `.tex` is
+ * recorded. Call `restore()` in a `finally`.
+ */
+export function stubLatex(pagesFor: (tex: string) => StubbedCompile): {
+  sent: string[];
+  restore: () => void;
+} {
+  const sent: string[] = [];
+  const original = { fetch: globalThis.fetch, url: process.env.LATEX_SERVICE_URL };
+  process.env.LATEX_SERVICE_URL = 'http://latex.test';
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    // Anything else is a call this stub was never meant to answer.
+    if (String(input) !== 'http://latex.test/compile') {
+      throw new Error(`stubLatex: unexpected fetch of ${String(input)}`);
+    }
+    const { tex } = JSON.parse(String(init.body)) as { tex: string };
+    sent.push(tex);
+    const answer = pagesFor(tex);
+    // What a real `fetch` throws when nothing is listening.
+    if (answer === 'down') throw new TypeError('fetch failed');
+    if (answer === 'error' || typeof answer === 'object') {
+      return Response.json({
+        ok: false,
+        pages: null,
+        errors: answer === 'error' ? [STUB_LATEX_ERROR] : answer.errors,
+        log: '',
+        durationMs: 1,
+      });
+    }
+    // "%PDF-1.5": the bytes are never parsed, only stored and compared.
+    return Response.json({
+      ok: true,
+      pdfBase64: 'JVBERi0xLjUK',
+      pages: answer,
+      errors: [],
+      log: '',
+      durationMs: 1,
+    });
+  }) as typeof fetch;
+
+  return {
+    sent,
+    restore: () => {
+      globalThis.fetch = original.fetch;
+      if (original.url === undefined) delete process.env.LATEX_SERVICE_URL;
+      else process.env.LATEX_SERVICE_URL = original.url;
+    },
+  };
+}
+
+/**
+ * Writes `patch` to an application inside a transaction that stays open,
+ * holding the row's lock, until `commit()`: how a test puts a concurrent
+ * writer exactly where it wants one. `waitForWaiter()` resolves once another
+ * connection is blocked on that lock, so what the test does next happens
+ * while it waits, not before or after.
+ */
+export async function holdApplicationWrite(
+  id: string,
+  patch: Partial<typeof application.$inferInsert>,
+) {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let locked!: (pid: number) => void;
+  const pid = new Promise<number>((resolve) => {
+    locked = resolve;
+  });
+
+  const done = db.transaction(async (tx) => {
+    await tx.update(application).set(patch).where(eq(application.id, id));
+    const [row] = await tx.execute<{ pid: number }>('select pg_backend_pid() as pid');
+    if (!row) throw new Error('no backend pid');
+    locked(row.pid);
+    await released;
+  });
+  const holder = await Promise.race([
+    pid,
+    done.then(() => {
+      throw new Error('the held transaction ended before it took the lock');
+    }),
+  ]);
+
+  return {
+    async waitForWaiter(): Promise<void> {
+      for (let attempt = 0; attempt < 400; attempt++) {
+        const [row] = await sql<{ waiting: number }[]>`
+          select count(*)::int as waiting from pg_stat_activity
+          where ${holder}::int = any(pg_blocking_pids(pid))`;
+        if ((row?.waiting ?? 0) > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`nothing waited on backend ${holder}'s lock`);
+    },
+    async commit(): Promise<void> {
+      release();
+      await done;
+    },
+  };
+}
+
+/** Every `resume_pdf` row a resume has, newest first, bytes excluded. */
+export async function listResumePdfIds(resumeId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: resumePdf.id })
+    .from(resumePdf)
+    .where(eq(resumePdf.resumeId, resumeId))
+    .orderBy(desc(resumePdf.createdAt), desc(resumePdf.id));
+  return rows.map((row) => row.id);
+}
+
+/** Every file on an application, archived ones included, bytes included. */
+export async function listApplicationFileRows(applicationId: string) {
+  return db
+    .select()
+    .from(applicationFile)
+    .where(eq(applicationFile.applicationId, applicationId))
+    .orderBy(asc(applicationFile.createdAt), asc(applicationFile.id));
 }
 
 /**

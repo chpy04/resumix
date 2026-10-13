@@ -61,6 +61,15 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   application — fields, freeform notes, attachments, the linked resume, the
   button that marks it applied and, when the agent supplied them, its
   summary and the job description, read-only.
+  `/applications/[id]/review` is where an application the agent submitted
+  is reviewed, and Needs review and Ready cards open it: a stepper over the
+  resume editor in review mode (the agent's picks badged, with Reset to
+  agent pick), the compiled cover letter when there is one, and a final
+  Approve. Each section is approved on its own, and editing it afterwards
+  unapproves it and sends a Ready application back to Needs review; library
+  and template edits do not. Final approval pins the resume snapshot, stores
+  the letter's PDF as an attachment, makes the application Ready and copies
+  `/resumix-apply <id>` (D-044).
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), `/cover-letters` is its counterpart for letters, and
   `/cover-letter/[id]` is a two-pane LaTeX editor over the one `content`
@@ -107,7 +116,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   dispatcher plus a registry of zod-typed tools, one module each in
   `lib/mcp/tools/`, listed in `docs/API.md`'s tool reference. A failing tool
   answers with text telling the agent what to do next, never a protocol
-  error. It takes only an API token (below). `npm run mcp:smoke` drives it
+  error. It takes only an API token (below). `submit_for_review` moves an
+  application from Proposing to Needs review, and refuses while its resume
+  or its letter runs past one page. `npm run mcp:smoke` drives it
   over real HTTP, and the gate runs that from the e2e suite.
 
 ## Users and isolation

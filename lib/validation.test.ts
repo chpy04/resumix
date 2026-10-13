@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOW_STATUSES, MANUAL_STATUSES } from './applications/status.ts';
-import { patchApplicationSchema } from './validation.ts';
+import { approveSectionSchema, patchApplicationSchema } from './validation.ts';
 
 test('PATCH refuses every status the review flow owns (D-041)', () => {
   // A hand-set `ready` would skip the approvals and snapshot it vouches for.
@@ -20,4 +20,12 @@ test('PATCH accepts every manual status', () => {
 
 test('PATCH accepts applied, which is how a ready application leaves the flow', () => {
   assert.deepEqual(patchApplicationSchema.parse({ status: 'applied' }), { status: 'applied' });
+});
+
+test('a section approval names resume or coverLetter, and nothing else', () => {
+  assert.equal(approveSectionSchema.safeParse({ section: 'resume' }).success, true);
+  assert.equal(approveSectionSchema.safeParse({ section: 'coverLetter' }).success, true);
+  for (const section of ['approve', 'questions', undefined]) {
+    assert.equal(approveSectionSchema.safeParse({ section }).success, false, String(section));
+  }
 });

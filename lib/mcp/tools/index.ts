@@ -10,6 +10,7 @@ import { getLibrary } from './get-library.ts';
 import { listApplications } from './list-applications.ts';
 import { ping } from './ping.ts';
 import { setResumeSelection } from './set-resume-selection.ts';
+import { submitForReview } from './submit-for-review.ts';
 
 export const TOOLS: readonly McpTool[] = [
   ping,
@@ -18,4 +19,5 @@ export const TOOLS: readonly McpTool[] = [
   getApplication,
   createApplication,
   setResumeSelection,
+  submitForReview,
 ];

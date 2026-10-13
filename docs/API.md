@@ -101,6 +101,11 @@ type ApplicationDetail = ApplicationSummary & {
   notes: string;
   jobDescription: string | null; // the posting's text, from the agent
   agentSummary: string | null; // the agent's evaluation, plain text
+  proposedSelection: Selections | null; // the agent's pick (C7); null when it proposed none
+  resumeApprovedAt: string | null; // the resume approved in review; cleared when it changes
+  coverLetterApprovedAt: string | null; // the same for the letter
+  approvedAt: string | null; // final approval, which made it ready; cleared with it
+  pdfFilenames: { resume: string | null; coverLetter: string | null }; // what approval names the PDFs
   files: ApplicationFile[];
 };
 ```
@@ -262,6 +267,7 @@ stored content stays raw (D-008).
 | `get_application`      | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at } }`. `selection` has `set_resume_selection`'s shape, or is null when no resume is linked       |
 | `create_application`   | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
 | `set_resume_selection` | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
+| `submit_for_review`    | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
 
 An archived application reads exactly like a missing one, or another
 user's: `No application <id>. Call list_applications to find its
@@ -287,14 +293,29 @@ and `skills` likewise.
   messages, or a sidecar that cannot be reached.
 - **`proposed_selection`** (C7) is written too, but only while the
   application is `proposing`; each call then replaces the last.
+- **In review**, it unapproves the resume like any other selection write, and
+  a `ready` application goes back to `needs_review` (see "The review flow"
+  under Applications).
+
+**`submit_for_review`** hands the application to Chris: `proposing` becomes
+`needs_review` (C3). It compiles the resume, and the cover letter if there is
+one, and refuses while either is more than one page, naming the document and
+its page count; the text says to trim with `set_resume_selection`, or, for the
+letter, to stop and tell Chris if it cannot be shortened. Also refused,
+writing nothing: a `ready` application (already approved), a draft or sent
+one, one with no resume, a document that does not compile (its first three
+errors), and an unreachable sidecar (call again in a minute). Called on one
+already in `needs_review`, it re-checks the pages and leaves it there.
 
 `npm run mcp:smoke` drives `initialize`, `tools/list` and the `ping` tool over
 real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
 token it mints and revokes itself. It then reads the library, creates an
-application, finds it with `list_applications` and `get_application`, and
+application, finds it with `list_applications` and `get_application`,
 selects a small resume into it, which the real sidecar must compile to one
-page; the application is archived and its resume deleted when it ends.
-`npm run verify` runs it from `e2e/mcp.spec.ts`.
+page, and submits it for review, which `get_application` must then show as
+`needs_review`; submitting an unknown id must be `isError`. The application
+is archived and its resume deleted when it ends. `npm run verify` runs it
+from `e2e/mcp.spec.ts`.
 
 ## Resumes
 
@@ -377,6 +398,8 @@ contract.
 | POST   | `/api/applications/:id/cover-letter`  | —                                                                                                | `201 ApplicationDetail` — copies the default letter and links it   |
 | POST   | `/api/applications/:id/apply`         | —                                                                                                | `{ ok: true, application }` — renders, snapshots, pins             |
 | GET    | `/api/applications/:id/pdf`           | —                                                                                                | `application/pdf` of the snapshot **that was sent**; `404` if none |
+| POST   | `/api/applications/:id/approvals`     | `{ section: 'resume' \| 'coverLetter' }`                                                         | `ApplicationDetail` — approves one section of the review           |
+| POST   | `/api/applications/:id/approve`       | —                                                                                                | `{ ok: true, application }` — final approval; it is now `ready`    |
 
 `appliedAt` is deliberately not writable: it follows from `status`, stamped the
 first time an application reaches `applied`, `interviewing`, `offered` or
@@ -402,13 +425,16 @@ a `400`, and passing neither leaves the application without one.
 **`POST /pdf` is "save this resume to the application".** It renders the
 linked resume, stores a `resume_pdf` snapshot, and points the application at
 it, leaving the status alone — this is what the resume editor calls when it
-was opened from an application. `400` if no resume is linked.
+was opened from an application. `400` if no resume is linked, and `400` on a
+Ready application, before anything is compiled: its PDF is the one final
+approval pinned, and only the next final approval replaces it (D-044).
 
 **`POST /apply` declares it sent**, which is what moves it off the pipeline
 board and into the Applied table. If nothing has been saved to the application
 yet it takes that snapshot first, so a sent application is never left with no
 record; if one is already pinned, that snapshot stands and nothing is
-re-rendered.
+re-rendered. Pinning a new snapshot is refused with a `400` on a Ready
+application, as `POST /pdf` is; sending one keeps the PDF that was approved.
 
 A LaTeX compile failure is **not** an HTTP error on either POST: it is
 `200 { ok: false, pages, errors, warnings, log }` and nothing is written,
@@ -423,12 +449,61 @@ endpoint rather than a flag on create, because a letter is a later, optional
 decision than the resume — plenty of postings never ask for one. There is no
 counterpart to `POST /pdf` here: the letter is a private copy, so editing it
 _is_ saving it to the application, and `GET /api/cover-letters/:id/pdf`
-serves it (D-035).
+serves it (D-035). The one exception is final approval, below, which stores
+the approved letter's PDF as an attachment (D-044).
 
 **There is no DELETE.** `{ "isArchived": true }` takes an application off the
 board. Deleting a resume that an application was sent with is refused with a
 `400`, because `resume_pdf` cascades from `resume` and that snapshot is the
 only record of what went out.
+
+### The review flow
+
+An application the agent has submitted (`needs_review`) is reviewed section
+by section on `/applications/:id/review`, then finally approved, which makes
+it `ready` (C3, D-044).
+
+**`POST /approvals`** stamps `resumeApprovedAt` or `coverLetterApprovedAt`.
+Only in `needs_review`, and only for a section the application has; anything
+else is a `400` saying why ("Only an application in Needs review can be
+approved; this one is Ready.", "This application has no cover letter to
+approve.").
+
+**`POST /approve`** is refused with a `400` listing what is left ("Approve the
+resume first. Approve the cover letter first.") unless the application is in
+`needs_review`, has a resume, and every section it shows is approved: the
+resume, and the cover letter when one is linked. It then compiles both
+documents, writing nothing yet, and in one transaction stores a `resume_pdf`
+snapshot named after the company and pins it as `sentPdf` (the path `POST
+/pdf` takes), stores the letter's PDF as an `application/pdf` attachment named
+like its download (`<prefix>_<Company>_Cover_Letter.pdf`), archiving any
+earlier one of that name, and sets `approvedAt` and `ready`. A LaTeX failure,
+or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
+with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
+If an edit lands while the documents compile, the transaction finds the
+section unapproved again, rolls back, and answers `400` ("This application
+changed while it was being approved; review it again."). Final approval does
+not enforce one page; `submit_for_review` does.
+
+**What reopens an approval.** These writes clear the approval of the section
+they change, and `approvedAt` with it, on every one of the caller's
+applications in `needs_review` or `ready` that sends that document; a `ready`
+one goes back to `needs_review`:
+
+- the resume: `PUT /api/resumes/:id/selections` (so editor autosave), and the
+  agent's `set_resume_selection`;
+- the letter: `PATCH /api/cover-letters/:id` with `content`;
+- `PATCH /api/applications/:id` changing `resumeId` or `coverLetterId`,
+  unlinking included (a `status` in the same PATCH wins), and `POST
+/cover-letter`, which adds a section to approve.
+
+Nothing else does: library edits (bullets, experiences, projects, skills),
+template edits and renaming a letter leave every approval in place, because a
+global edit made elsewhere must not reopen anything (C6). The pinned snapshot
+is what gets sent. There is no diffing: a selection write that puts back what
+was there still reopens. Applications that have been sent (`applied` and
+later) are never reopened, and a reopened one keeps its pinned `sentPdf` until
+a new one is pinned.
 
 ### Attachments
 

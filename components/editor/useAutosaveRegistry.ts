@@ -55,10 +55,15 @@ export function useAutosaveRegistry() {
     for (const entry of entries.current.values()) entry.controller.retry();
   }, []);
 
+  /** Sends every queued save now instead of after its debounce. */
+  const flushAll = useCallback(() => {
+    for (const entry of entries.current.values()) entry.controller.flushNow();
+  }, []);
+
   // Recomputed fresh on every render (cheap — a handful of entries at
   // most); `forceRender` is what guarantees a re-render happens whenever
   // any individual channel's status changes.
   const status = combineStatuses(statuses.current.values());
 
-  return { getController, retryAll, status };
+  return { getController, retryAll, flushAll, status };
 }

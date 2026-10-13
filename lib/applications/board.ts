@@ -99,6 +99,22 @@ export function closedApplications(
   return sortByRecency(applications.filter((a) => exited.has(a.status)));
 }
 
+/** The statuses whose card opens the review page instead of the detail page:
+ *  the ones where there is something to look over and approve (D-044). */
+const REVIEWED_STATUSES: readonly ApplicationStatus[] = ['needs_review', 'ready'];
+
+/** Whether this card opens `/applications/<id>/review`. */
+export function opensReview(application: Pick<ApplicationSummary, 'status'>): boolean {
+  return REVIEWED_STATUSES.includes(application.status);
+}
+
+/** Where clicking a card goes. */
+export function applicationHref(application: Pick<ApplicationSummary, 'id' | 'status'>): string {
+  return opensReview(application)
+    ? `/applications/${application.id}/review`
+    : `/applications/${application.id}`;
+}
+
 /** Whether a column takes drops at all. The flow columns do not: only the
  *  review flow moves an application into them (C3). */
 export function acceptsDrop(status: ApplicationStatus): boolean {

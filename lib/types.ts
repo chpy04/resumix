@@ -230,6 +230,18 @@ export interface ApplicationDetail extends ApplicationSummary {
   jobDescription: string | null;
   /** The agent's evaluation, as plain text with line breaks. */
   agentSummary: string | null;
+  /** The agent's original pick (C7): the review's "agent pick" badges and
+   *  "Reset to agent pick". Null when the agent never proposed one. */
+  proposedSelection: Selections | null;
+  /** Set when Chris approves that section in review; cleared when it changes
+   *  afterwards (C3, C11). */
+  resumeApprovedAt: string | null;
+  coverLetterApprovedAt: string | null;
+  /** Set by the final approval that makes it `ready`; cleared with it. */
+  approvedAt: string | null;
+  /** What final approval names the two PDFs, as the server's prefix makes
+   *  them; null for a document that is not linked. */
+  pdfFilenames: { resume: string | null; coverLetter: string | null };
   files: ApplicationFile[];
 }
 

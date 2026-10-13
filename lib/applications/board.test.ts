@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acceptsDrop,
+  applicationHref,
   closedApplications,
   groupByStatus,
   sortByFit,
@@ -142,6 +143,16 @@ test('acceptsDrop is false for exactly the flow columns', () => {
     APPLICATION_STATUSES.filter((status) => !acceptsDrop(status)),
     ['proposing', 'needs_review', 'ready'],
   );
+});
+
+test('Needs review and Ready cards open the review page; the rest open the application', () => {
+  for (const status of APPLICATION_STATUSES) {
+    const expected =
+      status === 'needs_review' || status === 'ready'
+        ? `/applications/a1/review`
+        : `/applications/a1`;
+    assert.equal(applicationHref(application('a1', status)), expected, status);
+  }
 });
 
 test('groupByStatus keeps empty columns — an empty Interviewing is information', () => {

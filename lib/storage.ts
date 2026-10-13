@@ -5,7 +5,7 @@
  * see `saveResumePdfSnapshot` / `getLatestResumePdfSnapshot`.
  */
 import { desc, eq, inArray } from 'drizzle-orm';
-import { db } from './db/index.ts';
+import { db, type Executor } from './db/index.ts';
 import { resumePdf } from './db/schema.ts';
 
 export interface NewPdfSnapshot {
@@ -29,12 +29,15 @@ export interface SavedPdfSnapshot extends PdfSnapshotMeta {
   id: string;
 }
 
-/** Stores a new snapshot. History is kept — this never overwrites a prior row. */
+/** Stores a new snapshot. History is kept — this never overwrites a prior row.
+ *  `executor` lets final approval store it inside its own transaction, so a
+ *  refused approval leaves no snapshot behind. */
 export async function saveResumePdfSnapshot(
   resumeId: string,
   snapshot: NewPdfSnapshot,
+  executor: Executor = db,
 ): Promise<SavedPdfSnapshot> {
-  const [row] = await db
+  const [row] = await executor
     .insert(resumePdf)
     .values({
       resumeId,
