@@ -266,6 +266,7 @@ stored content stays raw (D-008).
 | `get_application`      | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at } }`. `selection` has `set_resume_selection`'s shape, or is null when no resume is linked       |
 | `create_application`   | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
 | `set_resume_selection` | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
+| `submit_for_review`    | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
 
 An archived application reads exactly like a missing one, or another
 user's: `No application <id>. Call list_applications to find its
@@ -295,13 +296,25 @@ and `skills` likewise.
   a `ready` application goes back to `needs_review` (see "The review flow"
   under Applications).
 
+**`submit_for_review`** hands the application to Chris: `proposing` becomes
+`needs_review` (C3). It compiles the resume, and the cover letter if there is
+one, and refuses while either is more than one page, naming the document and
+its page count; the text says to trim with `set_resume_selection`, or, for the
+letter, to stop and tell Chris if it cannot be shortened. Also refused,
+writing nothing: a `ready` application (already approved), a draft or sent
+one, one with no resume, a document that does not compile (its first three
+errors), and an unreachable sidecar (call again in a minute). Called on one
+already in `needs_review`, it re-checks the pages and leaves it there.
+
 `npm run mcp:smoke` drives `initialize`, `tools/list` and the `ping` tool over
 real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
 token it mints and revokes itself. It then reads the library, creates an
-application, finds it with `list_applications` and `get_application`, and
+application, finds it with `list_applications` and `get_application`,
 selects a small resume into it, which the real sidecar must compile to one
-page; the application is archived and its resume deleted when it ends.
-`npm run verify` runs it from `e2e/mcp.spec.ts`.
+page, and submits it for review, which `get_application` must then show as
+`needs_review`; submitting an unknown id must be `isError`. The application
+is archived and its resume deleted when it ends. `npm run verify` runs it
+from `e2e/mcp.spec.ts`.
 
 ## Resumes
 
