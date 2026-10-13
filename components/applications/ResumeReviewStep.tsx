@@ -2,6 +2,7 @@
 
 import SectionApproveButton from '@/components/applications/SectionApproveButton';
 import ResumeEditor from '@/components/editor/ResumeEditor';
+import type { SaveStatus } from '@/lib/editor/autosave';
 import type { ApplicationDetail } from '@/lib/types';
 
 interface ResumeReviewStepProps {
@@ -12,6 +13,9 @@ interface ResumeReviewStepProps {
   onApprove: () => Promise<void>;
   /** A selection write landed, and may have cleared the approval. */
   onSelectionsSaved: () => void;
+  onSaveStatusChange: (status: SaveStatus) => void;
+  /** Whether this step is the one showing. */
+  visible: boolean;
 }
 
 /**
@@ -26,6 +30,8 @@ export default function ResumeReviewStep({
   reopened,
   onApprove,
   onSelectionsSaved,
+  onSaveStatusChange,
+  visible,
 }: ResumeReviewStepProps) {
   if (!application.resumeId) {
     return (
@@ -41,6 +47,8 @@ export default function ResumeReviewStep({
       review={{
         proposedSelection: application.proposedSelection,
         onSelectionsSaved,
+        onSaveStatusChange,
+        visible,
         actions: (saveStatus) => (
           <SectionApproveButton
             noun="resume"

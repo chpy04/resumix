@@ -22,6 +22,7 @@ import {
   type ReviewSection,
   type ReviewStepKey,
 } from '@/lib/applications/review';
+import type { SaveStatus } from '@/lib/editor/autosave';
 import type { ApplicationDetail } from '@/lib/types';
 
 interface ReviewFlowProps {
@@ -48,6 +49,9 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
   const [active, setActive] = useState<ReviewStepKey>('resume');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [reopened, setReopened] = useState<ReadonlySet<ReviewSection>>(new Set());
+  // The resume editor's autosave, which final approval must wait for: the
+  // snapshot is rendered from what the server holds.
+  const [resumeSaveStatus, setResumeSaveStatus] = useState<SaveStatus>('idle');
 
   const current = useRef<ApplicationDetail | null>(null);
   const latestRequest = useRef(0);
@@ -186,6 +190,8 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
           reopened={reopened.has('resume')}
           onApprove={() => approveSection('resume')}
           onSelectionsSaved={refresh}
+          onSaveStatusChange={setResumeSaveStatus}
+          visible={shown === 'resume'}
         />
       </div>
       {application.coverLetterId ? (
@@ -202,10 +208,10 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       {shown === 'approve' ? (
         <ApproveStep
           application={application}
-          letterName={letterName}
           steps={steps}
           onGoTo={setActive}
           onApproved={handleApproved}
+          resumeSaveStatus={resumeSaveStatus}
         />
       ) : null}
     </div>

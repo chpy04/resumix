@@ -9,16 +9,24 @@ import {
   type ReviewStepKey,
 } from '@/lib/applications/review';
 import { canCopy, copyText, type CopyResult } from '@/lib/clipboard';
-import { buildCoverLetterFilename, buildResumeFilename } from '@/lib/filename';
+import type { SaveStatus } from '@/lib/editor/autosave';
 import type { ApplicationDetail } from '@/lib/types';
 
 interface ApproveStepProps {
   application: ApplicationDetail;
-  /** The letter's own name, which names its PDF; null until loaded. */
-  letterName: string | null;
   steps: ReviewStep[];
   onGoTo: (key: ReviewStepKey) => void;
   onApproved: (application: ApplicationDetail) => void;
+  /** The resume editor's autosave. Approving while an edit is unsaved would
+   *  snapshot the resume without it. */
+  resumeSaveStatus: SaveStatus;
+}
+
+/** Why the resume's edits stop final approval for now, or null. */
+function unsavedReason(status: SaveStatus): string | null {
+  if (status === 'saving') return 'Waiting for your resume changes to save.';
+  if (status === 'error') return "A resume change didn't save. Go to step 1 and retry it.";
+  return null;
 }
 
 /** `undefined` while the count is being compiled; `null` when it could not be. */
@@ -46,10 +54,10 @@ function formatDate(iso: string): string {
  */
 export default function ApproveStep({
   application,
-  letterName,
   steps,
   onGoTo,
   onApproved,
+  resumeSaveStatus,
 }: ApproveStepProps) {
   const [resumePages, setResumePages] = useState<Pages>(undefined);
   const [letterPages, setLetterPages] = useState<Pages>(undefined);
@@ -61,6 +69,7 @@ export default function ApproveStep({
   const { id, resumeId, coverLetterId } = application;
   const command = applyCommand(id);
   const problems = finalApprovalProblems(application);
+  const unsaved = unsavedReason(resumeSaveStatus);
   const isReady = application.status === 'ready';
 
   // Page counts come from the preview endpoints, which store nothing.
@@ -115,13 +124,17 @@ export default function ApproveStep({
   }
 
   const stepNumber = (key: ReviewStepKey) => steps.find((step) => step.key === key)?.number;
+  // Once ready, the name the snapshot was stored under; before, the name the
+  // server will give it.
   const resumeFilename =
     isReady && application.sentPdf
       ? application.sentPdf.filename
-      : buildResumeFilename(application.company);
+      : (application.pdfFilenames.resume ?? '');
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-6">
+    // The bottom padding lets the last box scroll clear of the fixed
+    // "Give feedback" button (FeedbackWidget) on a narrow window.
+    <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-6 pb-24">
       <div className="flex w-full max-w-3xl flex-col gap-4">
         {resumeId ? (
           <SummaryRow
@@ -139,7 +152,7 @@ export default function ApproveStep({
             testId="approve-row-coverLetter"
             label="Cover letter"
             pages={letterPages}
-            filename={letterName ? buildCoverLetterFilename(letterName) : '…'}
+            filename={application.pdfFilenames.coverLetter ?? ''}
             approved={application.coverLetterApprovedAt !== null}
             stepNumber={stepNumber('coverLetter')}
             onGoTo={() => onGoTo('coverLetter')}
@@ -166,7 +179,7 @@ export default function ApproveStep({
               <button
                 type="button"
                 onClick={() => void handleApprove()}
-                disabled={approving || problems.length > 0}
+                disabled={approving || problems.length > 0 || unsaved !== null}
                 className="w-full max-w-md rounded-lg border border-success-line bg-success-surface/60 px-6 py-3 text-base font-semibold text-success-ink transition-colors hover:bg-success-surface disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-2 disabled:text-ink-dim"
               >
                 {approving ? 'Approving…' : 'Approve + copy command'}
@@ -177,6 +190,11 @@ export default function ApproveStep({
                     <li key={problem}>{problem}</li>
                   ))}
                 </ul>
+              ) : null}
+              {problems.length === 0 && unsaved ? (
+                <p data-testid="approve-unsaved" className="text-center text-xs text-ink-dim">
+                  {unsaved}
+                </p>
               ) : null}
             </>
           )}

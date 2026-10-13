@@ -51,7 +51,9 @@ export default function CoverLetterReviewStep({
         </div>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-line bg-surface px-4 py-3">
+      {/* `pr-48` keeps the button out from under the fixed "Give feedback"
+          button (FeedbackWidget), as the resume step's footer does. */}
+      <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-line bg-surface py-3 pr-48 pl-4">
         <SectionApproveButton
           noun="letter"
           approved={application.coverLetterApprovedAt !== null}

@@ -58,6 +58,12 @@ export interface ResumeReviewMode {
   /** The step's own buttons, beside the reset. They get the save status so
    *  an approval can wait for the edit it is meant to cover. */
   actions: (saveStatus: SaveStatus) => ReactNode;
+  /** The same status, for the page's later steps, which approve this
+   *  resume without showing the editor. */
+  onSaveStatusChange: (status: SaveStatus) => void;
+  /** False while another step is showing. Hiding the editor sends any edit
+   *  still in its debounce, so the status a later step sees is the truth. */
+  visible: boolean;
 }
 
 interface ResumeEditorProps {
@@ -114,7 +120,12 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   // fresh object literal every render, so `getController` in a
   // dependency array is unverifiable to the exhaustive-deps rule even though
   // `getController` itself is stable. The local binding is checkable.
-  const { getController, retryAll: retryAllSaves, status: saveStatus } = useAutosaveRegistry();
+  const {
+    getController,
+    retryAll: retryAllSaves,
+    flushAll: flushAllSaves,
+    status: saveStatus,
+  } = useAutosaveRegistry();
 
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -197,6 +208,16 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   }
 
   const agentPicks = useMemo(() => agentPickIds(proposedSelection), [proposedSelection]);
+
+  const onSaveStatusChange = review?.onSaveStatusChange;
+  useEffect(() => {
+    onSaveStatusChange?.(saveStatus);
+  }, [saveStatus, onSaveStatusChange]);
+
+  const visible = review?.visible;
+  useEffect(() => {
+    if (visible === false) flushAllSaves();
+  }, [visible, flushAllSaves]);
 
   const contentCallbacks: ContentPaneCallbacks = {
     onToggleTop: (slice, id) => dispatchAndSaveSelection({ type: 'toggleTop', slice, id }),
@@ -746,7 +767,9 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
       </div>
 
       {review ? (
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-4 py-3">
+        // `pr-48` keeps the actions out from under the fixed "Give feedback"
+        // button (FeedbackWidget), which sits over this corner of every page.
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line bg-surface py-3 pr-48 pl-4">
           <p className="text-xs text-ink-dim">
             Same editor as /resume/:id. Ticking changes this application&apos;s resume; editing text
             changes every resume.
