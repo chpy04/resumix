@@ -54,4 +54,9 @@ for var in RESUMIX_MCP_URL RESUMIX_MCP_TOKEN CAREER_OPS_DATA_DIR; do
   [[ -n "${!var:-}" ]] || die "$var is empty in agent/.env. See agent/.env.example."
 done
 
+# career-ops hands its CV, cover-letter and tracker steps to Resumix only
+# through its gitignored modes/_custom.md, so the committed routing goes in at
+# every launch, before any mode can run (D-043).
+./install-career-ops-custom.sh
+
 exec claude --add-dir career-ops "$@"
