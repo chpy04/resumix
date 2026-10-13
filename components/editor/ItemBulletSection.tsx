@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Bullet } from '@/lib/types';
 import { extractSelectedOrder, orderForDisplay, visibleItems } from '@/lib/editor/visibility';
 import {
+  AgentPickBadge,
   ArchiveButton,
   ArchivedBadge,
   ExpandChevron,
@@ -33,6 +34,8 @@ interface ItemBulletSectionProps<TParent extends ParentWithBullets> {
   selectedOrder: string[];
   bulletSelections: Record<string, string[]>;
   showArchived: boolean;
+  /** Items and bullets the agent picked, badged in review (C7). */
+  agentPicks: ReadonlySet<string>;
   onToggleItem: (id: string) => void;
   onReorderItems: (order: string[]) => void;
   onToggleBullet: (parentId: string, bulletId: string) => void;
@@ -57,6 +60,7 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(
     selectedOrder,
     bulletSelections,
     showArchived,
+    agentPicks,
     onToggleItem,
     onReorderItems,
     onToggleBullet,
@@ -135,6 +139,7 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(
                 selected={selectedSet.has(item.id)}
                 expanded={expanded.has(item.id)}
                 showArchived={showArchived}
+                agentPicks={agentPicks}
                 bulletOrder={bulletSelections[item.id] ?? []}
                 onToggleSelected={() => onToggleItem(item.id)}
                 onToggleExpanded={() => toggleExpanded(item.id)}
@@ -163,6 +168,7 @@ interface ItemRowProps<TParent extends ParentWithBullets> {
   selected: boolean;
   expanded: boolean;
   showArchived: boolean;
+  agentPicks: ReadonlySet<string>;
   bulletOrder: string[];
   onToggleSelected: () => void;
   onToggleExpanded: () => void;
@@ -182,6 +188,7 @@ function ItemRow<TParent extends ParentWithBullets>({
   selected,
   expanded,
   showArchived,
+  agentPicks,
   bulletOrder,
   onToggleSelected,
   onToggleExpanded,
@@ -230,6 +237,7 @@ function ItemRow<TParent extends ParentWithBullets>({
           ))}
         </div>
 
+        {agentPicks.has(item.id) ? <AgentPickBadge /> : null}
         <GlobalEditBadge />
         {item.isArchived ? <ArchivedBadge /> : null}
         <ArchiveButton isArchived={item.isArchived} onClick={onArchive} />
@@ -241,6 +249,7 @@ function ItemRow<TParent extends ParentWithBullets>({
             bullets={item.bullets}
             selectedOrder={bulletOrder}
             showArchived={showArchived}
+            agentPicks={agentPicks}
             bulletNoun={bulletNoun}
             onToggle={onToggleBullet}
             onReorder={onReorderBullets}
@@ -277,6 +286,7 @@ interface BulletListProps {
   bullets: Bullet[];
   selectedOrder: string[];
   showArchived: boolean;
+  agentPicks: ReadonlySet<string>;
   bulletNoun: string;
   onToggle: (bulletId: string) => void;
   onReorder: (order: string[]) => void;
@@ -288,6 +298,7 @@ function BulletList({
   bullets,
   selectedOrder,
   showArchived,
+  agentPicks,
   bulletNoun,
   onToggle,
   onReorder,
@@ -329,6 +340,7 @@ function BulletList({
               spellCheck={false}
               className="min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs whitespace-pre-wrap text-ink outline-none hover:border-line focus:border-accent"
             />
+            {agentPicks.has(bullet.id) ? <AgentPickBadge /> : null}
             <GlobalEditBadge />
             {bullet.isArchived ? <ArchivedBadge /> : null}
             <ArchiveButton

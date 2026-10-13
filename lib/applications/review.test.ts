@@ -5,6 +5,7 @@ import {
   finalApprovalProblems,
   initialStep,
   reopenedApproval,
+  reopenedSections,
   reviewSteps,
   sectionApprovalProblem,
   type ReviewState,
@@ -199,4 +200,19 @@ test('a ready application opens on Approve', () => {
 test('the apply command carries the full application id', () => {
   const id = '3f2a91c4-0b7d-4a55-9c1e-2d8e6a8f3c1e';
   assert.equal(applyCommand(id), `/resumix-apply ${id}`);
+});
+
+test('reopenedSections names what an edit just unapproved, and nothing else', () => {
+  const both = { resumeApprovedAt: STAMP, coverLetterApprovedAt: STAMP };
+  assert.deepEqual(reopenedSections(both, { ...both, resumeApprovedAt: null }), ['resume']);
+  assert.deepEqual(
+    reopenedSections(both, { resumeApprovedAt: null, coverLetterApprovedAt: null }),
+    ['resume', 'coverLetter'],
+  );
+  assert.deepEqual(reopenedSections(both, both), []);
+  // Approving is the other direction, not a reopen.
+  assert.deepEqual(
+    reopenedSections({ resumeApprovedAt: null, coverLetterApprovedAt: null }, both),
+    [],
+  );
 });

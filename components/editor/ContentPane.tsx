@@ -80,7 +80,12 @@ interface ContentPaneProps {
   library: Library;
   selections: Selections;
   callbacks: ContentPaneCallbacks;
+  /** Experiences, projects and bullets to badge as the agent's pick (C7);
+   *  empty outside review. */
+  agentPicks?: ReadonlySet<string>;
 }
+
+const NO_PICKS: ReadonlySet<string> = new Set();
 
 /**
  * Left-pane body for the Content tab: Experiences, Projects, and Technical
@@ -88,7 +93,12 @@ interface ContentPaneProps {
  * everything else is lifted into `ResumeEditor` (selections state + the
  * autosave registry) and handed down as plain callbacks.
  */
-export default function ContentPane({ library, selections, callbacks }: ContentPaneProps) {
+export default function ContentPane({
+  library,
+  selections,
+  callbacks,
+  agentPicks = NO_PICKS,
+}: ContentPaneProps) {
   const [showArchived, setShowArchived] = useState(false);
 
   return (
@@ -119,6 +129,7 @@ export default function ContentPane({ library, selections, callbacks }: ContentP
         selectedOrder={selections.experiences}
         bulletSelections={selections.experienceBullets}
         showArchived={showArchived}
+        agentPicks={agentPicks}
         onToggleItem={(id) => callbacks.onToggleTop('experiences', id)}
         onReorderItems={(order) => callbacks.onReorderTop('experiences', order)}
         onToggleBullet={(parentId, id) =>
@@ -144,6 +155,7 @@ export default function ContentPane({ library, selections, callbacks }: ContentP
         selectedOrder={selections.projects}
         bulletSelections={selections.projectBullets}
         showArchived={showArchived}
+        agentPicks={agentPicks}
         onToggleItem={(id) => callbacks.onToggleTop('projects', id)}
         onReorderItems={(order) => callbacks.onReorderTop('projects', order)}
         onToggleBullet={(parentId, id) => callbacks.onToggleNested('projectBullets', parentId, id)}

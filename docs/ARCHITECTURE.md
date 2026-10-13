@@ -54,6 +54,7 @@ hand back the exact bytes a resume was last saved with.
 app/                     Next.js App Router
   page.tsx               home: the applications board (Pipeline | Applied)
   applications/[id]/     one application: fields, notes, files, its resume
+    review/              the review flow: resume, cover letter, final approve
   resumes/page.tsx       the resume library: grid + fuzzy search
   cover-letters/         the cover letter library, same shape
   cover-letter/[id]/     editor: one LaTeX textarea + live PDF

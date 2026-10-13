@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
@@ -25,6 +33,8 @@ import {
   updateSkillRow,
   updateTemplate,
 } from '@/lib/api-client';
+import { agentPickIds, sameSelections } from '@/lib/editor/agent-pick';
+import type { SaveStatus } from '@/lib/editor/autosave';
 import {
   affectedSlice,
   selectionsReducer,
@@ -37,15 +47,40 @@ import PreviewPane from './PreviewPane';
 import TemplateTab from './TemplateTab';
 import { useAutosaveRegistry } from './useAutosaveRegistry';
 
+/** What the review page's resume step adds to the editor (D-044). */
+export interface ResumeReviewMode {
+  /** The agent's pick (C7): its rows carry a badge, and "Reset to agent
+   *  pick" returns to it. Null hides the reset. */
+  proposedSelection: Selections | null;
+  /** Called each time a selection write lands, since it may have cleared
+   *  this application's approval. */
+  onSelectionsSaved: () => void;
+  /** The step's own buttons, beside the reset. They get the save status so
+   *  an approval can wait for the edit it is meant to cover. */
+  actions: (saveStatus: SaveStatus) => ReactNode;
+}
+
 interface ResumeEditorProps {
   resumeId: string;
   /** Present when the editor was opened from an application
    *  (`/resume/:id?application=:id`). Saving then writes the PDF to that
    *  application and returns to it, rather than downloading a snapshot. */
   applicationId?: string;
+  /** Present inside the review page: the editor fills its step rather than
+   *  the screen, has no back link or save action, and gains a footer. */
+  review?: ResumeReviewMode;
 }
 
 type SliceValue = string[] | Record<string, string[]>;
+
+const SLICES = [
+  'experiences',
+  'experienceBullets',
+  'projects',
+  'projectBullets',
+  'skillRows',
+  'skills',
+] as const satisfies readonly (keyof Selections)[];
 
 type LoadState =
   | { status: 'loading' }
@@ -69,7 +104,7 @@ function useFieldDrafts() {
   }, []);
 }
 
-export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorProps) {
+export default function ResumeEditor({ resumeId, applicationId, review }: ResumeEditorProps) {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [tab, setTab] = useState<EditorTab>('content');
@@ -121,6 +156,25 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
   // Selections (per-resume): every mutation goes through this one function
   // so `selectionsRef` and the reducer's own state can never drift apart.
   // ---------------------------------------------------------------------
+  const onSelectionsSaved = review?.onSelectionsSaved;
+  const proposedSelection = review?.proposedSelection ?? null;
+
+  /** One queue per slice, so a burst of edits to one slice coalesces and
+   *  edits to different slices never overwrite each other. */
+  const saveSlice = useCallback(
+    (slice: keyof Selections, value: SliceValue) => {
+      getController<SliceValue>(
+        `selections:${slice}`,
+        async (latest) => {
+          await updateSelections(resumeId, { [slice]: latest } as Partial<Selections>);
+          onSelectionsSaved?.();
+        },
+        0,
+      ).schedule(value);
+    },
+    [getController, resumeId, onSelectionsSaved],
+  );
+
   const dispatchAndSaveSelection = useCallback(
     (action: SelectionsAction) => {
       const next = selectionsReducer(selectionsRef.current, action);
@@ -128,19 +182,21 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
       dispatchSelections(action);
 
       const slice = affectedSlice(action);
-      if (!slice) return;
-      const controller = getController<SliceValue>(
-        `selections:${slice}`,
-        (value) =>
-          updateSelections(resumeId, { [slice]: value } as Partial<Selections>).then(
-            () => undefined,
-          ),
-        0,
-      );
-      controller.schedule(next[slice]);
+      if (slice) saveSlice(slice, next[slice]);
     },
-    [getController, resumeId],
+    [saveSlice],
   );
+
+  /** Back to what the agent proposed. All six slices go through their usual
+   *  queues, so a write already in flight for one cannot land after it. */
+  function resetToAgentPick(): void {
+    if (!proposedSelection) return;
+    selectionsRef.current = proposedSelection;
+    dispatchSelections({ type: 'replace', selections: proposedSelection });
+    for (const slice of SLICES) saveSlice(slice, proposedSelection[slice]);
+  }
+
+  const agentPicks = useMemo(() => agentPickIds(proposedSelection), [proposedSelection]);
 
   const contentCallbacks: ContentPaneCallbacks = {
     onToggleTop: (slice, id) => dispatchAndSaveSelection({ type: 'toggleTop', slice, id }),
@@ -608,9 +664,12 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
     };
   }, []);
 
+  // In review the editor fills its step, under the page's own header.
+  const frame = review ? 'flex min-h-0 flex-1' : 'flex h-screen';
+
   if (state.status === 'loading') {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-ink-dim">
+      <div className={`${frame} items-center justify-center text-sm text-ink-dim`}>
         Loading resume…
       </div>
     );
@@ -618,7 +677,7 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
 
   if (state.status === 'error') {
     return (
-      <div className="flex h-screen items-center justify-center p-6">
+      <div className={`${frame} items-center justify-center p-6`}>
         <div className="max-w-sm rounded-lg border border-danger-line/50 bg-danger-surface/30 p-6 text-sm text-danger-ink">
           <p className="font-medium">Couldn&apos;t load this resume.</p>
           <p className="mt-1 text-danger/80">{state.message}</p>
@@ -634,8 +693,10 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
     );
   }
 
+  const atAgentPick = proposedSelection !== null && sameSelections(selections, proposedSelection);
+
   return (
-    <div className="flex h-screen flex-col bg-canvas">
+    <div className={`${frame} flex-col bg-canvas`}>
       <EditorHeader
         resumeName={state.resumeName}
         onResumeNameChange={onResumeNameChange}
@@ -647,6 +708,7 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
         downloading={downloading}
         downloadError={downloadError}
         applicationId={applicationId}
+        embedded={review !== undefined}
       />
 
       <div ref={containerRef} className="flex min-h-0 flex-1">
@@ -656,6 +718,7 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
               library={state.library}
               selections={selections}
               callbacks={contentCallbacks}
+              agentPicks={agentPicks}
             />
           ) : (
             <TemplateTab
@@ -681,6 +744,29 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
           <PreviewPane renderKey={previewKey} render={renderPreview} />
         </div>
       </div>
+
+      {review ? (
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line bg-surface px-4 py-3">
+          <p className="text-xs text-ink-dim">
+            Same editor as /resume/:id. Ticking changes this application&apos;s resume; editing text
+            changes every resume.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {proposedSelection ? (
+              <button
+                type="button"
+                onClick={resetToAgentPick}
+                disabled={atAgentPick}
+                title="Puts back exactly what the agent proposed, order included"
+                className="rounded-md border border-line px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {atAgentPick ? "Already the agent's pick" : 'Reset to agent pick'}
+              </button>
+            ) : null}
+            {review.actions(saveStatus)}
+          </div>
+        </footer>
+      ) : null}
     </div>
   );
 }

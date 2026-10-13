@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, downloadApplicationPdf } from '@/lib/api-client';
+import { applicationHref, opensReview } from '@/lib/applications/board';
 import type { ApplicationSummary } from '@/lib/types';
 
 interface ApplicationCardProps {
@@ -22,9 +23,11 @@ function formatDate(iso: string): string {
 }
 
 /**
- * One application in the board. The card navigates to the detail page; the
- * download button is a separate hit target that stops propagation, and hands
- * back the PDF that was actually sent rather than the resume's current state.
+ * One application in the board. The card navigates to the detail page, or
+ * to the review page for one in Needs review or Ready, which is where there
+ * is something to do (D-044); the download button is a separate hit target
+ * that stops propagation, and hands back the PDF that was actually sent
+ * rather than the resume's current state.
  */
 export default function ApplicationCard({ application }: ApplicationCardProps) {
   const router = useRouter();
@@ -34,7 +37,7 @@ export default function ApplicationCard({ application }: ApplicationCardProps) {
   const sent = application.sentPdf;
 
   function handleNavigate(): void {
-    router.push(`/applications/${application.id}`);
+    router.push(applicationHref(application));
   }
 
   async function handleDownload(event: React.MouseEvent): Promise<void> {
@@ -81,6 +84,15 @@ export default function ApplicationCard({ application }: ApplicationCardProps) {
           </p>
         ) : null}
       </div>
+
+      {opensReview(application) ? (
+        <span
+          data-testid="application-review-chip"
+          className="inline-block w-fit rounded border border-accent/50 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+        >
+          Review →
+        </span>
+      ) : null}
 
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-ink-dim">

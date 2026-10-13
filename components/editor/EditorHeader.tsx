@@ -22,6 +22,9 @@ interface EditorHeaderProps {
    *  from the library is a general edit, edited from an application it is
    *  that application's resume. */
   applicationId?: string;
+  /** Inside the review page, which has its own way back and takes the
+   *  snapshot at final approval: no back link and no save action. */
+  embedded?: boolean;
 }
 
 /**
@@ -31,7 +34,7 @@ interface EditorHeaderProps {
  *
  * In application mode the back link returns to the application and the
  * primary action writes the PDF to it; otherwise both point at the resume
- * library, as they always have.
+ * library, as they always have. Embedded in the review page, it has neither.
  */
 export default function EditorHeader({
   resumeName,
@@ -44,6 +47,7 @@ export default function EditorHeader({
   downloading,
   downloadError,
   applicationId,
+  embedded = false,
 }: EditorHeaderProps) {
   const [localName, setLocalName] = useState(resumeName);
 
@@ -55,12 +59,14 @@ export default function EditorHeader({
     <header className="flex flex-col gap-3 border-b border-line bg-surface px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Link
-            href={backHref}
-            className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
-          >
-            {backLabel}
-          </Link>
+          {embedded ? null : (
+            <Link
+              href={backHref}
+              className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-ink-dim transition-colors hover:border-accent hover:text-accent"
+            >
+              {backLabel}
+            </Link>
+          )}
           <input
             value={localName}
             onChange={(event) => {
@@ -75,19 +81,21 @@ export default function EditorHeader({
         <div className="flex shrink-0 items-center gap-3">
           <SaveStatusBadge status={saveStatus} onRetry={onRetry} />
           {downloadError ? <span className="text-xs text-danger">{downloadError}</span> : null}
-          <button
-            type="button"
-            onClick={onDownload}
-            disabled={downloading}
-            title={
-              fromApplication
-                ? 'Renders this resume, saves the PDF to the application, and goes back to it'
-                : 'Renders the current template + selections, saves a snapshot, and downloads it'
-            }
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {downloading ? 'Saving PDF…' : fromApplication ? 'Save to application' : 'Save PDF'}
-          </button>
+          {embedded ? null : (
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={downloading}
+              title={
+                fromApplication
+                  ? 'Renders this resume, saves the PDF to the application, and goes back to it'
+                  : 'Renders the current template + selections, saves a snapshot, and downloads it'
+              }
+              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-canvas transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {downloading ? 'Saving PDF…' : fromApplication ? 'Save to application' : 'Save PDF'}
+            </button>
+          )}
         </div>
       </div>
 

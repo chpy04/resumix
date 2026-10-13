@@ -160,3 +160,17 @@ export function initialStep(steps: readonly ReviewStep[]): ReviewStepKey {
 export function applyCommand(applicationId: string): string {
   return `/resumix-apply ${applicationId}`;
 }
+
+/** The sections that were approved in `before` and are not in `after`: an
+ *  edit has just reopened them, which the page says next to the button. */
+export function reopenedSections(
+  before: Pick<ReviewState, 'resumeApprovedAt' | 'coverLetterApprovedAt'>,
+  after: Pick<ReviewState, 'resumeApprovedAt' | 'coverLetterApprovedAt'>,
+): ReviewSection[] {
+  const sections: ReviewSection[] = [];
+  if (before.resumeApprovedAt !== null && after.resumeApprovedAt === null) sections.push('resume');
+  if (before.coverLetterApprovedAt !== null && after.coverLetterApprovedAt === null) {
+    sections.push('coverLetter');
+  }
+  return sections;
+}
