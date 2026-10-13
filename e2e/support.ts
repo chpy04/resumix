@@ -67,8 +67,8 @@ export async function waitForSaved(page: Page): Promise<void> {
 // seeded content's stable names) and for verifying server-side truth
 // (rendered PDF bytes) that would otherwise require screenshot diffing.
 // Every mutation a test cares about proving still goes through the real UI.
-// `setApplicationPipelineState` is the one helper that writes to the
-// database instead, for setup no HTTP path allows.
+// `setApplicationPipelineState` and `insertApplicationQuestions` are the
+// helpers that write to the database instead, for setup no HTTP path allows.
 // ---------------------------------------------------------------------------
 
 /** The stored token, or null in `dev` auth mode where there isn't one. */
@@ -202,6 +202,13 @@ export interface ApplicationDetailLike {
   coverLetterApprovedAt: string | null;
   approvedAt: string | null;
   files: { filename: string; contentType: string; isArchived: boolean }[];
+  questions: {
+    id: string;
+    answerMode: string;
+    answer: string | string[] | null;
+    redraftNote: string | null;
+    approvedAt: string | null;
+  }[];
 }
 
 export function getApplicationDetail(
@@ -258,6 +265,63 @@ export async function setApplicationPipelineState(
     if (state.proposedSelection !== undefined) {
       await sql`update application set proposed_selection = ${sql.json(state.proposedSelection)} where id = ${applicationId}`;
     }
+  } finally {
+    await sql.end();
+  }
+}
+
+/** One question as the agent's `add_questions` would leave it. */
+export interface QuestionSetup {
+  label: string;
+  kind: 'text' | 'choice' | 'multi' | 'bool' | 'file' | 'letter';
+  options?: string[];
+  required?: boolean;
+  isEeo?: boolean;
+  source?: 'profile' | 'agent';
+  answerMode?: 'value' | 'instruction';
+  /** Also the answer, as `add_questions` records it. */
+  proposedAnswer?: string | string[];
+}
+
+/**
+ * Gives an application its form's questions, on page 0, in this order, by
+ * writing the rows directly: the agent is the only one who records them,
+ * over MCP (D-047). Returns their ids, in the same order.
+ */
+export async function insertApplicationQuestions(
+  applicationId: string,
+  rows: QuestionSetup[],
+): Promise<string[]> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  // How lib/applications/questions.ts stores an answer: a multi question's
+  // picks as a JSON array, everything else as itself.
+  const encode = (value: string | string[] | undefined) =>
+    value === undefined ? null : Array.isArray(value) ? JSON.stringify(value) : value;
+
+  try {
+    const ids: string[] = [];
+    for (const [index, row] of rows.entries()) {
+      const answer = encode(row.proposedAnswer);
+      const [inserted] = await sql<{ id: string }[]>`
+        insert into application_question (
+          application_id, sort_order, prompt, kind, options, field_ref, required,
+          is_eeo, source, answer_mode, proposed_answer, answer
+        ) values (
+          ${applicationId}, ${index}, ${row.label}, ${row.kind},
+          ${row.options ? sql.json(row.options) : null},
+          ${sql.json({ page: 0, label: row.label, selector: null })},
+          ${row.required ?? false}, ${row.isEeo ?? false},
+          ${answer === null ? null : (row.source ?? 'agent')},
+          ${row.answerMode ?? 'value'}, ${answer}, ${answer}
+        )
+        returning id`;
+      if (!inserted) throw new Error(`could not add question "${row.label}"`);
+      ids.push(inserted.id);
+    }
+    return ids;
   } finally {
     await sql.end();
   }

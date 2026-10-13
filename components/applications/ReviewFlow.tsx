@@ -5,15 +5,18 @@ import Link from 'next/link';
 import AgentSummaryPanel from '@/components/applications/AgentSummaryPanel';
 import ApproveStep from '@/components/applications/ApproveStep';
 import CoverLetterReviewStep from '@/components/applications/CoverLetterReviewStep';
+import QuestionsReviewStep from '@/components/applications/QuestionsReviewStep';
 import ResumeReviewStep from '@/components/applications/ResumeReviewStep';
 import ReviewHeader from '@/components/applications/ReviewHeader';
 import ReviewStepper from '@/components/applications/ReviewStepper';
 import {
   ApiError,
+  approveApplicationQuestions,
   approveApplicationSection,
   getApplication,
   getCoverLetter,
 } from '@/lib/api-client';
+import { reopenedQuestions } from '@/lib/applications/questions';
 import {
   initialStep,
   reopenedSections,
@@ -23,7 +26,7 @@ import {
   type ReviewStepKey,
 } from '@/lib/applications/review';
 import type { SaveStatus } from '@/lib/editor/autosave';
-import type { ApplicationDetail } from '@/lib/types';
+import type { ApplicationDetail, ApplicationFile } from '@/lib/types';
 
 interface ReviewFlowProps {
   applicationId: string;
@@ -31,7 +34,8 @@ interface ReviewFlowProps {
 
 /**
  * The review page (D-044): one application, step by step: its resume, its
- * letter when it has one (C12), then final approval.
+ * letter when it has one (C12), its form's questions when it has any
+ * (D-047), then final approval.
  *
  * This component owns the application and re-reads it after every approval
  * and every selection write, because a write can clear an approval on the
@@ -39,8 +43,8 @@ interface ReviewFlowProps {
  * follow from what the server says. Responses that arrive out of order are
  * dropped: only the latest request counts.
  *
- * The resume and letter steps stay mounted while hidden, so switching steps
- * never cuts off an autosave in flight.
+ * The resume, letter and questions steps stay mounted while hidden, so
+ * switching steps never cuts off an autosave in flight.
  */
 export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
   const [application, setApplication] = useState<ApplicationDetail | null>(null);
@@ -49,9 +53,11 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
   const [active, setActive] = useState<ReviewStepKey>('resume');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [reopened, setReopened] = useState<ReadonlySet<ReviewSection>>(new Set());
+  const [reopenedQuestionIds, setReopenedQuestionIds] = useState<ReadonlySet<string>>(new Set());
   // The resume editor's autosave, which final approval must wait for: the
   // snapshot is rendered from what the server holds.
   const [resumeSaveStatus, setResumeSaveStatus] = useState<SaveStatus>('idle');
+  const [questionsSaveStatus, setQuestionsSaveStatus] = useState<SaveStatus>('idle');
 
   const current = useRef<ApplicationDetail | null>(null);
   const latestRequest = useRef(0);
@@ -63,6 +69,10 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
     setApplication(next);
     const lost = before ? reopenedSections(before, next) : [];
     if (lost.length > 0) setReopened((prev) => new Set([...prev, ...lost]));
+    const lostQuestions = before ? reopenedQuestions(before.questions, next.questions) : [];
+    if (lostQuestions.length > 0) {
+      setReopenedQuestionIds((prev) => new Set([...prev, ...lostQuestions]));
+    }
   }, []);
 
   useEffect(() => {
@@ -123,6 +133,35 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       setActive(steps[index + 1]?.key ?? 'approve');
     },
     [applicationId, accept],
+  );
+
+  /** Approves these questions. The answer is the rows, not the
+   *  application, so they are merged in and the application re-read. */
+  const approveQuestions = useCallback(
+    async (ids: string[]) => {
+      const approved = await approveApplicationQuestions(applicationId, ids);
+      const base = current.current;
+      if (base) {
+        const byId = new Map(approved.map((question) => [question.id, question]));
+        latestRequest.current++;
+        accept({ ...base, questions: base.questions.map((q) => byId.get(q.id) ?? q) });
+      }
+      setReopenedQuestionIds((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
+      void refresh();
+    },
+    [applicationId, accept, refresh],
+  );
+
+  /** An attachment uploaded from a file question, shown in its picker at
+   *  once rather than after the next read. */
+  const handleFileUploaded = useCallback(
+    (file: ApplicationFile) => {
+      const base = current.current;
+      if (!base) return;
+      latestRequest.current++;
+      accept({ ...base, files: [file, ...base.files] });
+    },
+    [accept],
   );
 
   const handleApproved = useCallback(
@@ -205,6 +244,20 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
           />
         </div>
       ) : null}
+      {application.questions.length > 0 ? (
+        <div className={shown === 'questions' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+          <QuestionsReviewStep
+            application={application}
+            blockedBy={sectionApprovalProblem(application, 'questions')}
+            reopened={reopenedQuestionIds}
+            onApprove={approveQuestions}
+            onSaved={refresh}
+            onFileUploaded={handleFileUploaded}
+            onSaveStatusChange={setQuestionsSaveStatus}
+            onNext={() => setActive('approve')}
+          />
+        </div>
+      ) : null}
       {shown === 'approve' ? (
         <ApproveStep
           application={application}
@@ -212,6 +265,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
           onGoTo={setActive}
           onApproved={handleApproved}
           resumeSaveStatus={resumeSaveStatus}
+          questionsSaveStatus={questionsSaveStatus}
         />
       ) : null}
     </div>

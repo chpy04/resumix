@@ -8,6 +8,7 @@ import {
   type ReviewStep,
   type ReviewStepKey,
 } from '@/lib/applications/review';
+import { questionProgress } from '@/lib/applications/questions';
 import { canCopy, copyText, type CopyResult } from '@/lib/clipboard';
 import type { SaveStatus } from '@/lib/editor/autosave';
 import type { ApplicationDetail } from '@/lib/types';
@@ -20,12 +21,16 @@ interface ApproveStepProps {
   /** The resume editor's autosave. Approving while an edit is unsaved would
    *  snapshot the resume without it. */
   resumeSaveStatus: SaveStatus;
+  /** The questions step's autosave, for the same reason. */
+  questionsSaveStatus: SaveStatus;
 }
 
-/** Why the resume's edits stop final approval for now, or null. */
-function unsavedReason(status: SaveStatus): string | null {
-  if (status === 'saving') return 'Waiting for your resume changes to save.';
-  if (status === 'error') return "A resume change didn't save. Go to step 1 and retry it.";
+/** Why unsaved edits stop final approval for now, or null. */
+function unsavedReason(resume: SaveStatus, questions: SaveStatus): string | null {
+  if (resume === 'saving') return 'Waiting for your resume changes to save.';
+  if (resume === 'error') return "A resume change didn't save. Go to step 1 and retry it.";
+  if (questions === 'saving') return 'Waiting for your answers to save.';
+  if (questions === 'error') return "An answer didn't save. Go to the questions and retry it.";
   return null;
 }
 
@@ -58,6 +63,7 @@ export default function ApproveStep({
   onGoTo,
   onApproved,
   resumeSaveStatus,
+  questionsSaveStatus,
 }: ApproveStepProps) {
   const [resumePages, setResumePages] = useState<Pages>(undefined);
   const [letterPages, setLetterPages] = useState<Pages>(undefined);
@@ -69,7 +75,7 @@ export default function ApproveStep({
   const { id, resumeId, coverLetterId } = application;
   const command = applyCommand(id);
   const problems = finalApprovalProblems(application);
-  const unsaved = unsavedReason(resumeSaveStatus);
+  const unsaved = unsavedReason(resumeSaveStatus, questionsSaveStatus);
   const isReady = application.status === 'ready';
 
   // Page counts come from the preview endpoints, which store nothing.
@@ -156,6 +162,13 @@ export default function ApproveStep({
             approved={application.coverLetterApprovedAt !== null}
             stepNumber={stepNumber('coverLetter')}
             onGoTo={() => onGoTo('coverLetter')}
+          />
+        ) : null}
+        {application.questions.length > 0 ? (
+          <QuestionsRow
+            application={application}
+            stepNumber={stepNumber('questions')}
+            onGoTo={() => onGoTo('questions')}
           />
         ) : null}
 
@@ -302,6 +315,58 @@ function SummaryRow({
           not approved — go to step {stepNumber}
         </button>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+interface QuestionsRowProps {
+  application: ApplicationDetail;
+  stepNumber: number | undefined;
+  onGoTo: () => void;
+}
+
+/** How many of the form's questions are approved. Only the required ones
+ *  gate approval; an optional one left open is left blank (C3, D-047). */
+function QuestionsRow({ application, stepNumber, onGoTo }: QuestionsRowProps) {
+  const { approved, total, requiredOpen, optionalOpen } = questionProgress(application.questions);
+  const done = approved === total;
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div
+        data-testid="approve-row-questions"
+        className={`flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border px-4 py-3 text-sm ${
+          done
+            ? 'border-success-line bg-success-surface/20 text-success-ink'
+            : 'border-line bg-surface text-ink-dim'
+        }`}
+      >
+        <span className="font-medium">Questions</span>
+        <span>·</span>
+        <span>
+          {approved} of {total} approved{done ? ' ✓' : ''}
+        </span>
+        {requiredOpen > 0 ? (
+          <>
+            <span>—</span>
+            <button
+              type="button"
+              onClick={onGoTo}
+              className="underline transition-colors hover:text-accent"
+            >
+              {requiredOpen} required still open → step {stepNumber}
+            </button>
+          </>
+        ) : null}
+      </div>
+      {optionalOpen > 0 ? (
+        <p data-testid="approve-optional-note" className="text-xs text-ink-dim">
+          {optionalOpen === 1
+            ? '1 optional question will be left blank.'
+            : `${optionalOpen} optional questions will be left blank.`}
+        </p>
+      ) : null}
     </div>
   );
 }
