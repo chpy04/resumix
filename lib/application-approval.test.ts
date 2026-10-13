@@ -125,6 +125,34 @@ test(
   },
 );
 
+test(
+  'a letter with a body is approved as its shell with the body filled in',
+  { skip },
+  async () => {
+    const s = await approvable();
+    // Editing the letter reopens it (D-044), so it is approved again after.
+    await updateCoverLetter(s.user.id, s.letter!.id, {
+      content: `\\documentclass{letter}\n${LETTER_MARKER}\n\\begin{document}\n%%BODY%%\n\\end{document}`,
+      body: 'Dear Team,\n\nR&D at 100%.',
+    });
+    await approveSection(s.user.id, s.app.id, 'coverLetter');
+    const latex = fixtures.stubLatex(() => 1);
+    try {
+      const result = await approveApplication(s.user.id, s.app.id);
+      assert.ok(result.ok, JSON.stringify(result));
+      const letterTex = latex.sent.filter(isLetter);
+      assert.deepEqual(letterTex, [
+        `\\documentclass{letter}\n${LETTER_MARKER}\n\\begin{document}\n` +
+          'Dear Team,\n\nR\\&D at 100\\%.\n\\end{document}',
+      ]);
+      assert.equal((await fixtures.listApplicationFileRows(s.app.id)).length, 1);
+    } finally {
+      latex.restore();
+      await s.cleanup();
+    }
+  },
+);
+
 test('the PDF names the page shows come from the server, prefix and all', { skip }, async () => {
   const s = await approvable();
   const previous = process.env.PDF_NAME_PREFIX;

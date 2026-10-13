@@ -163,8 +163,12 @@ export interface CoverLetterSummary {
 }
 
 export interface CoverLetter extends CoverLetterSummary {
-  /** The whole LaTeX document, raw and unescaped (D-008). */
+  /** The whole LaTeX document, raw and unescaped (D-008), or the shell
+   *  around its one `%%BODY%%` line. */
   content: string;
+  /** The letter's prose as plain text, escaped into the `%%BODY%%` line when
+   *  it renders; null for a letter written entirely in LaTeX (D-046). */
+  body: string | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -552,6 +552,14 @@ test("another user's cover letter is unreachable by id", { skip }, async () => {
       () => updateCoverLetter(alice.id, bobLetter.id, { content: 'overwritten' }),
       NotFoundError,
     );
+    // Not found, never the 400 a body would get against Bob's content, which
+    // has no marker: the check must not run on a row the caller cannot see
+    // (D-046).
+    await updateCoverLetter(bob.id, bobLetter.id, { content: '\\documentclass{article}' });
+    await assert.rejects(
+      () => updateCoverLetter(alice.id, bobLetter.id, { body: 'overwritten' }),
+      NotFoundError,
+    );
     assert.ok(!(await listCoverLetters(alice.id, true)).some((l) => l.id === bobLetter.id));
 
     // Copying one you cannot read is the same answer as copying one that
@@ -563,6 +571,7 @@ test("another user's cover letter is unreachable by id", { skip }, async () => {
 
     const untouched = await getCoverLetter(bob.id, bobLetter.id);
     assert.notEqual(untouched?.content, 'overwritten');
+    assert.equal(untouched?.body, null);
   } finally {
     await fixtures.deleteCoverLetterRow(bobLetter.id);
   }

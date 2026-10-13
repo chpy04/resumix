@@ -66,7 +66,10 @@ type Selections = {
 };
 
 type CoverLetterSummary = { id; name; isDefault; isArchived; createdAt; updatedAt };
-type CoverLetter = CoverLetterSummary & { content: string }; // the whole LaTeX document
+type CoverLetter = CoverLetterSummary & {
+  content: string; // the whole LaTeX document, or the shell around its %%BODY%% line
+  body: string | null; // the letter's prose, plain text; null when it is LaTeX only (D-046)
+};
 
 // The middle three are set only by the review flow; PATCH refuses them (D-041).
 type ApplicationStatus =
@@ -355,14 +358,14 @@ is no PDF to name or snapshot. Clients must branch on `.ok`, never on
 
 ## Cover letters
 
-| method | path                                   | body                               | returns                                             |
-| ------ | -------------------------------------- | ---------------------------------- | --------------------------------------------------- |
-| GET    | `/api/cover-letters?includeArchived=1` | —                                  | `CoverLetterSummary[]`, default first then newest   |
-| POST   | `/api/cover-letters`                   | `{ name, sourceCoverLetterId? }`   | `201 CoverLetter` — copies the default, verbatim    |
-| GET    | `/api/cover-letters/:id`               | —                                  | `CoverLetter`                                       |
-| PATCH  | `/api/cover-letters/:id`               | `{ name?, content?, isArchived? }` | `CoverLetter`                                       |
-| POST   | `/api/cover-letters/:id/render`        | `{ contentOverride? }`             | `RenderResult` — **preview only, saves nothing**    |
-| GET    | `/api/cover-letters/:id/pdf`           | —                                  | `application/pdf`, compiled from the **saved** text |
+| method | path                                   | body                                      | returns                                             |
+| ------ | -------------------------------------- | ----------------------------------------- | --------------------------------------------------- |
+| GET    | `/api/cover-letters?includeArchived=1` | —                                         | `CoverLetterSummary[]`, default first then newest   |
+| POST   | `/api/cover-letters`                   | `{ name, sourceCoverLetterId? }`          | `201 CoverLetter` — copies the default, verbatim    |
+| GET    | `/api/cover-letters/:id`               | —                                         | `CoverLetter`                                       |
+| PATCH  | `/api/cover-letters/:id`               | `{ name?, content?, body?, isArchived? }` | `CoverLetter`                                       |
+| POST   | `/api/cover-letters/:id/render`        | `{ contentOverride?, bodyOverride? }`     | `RenderResult` — **preview only, saves nothing**    |
+| GET    | `/api/cover-letters/:id/pdf`           | —                                         | `application/pdf`, compiled from the **saved** text |
 
 Thinner than the resume surface by a whole layer, because a cover letter is
 its text: there are no selections to save and no snapshot to take (D-035).
@@ -374,6 +377,21 @@ one that does not exist.
 `isDefault` is **not** patchable. Which letter is the default is set at
 provisioning, and flipping it would need the old default cleared in the same
 transaction or the partial unique index rejects the write.
+
+**`body` is plain text** (D-046). Every render, the preview, the download and
+final approval alike, escapes it and puts it in place of the one line of
+`content` that holds only `%%BODY%%` (spaces or tabs around it allowed); a
+blank line starts a paragraph and a single line break is kept. A letter whose
+`body` is null compiles `content` verbatim. `body` is a string, possibly
+empty, and never set back to null. A PATCH is a `400` naming the problem
+when it would leave a non-null body with no marker line, or with more than
+one: setting a body on a letter without one, or deleting the marker from a
+letter that has a body. A letter with no body takes any `content`. On
+`/render`, a draft with that problem is the same `200 { ok: false, errors }`
+as a compile failure, with the problem as its one error, and `GET /pdf`
+answers it with the `400` a compile failure gets. A copy, from
+`POST /api/cover-letters` or `POST /api/applications/:id/cover-letter`,
+carries the source's `body` along with its `content`.
 
 **There is no DELETE**, and archiving the default is a `400`. With no PDF
 snapshot behind it, a letter's text is the only record of what was sent, and
@@ -492,7 +510,7 @@ one goes back to `needs_review`:
 
 - the resume: `PUT /api/resumes/:id/selections` (so editor autosave), and the
   agent's `set_resume_selection`;
-- the letter: `PATCH /api/cover-letters/:id` with `content`;
+- the letter: `PATCH /api/cover-letters/:id` with `content` or `body`;
 - `PATCH /api/applications/:id` changing `resumeId` or `coverLetterId`,
   unlinking included (a `status` in the same PATCH wins), and `POST
 /cover-letter`, which adds a section to approve.

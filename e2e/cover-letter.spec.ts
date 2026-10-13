@@ -42,7 +42,7 @@ test('an application gets its own cover letter, and editing it is not global', a
   const editor = page.getByLabel('Cover letter LaTeX');
   await expect(editor).toHaveValue(/\\documentclass/, { timeout: 15_000 });
   const body = await editor.inputValue();
-  await editor.fill(body.replace('Dear Hiring Team,', `Dear Hiring Team, ${marker}`));
+  await editor.fill(body.replace('\\end{document}', `${marker}\n\n\\end{document}`));
   await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 20_000 });
 
   // The download is a fresh compile of the saved text, not a stored snapshot.

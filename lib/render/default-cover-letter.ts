@@ -1,21 +1,24 @@
 /**
- * The LaTeX every new cover letter starts from.
+ * The LaTeX every new cover letter starts from: the letter's design, with
+ * one `%%BODY%%` line where its plain-text body goes (D-046).
  *
  * Unlike `DEFAULT_TEMPLATE` this is not a template in any technical sense —
- * there are no `<<TOKENS>>` in it and the renderer never touches it. It is
- * a complete document that gets copied byte-for-byte into each new
- * `cover_letter` row, and edited from there (D-035). The bracketed
- * placeholders are prose for a human to overwrite, deliberately not tokens:
- * a `<<COMPANY>>` left unfilled would compile silently and be mailed out.
+ * there are no `<<TOKENS>>` in it and the resume renderer never touches it.
+ * It is copied byte-for-byte into each new `cover_letter` row, and edited
+ * from there (D-035). The prose, from the salutation to the sign-off, is the
+ * body, which the agent drafts and the review page edits; `coverLetterTex`
+ * escapes it into the marker's place. A letter with no body compiles as it
+ * stands, and the marker, a TeX comment, prints nothing.
+ *
+ * So the shell holds nothing written for one company, and no date. A
+ * `[Company]` or a typed date here would be copied into every letter, never
+ * filled in, and mailed out. `\today` cannot stand in for one: the sidecar
+ * compiles with `SOURCE_DATE_EPOCH=0` so identical input gives identical
+ * bytes, and it would print January 1, 1970.
  *
  * The header matches the resume's so the two documents look like a pair. It
  * stays inside `texlive-latex-recommended`, which is what the sidecar image
  * installs (services/latex/Dockerfile).
- *
- * One trap worth knowing when editing this: a `[` at the start of a line
- * directly after `\\` is read as that `\\`'s optional length argument and
- * aborts the compile. Hence the address block leading with `[Company]`
- * rather than following `Hiring Team \\`.
  */
 export const DEFAULT_COVER_LETTER = String.raw`%-------------------------
 % Cover letter
@@ -42,35 +45,7 @@ export const DEFAULT_COVER_LETTER = String.raw`%-------------------------
 
 \vspace{12pt}
 
-[Month Day, Year]
-
-\vspace{6pt}
-
-[Company] \\
-Hiring Team
-
-\vspace{6pt}
-
-Dear Hiring Team,
-
-I am writing to apply for the [Role] position at [Company]. [One or two
-sentences on why this company and this role in particular --- the specific
-thing about the posting or the product that made you open this file.]
-
-[The middle paragraph is the one worth rewriting every time. Take the single
-most relevant thing on the resume and say what it has to do with what they
-are hiring for: what you built, what it did, and why that is the experience
-this role wants.]
-
-[Close on what you would bring that the resume cannot show on its own, and
-say plainly that you would welcome the chance to talk.]
-
-Thank you for your time and consideration.
-
-\vspace{12pt}
-
-Sincerely, \\
-Christopher Pyle
+%%BODY%%
 
 \end{document}
 `;

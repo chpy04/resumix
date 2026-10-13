@@ -113,7 +113,7 @@ export default function CoverLetterEditor({
   // `contentOverride` trick the Template tab uses, for the same reason: a
   // 1s autosave debounce must not make the preview a second behind.
   const renderPreview = useCallback(
-    () => renderCoverLetter(coverLetterId, content),
+    () => renderCoverLetter(coverLetterId, { content }),
     [coverLetterId, content],
   );
 
