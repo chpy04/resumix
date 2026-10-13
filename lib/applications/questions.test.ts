@@ -11,9 +11,11 @@ import {
   looksLikeEeo,
   normalizeFieldRef,
   questionProgress,
+  rememberProblem,
   reopenedQuestions,
   reviewGroups,
   sameAnswer,
+  savedAnswerProblem,
   wordCount,
 } from './questions.ts';
 
@@ -220,26 +222,130 @@ test("a file answer must be one of the application's live attachments", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Saved answers (D-048)
+// ---------------------------------------------------------------------------
+
+const text = { kind: 'text' as const, options: null };
+const letter = { kind: 'letter' as const, options: null };
+
+test('a saved answer fits only its own kind, text and letter counting as one', () => {
+  const prose = { kind: 'text' as const, answerMode: 'value' as const, answer: 'Because.' };
+  assert.equal(savedAnswerProblem(text, prose), null);
+  assert.equal(savedAnswerProblem(letter, prose), null);
+  assert.equal(savedAnswerProblem(text, { ...prose, kind: 'letter' }), null);
+  assert.equal(
+    savedAnswerProblem({ kind: 'bool', options: null }, { ...prose, answer: 'yes' }),
+    'It is a text answer, and this is a bool question.',
+  );
+  assert.equal(
+    savedAnswerProblem(text, { kind: 'bool', answerMode: 'value', answer: 'no' }),
+    'It is a bool answer, and this is a text question.',
+  );
+  assert.equal(
+    savedAnswerProblem(multi, { kind: 'choice', answerMode: 'value', answer: 'NYC' }),
+    'It is a choice answer, and this is a multi question.',
+  );
+});
+
+test("a saved choice must be one of this question's options exactly", () => {
+  const boston = { kind: 'choice' as const, answerMode: 'value' as const, answer: 'Boston' };
+  assert.equal(savedAnswerProblem(choice, boston), null);
+  assert.equal(
+    savedAnswerProblem({ kind: 'choice', options: ['NYC', 'SF'] }, boston),
+    '"Boston" is not one of the options.',
+  );
+  assert.equal(
+    savedAnswerProblem({ kind: 'choice', options: ['boston'] }, boston),
+    '"Boston" is not one of the options.',
+  );
+  assert.equal(
+    savedAnswerProblem(multi, { kind: 'multi', answerMode: 'value', answer: ['SF', 'Mars'] }),
+    '"Mars" is not one of the options.',
+  );
+  assert.equal(
+    savedAnswerProblem(multi, { kind: 'multi', answerMode: 'value', answer: ['SF', 'NYC'] }),
+    null,
+  );
+});
+
+test('a saved instruction fits any question of its kind, whatever the options', () => {
+  const words = 'Boston if listed, otherwise Remote';
+  assert.equal(
+    savedAnswerProblem(
+      { kind: 'choice', options: ['Austin', 'Denver'] },
+      { kind: 'choice', answerMode: 'instruction', answer: words },
+    ),
+    null,
+  );
+  assert.equal(
+    savedAnswerProblem(multi, { kind: 'multi', answerMode: 'instruction', answer: words }),
+    null,
+  );
+});
+
+test('a file question takes no saved answer', () => {
+  assert.equal(
+    savedAnswerProblem(
+      { kind: 'file', options: null },
+      { kind: 'text', answerMode: 'value', answer: 'x' },
+    ),
+    'A file question takes no saved answer.',
+  );
+});
+
+test('only an answered, valid, non-file answer can be remembered', () => {
+  assert.equal(rememberProblem({ ...text, answerMode: 'value', answer: 'Because.' }), null);
+  assert.equal(rememberProblem({ ...text, answerMode: 'value', answer: null }), 'Answer it first.');
+  assert.equal(rememberProblem({ ...text, answerMode: 'value', answer: '  ' }), 'Answer it first.');
+  assert.equal(rememberProblem({ ...multi, answerMode: 'value', answer: [] }), 'Answer it first.');
+  assert.equal(
+    rememberProblem({ kind: 'file', options: null, answerMode: 'value', answer: 'file-live' }),
+    "File answers can't be remembered.",
+  );
+  assert.equal(
+    rememberProblem({ ...choice, answerMode: 'value', answer: 'Mars' }),
+    '"Mars" is not one of the options.',
+  );
+  assert.equal(
+    rememberProblem({ ...choice, answerMode: 'instruction', answer: 'Anywhere warm' }),
+    null,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // The review step
 // ---------------------------------------------------------------------------
 
 test('questionProgress counts approvals, and splits what is open by required', () => {
   assert.deepEqual(
     questionProgress([
-      { required: true, approvedAt: STAMP },
-      { required: true, approvedAt: null },
-      { required: true, approvedAt: null },
-      { required: false, approvedAt: null },
-      { required: false, approvedAt: new Date(STAMP) },
+      { required: true, source: 'agent', approvedAt: STAMP },
+      { required: true, source: null, approvedAt: null },
+      { required: true, source: 'agent', approvedAt: null },
+      { required: false, source: null, approvedAt: null },
+      { required: false, source: 'profile', approvedAt: new Date(STAMP) },
     ]),
-    { approved: 2, total: 5, requiredOpen: 2, optionalOpen: 1 },
+    { approved: 2, total: 5, requiredOpen: 2, optionalOpen: 1, fromSaved: 0 },
   );
   assert.deepEqual(questionProgress([]), {
     approved: 0,
     total: 0,
     requiredOpen: 0,
     optionalOpen: 0,
+    fromSaved: 0,
   });
+});
+
+test('fromSaved counts the approved answers that came from saved answers', () => {
+  const progress = questionProgress([
+    { required: true, source: 'saved', approvedAt: STAMP },
+    { required: false, source: 'saved', approvedAt: STAMP },
+    // Reopened by an edit: still saved, no longer approved.
+    { required: true, source: 'saved', approvedAt: null },
+    { required: true, source: 'agent', approvedAt: STAMP },
+  ]);
+  assert.equal(progress.fromSaved, 2);
+  assert.equal(progress.approved, 3);
 });
 
 test('reviewGroups bulk-approves profile answers, never an EEO one, and keeps order', () => {
@@ -250,15 +356,21 @@ test('reviewGroups bulk-approves profile answers, never an EEO one, and keeps or
     { id: 'email', source: 'profile', isEeo: false },
     { id: 'office', source: null, isEeo: false },
     { id: 'veteran', source: 'saved', isEeo: true },
+    { id: 'relocate', source: 'saved', isEeo: false },
   ] as const;
-  const { profile, rest } = reviewGroups(qs);
+  const { profile, saved, rest } = reviewGroups(qs);
   assert.deepEqual(
     profile.map((q) => q.id),
     ['name', 'email'],
   );
+  // Saved answers are Chris's own, so an EEO one is among them (C10).
+  assert.deepEqual(
+    saved.map((q) => q.id),
+    ['veteran', 'relocate'],
+  );
   assert.deepEqual(
     rest.map((q) => q.id),
-    ['why', 'gender', 'office', 'veteran'],
+    ['why', 'gender', 'office'],
   );
 });
 

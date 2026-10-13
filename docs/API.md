@@ -114,7 +114,18 @@ type ApplicationQuestion = {
   proposedAnswer: AnswerValue | null;
   answer: AnswerValue | null;
   redraftNote: string | null; // set while Chris has asked the agent for a new draft
+  savedAnswerId: string | null; // its live saved answer; null when none, or since archived
   approvedAt: string | null; // cleared by any change to the answer
+};
+
+// An answer Chris ticked "remember" on (D-048), for the agent to link to a
+// later form's question. Never a file. The answer is decoded as above.
+type SavedAnswer = {
+  id;
+  prompt; // the question's wording when it was first saved
+  kind: 'text' | 'choice' | 'multi' | 'bool' | 'letter';
+  answerMode: 'value' | 'instruction';
+  answer: AnswerValue;
 };
 
 type ApplicationDetail = ApplicationSummary & {
@@ -566,8 +577,9 @@ one goes back to `needs_review`:
   application's `approvedAt`; there is no application stamp for questions.
 
 Nothing else does: library edits (bullets, experiences, projects, skills),
-template edits and renaming a letter leave every approval in place, because a
-global edit made elsewhere must not reopen anything (C6). The pinned snapshot
+template edits, renaming a letter, remembering an answer and editing a saved
+answer leave every approval in place, because a global edit made elsewhere
+must not reopen anything (C6). The pinned snapshot
 is what gets sent. There is no diffing: a selection write that puts back what
 was there still reopens. Applications that have been sent (`applied` and
 later) are never reopened, and a reopened one keeps its pinned `sentPdf` until
@@ -578,6 +590,7 @@ a new one is pinned.
 | method | path                                      | body                                     | returns                 |
 | ------ | ----------------------------------------- | ---------------------------------------- | ----------------------- |
 | PATCH  | `/api/application-questions/:id`          | `{ answer?, answerMode?, redraftNote? }` | `ApplicationQuestion`   |
+| PUT    | `/api/application-questions/:id/remember` | `{ remember }`                           | `ApplicationQuestion`   |
 | POST   | `/api/applications/:id/questions/approve` | `{ questionIds }`                        | `ApplicationQuestion[]` |
 
 An application's form questions arrive from the agent (`add_questions`) and
@@ -600,6 +613,24 @@ says why when:
 - `redraftNote` is set on anything but a non-EEO `text` or `letter` question.
   The note is what the agent reads through `get_application`; `null` or a
   blank note cancels the request.
+
+While the question has a live `savedAnswerId`, a new answer is written
+through to that saved answer too, with its mode: a global edit, like a
+bullet's. Clearing the answer writes nothing through, and the saved answer's
+prompt never changes.
+
+**`PUT /api/application-questions/:id/remember`** is the "remember this
+answer" checkbox (D-048). `remember: true` saves the question's answer as a
+`SavedAnswer` and sets `savedAnswerId`, or, when it already has a live one,
+updates that one with the current answer. It is a `400` on a `file` question
+("File answers can't be remembered."), on one with no answer ("Answer it
+first."), and on an answer that no longer fits its kind. `remember: false`
+archives the linked saved answer, never deleting it, and sets `savedAnswerId`
+to `null`; the next tick saves a new one. Either way the answer, its source
+and its approval are untouched, and **nothing is reopened**: remembering an
+answer is not an edit to it, which is why this is not the PATCH. Repeating
+either is harmless. Refused once the application has been sent. Another
+user's question is a `404`.
 
 **`POST /api/applications/:id/questions/approve`** stamps `approvedAt` on
 exactly `questionIds`, and clears any redraft request on them. All or none:
