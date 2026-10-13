@@ -190,9 +190,11 @@ export async function addQuestions(
         input.isEeo ||
         looksLikeEeo(input.prompt) ||
         (found !== undefined && (found.isEeo || looksLikeEeo(found.prompt)));
-      const offered = input.source === null ? null : encodeAnswer(input.proposedAnswer);
-      const proposal = eeo ? null : offered;
-      const note = eeo && offered !== null ? { note: 'eeo_answer_dropped' as const } : {};
+      const sent = encodeAnswer(input.proposedAnswer);
+      const proposal = eeo || input.source === null ? null : sent;
+      // Said whenever an answer was sent, with a source or without: the tool
+      // checks neither on an EEO question, since nothing of it is kept.
+      const note = eeo && sent !== null ? { note: 'eeo_answer_dropped' as const } : {};
 
       if (found) {
         // A redraft is prose for prose: `canRedraft` held when it was asked for.

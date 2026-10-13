@@ -214,6 +214,15 @@ test('an EEO answer is dropped, whether flagged or caught by keyword (C10)', { s
         kind: 'bool',
         required: false,
       },
+      // An answer with no source is still an answer, and still dropped.
+      {
+        field_ref: { page: 3, label: 'Demographics 3' },
+        prompt: 'Please self-identify',
+        kind: 'text',
+        required: false,
+        is_eeo: true,
+        proposed_answer: 'Decline',
+      },
     ]);
     assert.deepEqual(
       result.map((q) => [q.outcome, q.note]),
@@ -221,6 +230,7 @@ test('an EEO answer is dropped, whether flagged or caught by keyword (C10)', { s
         ['added', 'eeo_answer_dropped'],
         ['added', 'eeo_answer_dropped'],
         ['added', undefined],
+        ['added', 'eeo_answer_dropped'],
       ],
     );
     for (const q of await listQuestions(s.user.id, s.app.id)) {

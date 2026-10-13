@@ -83,7 +83,8 @@ function findQuestionProblems(questions: readonly QuestionArgs[]): string[] {
     }
     if (q.options && new Set(q.options).size !== q.options.length) say('lists an option twice');
 
-    // Dropped, not checked: an EEO question gets no proposal whatever it is.
+    // Dropped, not checked: an EEO question keeps no proposal whatever it is,
+    // source or none, and the outcome's note says one was dropped.
     if (q.is_eeo || looksLikeEeo(q.prompt)) return;
 
     const mode = q.answer_mode ?? 'value';
