@@ -5,8 +5,8 @@
  * (C3, D-044).
  *
  * Both are compiled here, now, rather than trusting an earlier
- * `set_resume_selection` answer: the letter has no such tool, and the resume
- * may have changed since. Every refusal writes nothing. Calling it again on
+ * `set_resume_selection` or `set_cover_letter_body` answer: either may have
+ * changed since, and a letter made by hand was never compiled by a tool. Every refusal writes nothing. Calling it again on
  * one already in review re-checks the pages and leaves it there.
  */
 import { z } from 'zod';
@@ -101,8 +101,7 @@ export const submitForReview = defineTool({
       if (compiled.pages > 1) {
         return toolError(
           `The cover letter is ${compiled.pages} pages; it must be one. Nothing was submitted. ` +
-            "Shorten it, then call submit_for_review again; if you can't edit it, stop and " +
-            'tell Chris.',
+            'Shorten its text with set_cover_letter_body, then call submit_for_review again.',
         );
       }
       letterPages = compiled.pages;
