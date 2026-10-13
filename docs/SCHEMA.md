@@ -182,13 +182,14 @@ History is kept (one row per save). "Most recent PDF" = `order by created_at des
 
 ### `cover_letter`
 
-| column        | type                           | notes                                           |
-| ------------- | ------------------------------ | ----------------------------------------------- |
-| `user_id`     | uuid → `users(id)` not null    | a root table, like `resume`                     |
-| `name`        | text not null                  | the company, normally — it names the download   |
-| `content`     | text not null                  | the **whole** LaTeX document, raw and unescaped |
-| `is_default`  | boolean not null default false | partial unique index: one true per user         |
-| `is_archived` | boolean not null default false |                                                 |
+| column        | type                           | notes                                                                                    |
+| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------- |
+| `user_id`     | uuid → `users(id)` not null    | a root table, like `resume`                                                              |
+| `name`        | text not null                  | the company, normally — it names the download                                            |
+| `content`     | text not null                  | the **whole** LaTeX document, raw and unescaped, or the shell around its `%%BODY%%` line |
+| `body`        | text                           | the letter's prose, **plain text**; null for a letter written entirely in LaTeX (D-046)  |
+| `is_default`  | boolean not null default false | partial unique index: one true per user                                                  |
+| `is_archived` | boolean not null default false |                                                                                          |
 
 **A cover letter stores its text; a resume deliberately does not.** That is
 the one asymmetry worth understanding here. A resume is a selection of
@@ -197,12 +198,26 @@ has to be editable in one place. A cover letter is prose written for one
 company and reused nowhere, so there is nothing to share: no template, no
 bridge tables, no tokens (D-035).
 
-Creating one copies `content` from the user's `is_default` row **verbatim** —
-nothing about the company is substituted in.
+Creating one copies `content` and `body` from the user's `is_default` row
+**verbatim** — nothing about the company is substituted in.
+
+**`body` is plain text, escaped on its way into the `.tex`** (D-046). The
+agent drafts it and the review page edits it, and it is stored as typed.
+When the letter renders, it is escaped (`lib/render/escape.ts`) and laid out
+(a blank line starts a paragraph, a single line break is kept), then put in
+place of the one line of `content` that holds only `%%BODY%%`: spaces or tabs
+around it allowed, `% %%BODY%%` or `%%BODY%% x` not a marker. When `body` is
+null, `content` compiles verbatim; the marker is a TeX comment and prints
+nothing.
+
+A non-null `body` always has exactly one marker line to go to. The query
+layer refuses, with a `400`, any write that would leave it with none or more
+than one, whether it sets the body or edits the `content` around it. A
+letter with no body may hold any `content`, marker or not.
 
 **There is no `cover_letter_pdf`.** `resume_pdf` exists because a resume's
 bytes can change without anyone touching that resume; a cover letter can only
-change if you edit that letter, so downloads compile `content` on demand. The
+change if you edit that letter, so downloads compile it on demand. The
 one PDF of a letter that is kept is the one final approval stores on its
 application as an `application_file` (see `application`, below), and that is
 an attachment, not a snapshot table (D-044). Otherwise this text is the only
@@ -289,9 +304,10 @@ stores a fresh `resume_pdf` snapshot and points `resume_pdf_id` at it. So
 
 Changing a section afterwards clears its stamp and `approved_at` with it, and
 a `ready` row goes back to `needs_review`. Only writes that change what this
-application sends do that: its resume's selection, its letter's `content`,
-relinking or unlinking `resume_id` or `cover_letter_id`, and its questions'
-answers (see `application_question`, which has no stamp column here). Library and
+application sends do that: its resume's selection, its letter's `content` or
+`body`, relinking or unlinking `resume_id` or `cover_letter_id`, and its
+questions' answers (see `application_question`, which has no stamp column
+here). Library and
 template edits do not (C6). Rows that have been sent keep their stamps as
 history. A reopened row keeps its `resume_pdf_id` until a new one is pinned.
 While `ready`, nothing but final approval writes `resume_pdf_id`: saving the

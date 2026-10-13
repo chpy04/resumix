@@ -152,8 +152,8 @@ test('a letter over one page is refused', { skip }, async () => {
     assert.equal(result.isError, true);
     assert.equal(
       text(result),
-      'The cover letter is 3 pages; it must be one. Nothing was submitted. Shorten it, then ' +
-        "call submit_for_review again; if you can't edit it, stop and tell Chris.",
+      'The cover letter is 3 pages; it must be one. Nothing was submitted. Shorten its text ' +
+        'with set_cover_letter_body, then call submit_for_review again.',
     );
     assert.equal(await s.status(), 'proposing');
   } finally {

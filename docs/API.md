@@ -66,7 +66,10 @@ type Selections = {
 };
 
 type CoverLetterSummary = { id; name; isDefault; isArchived; createdAt; updatedAt };
-type CoverLetter = CoverLetterSummary & { content: string }; // the whole LaTeX document
+type CoverLetter = CoverLetterSummary & {
+  content: string; // the whole LaTeX document, or the shell around its %%BODY%% line
+  body: string | null; // the letter's prose, plain text; null when it is LaTeX only (D-046)
+};
 
 // The middle three are set only by the review flow; PATCH refuses them (D-041).
 type ApplicationStatus =
@@ -280,16 +283,17 @@ straight back into another (D-042). Text from the library is plain: LaTeX
 markup is stripped for display (`\textbf{x}` → `x`, `\$` → `$`), and the
 stored content stays raw (D-008).
 
-| tool                   | arguments                                                                                                                                                               | returns                                                                                                                                                                                                                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ping`                 | none                                                                                                                                                                    | the email of the account that owns the token, as text                                                                                                                                                                                                                                    |
-| `get_library`          | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
-| `list_applications`    | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
-| `get_application`      | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null with no resume      |
-| `create_application`   | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
-| `add_questions`        | `{ application_id, questions: [{ field_ref: { page, label, selector? }, prompt, kind, options?, required, is_eeo?, source?, answer_mode?, proposed_answer? }] }`        | `{ questions: [{ question_id, outcome, note? }] }`, in input order: `outcome` is `added`, `unchanged` or `redrafted`, and `note: "eeo_answer_dropped"` means a proposed EEO answer was dropped (C10)                                                                                     |
-| `set_resume_selection` | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
-| `submit_for_review`    | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
+| tool                    | arguments                                                                                                                                                               | returns                                                                                                                                                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ping`                  | none                                                                                                                                                                    | the email of the account that owns the token, as text                                                                                                                                                                                                                                    |
+| `get_library`           | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
+| `list_applications`     | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
+| `get_application`       | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null with no resume      |
+| `create_application`    | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
+| `add_questions`         | `{ application_id, questions: [{ field_ref: { page, label, selector? }, prompt, kind, options?, required, is_eeo?, source?, answer_mode?, proposed_answer? }] }`        | `{ questions: [{ question_id, outcome, note? }] }`, in input order: `outcome` is `added`, `unchanged` or `redrafted`, and `note: "eeo_answer_dropped"` means a proposed EEO answer was dropped (C10)                                                                                     |
+| `set_resume_selection`  | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
+| `set_cover_letter_body` | `{ application_id, text }`: the whole letter as plain text, date line to sign-off, non-empty after trimming                                                             | `{ ok, pages }`; `ok` is `pages === 1`. `text` replaces the letter's `body`; an application with no letter is first given a copy of Default                                                                                                                                              |
+| `submit_for_review`     | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
 
 An archived application reads exactly like a missing one, or another
 user's: `No application <id>. Call list_applications to find its
@@ -357,11 +361,30 @@ and `skills` likewise.
   a `ready` application goes back to `needs_review` (see "The review flow"
   under Applications).
 
+**`set_cover_letter_body`** writes an application's cover letter as plain
+text, then compiles it. `text` replaces the letter's `body`, which Resumix
+escapes into the letter's `%%BODY%%` line (see Cover letters), so the agent
+never writes LaTeX (D-046). With no letter linked, it first copies Default
+onto the application, as `POST /api/applications/:id/cover-letter` does
+(C12).
+
+- **Refused, writing nothing and creating no letter:** an application that
+  has been sent (`applied` or later); one linked to the Default letter; and a
+  linked letter, or with none linked Default, without exactly one `%%BODY%%`
+  line. That text tells the agent to stop and ask Chris to add the line.
+- **`ok`** is `pages === 1`. A longer letter is still saved; the agent
+  shortens the text and calls again.
+- **`isError`, with the text saved:** a LaTeX error, with its first three
+  messages (most often a character pdflatex cannot set, such as an emoji), or
+  a sidecar that cannot be reached.
+- **In review**, it unapproves the letter like any edit to its text, and a
+  `ready` application goes back to `needs_review`.
+
 **`submit_for_review`** hands the application to Chris: `proposing` becomes
 `needs_review` (C3). It compiles the resume, and the cover letter if there is
 one, and refuses while either is more than one page, naming the document and
 its page count; the text says to trim with `set_resume_selection`, or, for the
-letter, to stop and tell Chris if it cannot be shortened. Also refused,
+letter, `set_cover_letter_body`. Also refused,
 writing nothing: a `ready` application (already approved), a draft or sent
 one, one with no resume, a document that does not compile (its first three
 errors), and an unreachable sidecar (call again in a minute). Called on one
@@ -374,9 +397,12 @@ application, finds it with `list_applications` and `get_application`,
 records two questions with `add_questions` (the EEO one's answer must be
 dropped, a re-send must be `unchanged`, and `get_application` must list
 both), selects a small resume into it, which the real sidecar must compile to
-one page, and submits it for review, which `get_application` must then show as
-`needs_review`; submitting an unknown id must be `isError`. The application
-is archived and its resume deleted when it ends. `npm run verify` runs it
+one page, writes its cover letter with `set_cover_letter_body`, in text
+holding every character the escaper replaces, which must also compile to one
+page, twice into the same letter, and submits it for review, which
+`get_application` must then show as `needs_review`; submitting an unknown id
+must be `isError`. The application and its letter are archived and its resume
+deleted when it ends. `npm run verify` runs it
 from `e2e/mcp.spec.ts`.
 
 ## Resumes
@@ -417,14 +443,14 @@ is no PDF to name or snapshot. Clients must branch on `.ok`, never on
 
 ## Cover letters
 
-| method | path                                   | body                               | returns                                             |
-| ------ | -------------------------------------- | ---------------------------------- | --------------------------------------------------- |
-| GET    | `/api/cover-letters?includeArchived=1` | —                                  | `CoverLetterSummary[]`, default first then newest   |
-| POST   | `/api/cover-letters`                   | `{ name, sourceCoverLetterId? }`   | `201 CoverLetter` — copies the default, verbatim    |
-| GET    | `/api/cover-letters/:id`               | —                                  | `CoverLetter`                                       |
-| PATCH  | `/api/cover-letters/:id`               | `{ name?, content?, isArchived? }` | `CoverLetter`                                       |
-| POST   | `/api/cover-letters/:id/render`        | `{ contentOverride? }`             | `RenderResult` — **preview only, saves nothing**    |
-| GET    | `/api/cover-letters/:id/pdf`           | —                                  | `application/pdf`, compiled from the **saved** text |
+| method | path                                   | body                                      | returns                                             |
+| ------ | -------------------------------------- | ----------------------------------------- | --------------------------------------------------- |
+| GET    | `/api/cover-letters?includeArchived=1` | —                                         | `CoverLetterSummary[]`, default first then newest   |
+| POST   | `/api/cover-letters`                   | `{ name, sourceCoverLetterId? }`          | `201 CoverLetter` — copies the default, verbatim    |
+| GET    | `/api/cover-letters/:id`               | —                                         | `CoverLetter`                                       |
+| PATCH  | `/api/cover-letters/:id`               | `{ name?, content?, body?, isArchived? }` | `CoverLetter`                                       |
+| POST   | `/api/cover-letters/:id/render`        | `{ contentOverride?, bodyOverride? }`     | `RenderResult` — **preview only, saves nothing**    |
+| GET    | `/api/cover-letters/:id/pdf`           | —                                         | `application/pdf`, compiled from the **saved** text |
 
 Thinner than the resume surface by a whole layer, because a cover letter is
 its text: there are no selections to save and no snapshot to take (D-035).
@@ -436,6 +462,21 @@ one that does not exist.
 `isDefault` is **not** patchable. Which letter is the default is set at
 provisioning, and flipping it would need the old default cleared in the same
 transaction or the partial unique index rejects the write.
+
+**`body` is plain text** (D-046). Every render, the preview, the download and
+final approval alike, escapes it and puts it in place of the one line of
+`content` that holds only `%%BODY%%` (spaces or tabs around it allowed); a
+blank line starts a paragraph and a single line break is kept. A letter whose
+`body` is null compiles `content` verbatim. `body` is a string, possibly
+empty, and never set back to null. A PATCH is a `400` naming the problem
+when it would leave a non-null body with no marker line, or with more than
+one: setting a body on a letter without one, or deleting the marker from a
+letter that has a body. A letter with no body takes any `content`. On
+`/render`, a draft with that problem is the same `200 { ok: false, errors }`
+as a compile failure, with the problem as its one error, and `GET /pdf`
+answers it with the `400` a compile failure gets. A copy, from
+`POST /api/cover-letters` or `POST /api/applications/:id/cover-letter`,
+carries the source's `body` along with its `content`.
 
 **There is no DELETE**, and archiving the default is a `400`. With no PDF
 snapshot behind it, a letter's text is the only record of what was sent, and
@@ -556,7 +597,8 @@ one goes back to `needs_review`:
 
 - the resume: `PUT /api/resumes/:id/selections` (so editor autosave), and the
   agent's `set_resume_selection`;
-- the letter: `PATCH /api/cover-letters/:id` with `content`;
+- the letter: `PATCH /api/cover-letters/:id` with `content` or `body`, and
+  the agent's `set_cover_letter_body`;
 - `PATCH /api/applications/:id` changing `resumeId` or `coverLetterId`,
   unlinking included (a `status` in the same PATCH wins), and `POST
 /cover-letter`, which adds a section to approve;
