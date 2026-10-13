@@ -129,10 +129,18 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   const projectFieldDraft = useFieldDrafts();
   const skillRowFieldDraft = useFieldDrafts();
 
+  // Only the latest load may land. StrictMode runs the load effect twice
+  // under `next dev`, and Retry starts another; an older answer arriving last
+  // would `replace` the selections with ones read before an edit already
+  // saved since, re-ticking what the server has unticked.
+  const latestLoad = useRef(0);
+
   const loadResume = useCallback(async () => {
+    const load = ++latestLoad.current;
     setState({ status: 'loading' });
     try {
       const detail = await getResumeDetail(resumeId);
+      if (load !== latestLoad.current) return;
       selectionsRef.current = detail.selections;
       dispatchSelections({ type: 'replace', selections: detail.selections });
       setState({
@@ -143,6 +151,7 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
         library: detail.library,
       });
     } catch (error) {
+      if (load !== latestLoad.current) return;
       setState({
         status: 'error',
         message: error instanceof ApiError ? error.message : 'Could not load this resume.',

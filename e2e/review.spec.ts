@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Request } from '@playwright/test';
 import {
   addCoverLetterViaApi,
   createApplicationViaApi,
@@ -48,6 +48,22 @@ test('review → approve → ready, then an edit reopens the resume', async ({ p
     proposedSelection: proposed,
   });
 
+  // Every load of this resume the page starts, so the test can wait for all
+  // of them before its first click. `next dev` runs the editor's load effect
+  // twice (StrictMode), and a click made between the two answers is what an
+  // unguarded late answer would undo.
+  let loadsInFlight = 0;
+  const isLoad = (request: Request) =>
+    request.method() === 'GET' && new URL(request.url()).pathname === `/api/resumes/${resumeId}`;
+  page.on('request', (request) => {
+    if (isLoad(request)) loadsInFlight++;
+  });
+  const settled = (request: Request) => {
+    if (isLoad(request)) loadsInFlight--;
+  };
+  page.on('requestfinished', settled);
+  page.on('requestfailed', settled);
+
   // The board sends a Needs review card to the review page.
   await page.goto('/');
   const card = page.getByTestId(`application-card-${appId}`);
@@ -64,6 +80,8 @@ test('review → approve → ready, then an edit reopens the resume', async ({ p
   // Step 1: the agent's picks are badged, unticked or not.
   const experienceRow = page.getByTestId(`content-row-${experienceId}`);
   await expect(experienceRow.getByText('agent pick', { exact: true }).first()).toBeVisible();
+  // The row showing means a load has landed; wait out any other still in flight.
+  await expect.poll(() => loadsInFlight).toBe(0);
   await experienceRow.getByRole('button', { name: /^Expand .* bullets$/ }).click();
   const bulletRow = page.getByTestId(`bullet-row-${bulletId}`);
   await expect(bulletRow.getByText('agent pick', { exact: true })).toBeVisible();
