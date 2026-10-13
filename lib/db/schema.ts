@@ -21,7 +21,7 @@ import {
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import type { Selections } from '../types.ts';
+import type { FieldRef, Selections } from '../types.ts';
 
 /** Every row gets these; maintained by the shared `set_updated_at()` trigger. */
 const timestamps = {
@@ -459,6 +459,94 @@ export const applicationFile = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Application questions (D-047)
+//
+// What an application's form asks, and the answer Chris approves for each.
+// Owned through `application_id`, like `application_file`. The CHECKs are
+// the rules a write must never get past, C10's among them; the answer
+// encoding they rely on is in `lib/applications/questions.ts`.
+// ---------------------------------------------------------------------------
+
+export const applicationQuestionKind = pgEnum('application_question_kind', [
+  'text',
+  'choice',
+  'multi',
+  'bool',
+  'file',
+  'letter',
+]);
+
+export const applicationQuestionSource = pgEnum('application_question_source', [
+  'profile',
+  'agent',
+  'saved',
+]);
+
+/** Not prefixed with the table: saved answers reuse it. */
+export const answerMode = pgEnum('answer_mode', ['value', 'instruction']);
+
+export const applicationQuestion = pgTable(
+  'application_question',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicationId: uuid('application_id')
+      .notNull()
+      .references(() => application.id, { onDelete: 'cascade' }),
+    /** Dense, in the order the questions were added. */
+    sortOrder: integer('sort_order').notNull(),
+    prompt: text('prompt').notNull(),
+    kind: applicationQuestionKind('kind').notNull(),
+    /** Choice and multi only. */
+    options: jsonb('options').$type<string[]>(),
+    fieldRef: jsonb('field_ref').$type<FieldRef>().notNull(),
+    required: boolean('required').notNull(),
+    isEeo: boolean('is_eeo').notNull().default(false),
+    /** Who proposed the answer; null when nothing was. */
+    source: applicationQuestionSource('source'),
+    answerMode: answerMode('answer_mode').notNull().default('value'),
+    proposedAnswer: text('proposed_answer'),
+    answer: text('answer'),
+    /** Non-null while Chris has asked the agent for a new draft. */
+    redraftNote: text('redraft_note'),
+    /** A plain uuid until saved answers add the foreign key. */
+    savedAnswerId: uuid('saved_answer_id'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('ux_application_question_field').on(
+      t.applicationId,
+      sql`(${t.fieldRef} ->> 'page')`,
+      sql`lower(regexp_replace(btrim(${t.fieldRef} ->> 'label'), '\s+', ' ', 'g'))`,
+    ),
+    check(
+      'ck_application_question_options',
+      sql`(${t.options} is not null) = (${t.kind} in ('choice', 'multi'))`,
+    ),
+    check(
+      'ck_application_question_instruction',
+      sql`${t.answerMode} = 'value' or ${t.kind} in ('choice', 'multi')`,
+    ),
+    check(
+      'ck_application_question_proposal',
+      sql`(${t.source} is null) = (${t.proposedAnswer} is null)`,
+    ),
+    check(
+      'ck_application_question_eeo',
+      sql`not ${t.isEeo} or ${t.source} is null or ${t.source} = 'saved'`,
+    ),
+    check(
+      'ck_application_question_approved_answer',
+      sql`${t.approvedAt} is null or ${t.answer} is not null`,
+    ),
+    check(
+      'ck_application_question_redraft',
+      sql`${t.redraftNote} is null or ${t.approvedAt} is null`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Relations (used by the query API; harmless if unused by callers)
 // ---------------------------------------------------------------------------
 
@@ -522,11 +610,19 @@ export const applicationRelations = relations(application, ({ one, many }) => ({
     references: [coverLetter.id],
   }),
   files: many(applicationFile),
+  questions: many(applicationQuestion),
 }));
 
 export const applicationFileRelations = relations(applicationFile, ({ one }) => ({
   application: one(application, {
     fields: [applicationFile.applicationId],
+    references: [application.id],
+  }),
+}));
+
+export const applicationQuestionRelations = relations(applicationQuestion, ({ one }) => ({
+  application: one(application, {
+    fields: [applicationQuestion.applicationId],
     references: [application.id],
   }),
 }));

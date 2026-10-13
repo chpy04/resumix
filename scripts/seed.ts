@@ -60,6 +60,7 @@ function one<T>(rows: T[]): T {
 // reach them through CASCADE anyway, and leaving them implicit hides that.
 const ALL_SEEDED_TABLES = [
   'application_file',
+  'application_question',
   'application',
   'resume_pdf',
   'resume_technical_skill',
