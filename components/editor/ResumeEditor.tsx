@@ -33,7 +33,7 @@ import {
   updateSkillRow,
   updateTemplate,
 } from '@/lib/api-client';
-import { agentPickIds, sameSelections } from '@/lib/editor/agent-pick';
+import { agentPickIds, sameSelections, SLICES } from '@/lib/editor/agent-pick';
 import type { SaveStatus } from '@/lib/editor/autosave';
 import {
   affectedSlice,
@@ -78,15 +78,6 @@ interface ResumeEditorProps {
 }
 
 type SliceValue = string[] | Record<string, string[]>;
-
-const SLICES = [
-  'experiences',
-  'experienceBullets',
-  'projects',
-  'projectBullets',
-  'skillRows',
-  'skills',
-] as const satisfies readonly (keyof Selections)[];
 
 type LoadState =
   | { status: 'loading' }

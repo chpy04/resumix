@@ -5,7 +5,8 @@
  */
 import type { Selections } from '../types.ts';
 
-const SLICES = [
+/** The six slices of a `Selections`, in the order the API lists them. */
+export const SLICES = [
   'experiences',
   'experienceBullets',
   'projects',
