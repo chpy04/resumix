@@ -26,6 +26,9 @@ let createApplication: typeof import('./applications.ts').createApplication;
 let createProposedApplication: typeof import('./applications.ts').createProposedApplication;
 let getApplicationRow: typeof import('./applications.ts').getApplicationRow;
 let setProposedSelection: typeof import('./applications.ts').setProposedSelection;
+let approveSection: typeof import('./applications.ts').approveSection;
+let submitForReview: typeof import('./applications.ts').submitForReview;
+let recordFinalApproval: typeof import('./applications.ts').recordFinalApproval;
 let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
 let listApplications: typeof import('./applications.ts').listApplications;
 let recordApplied: typeof import('./applications.ts').recordApplied;
@@ -65,6 +68,7 @@ if (!skip) {
   ({ assembleLibrary } = await import('./library.ts'));
   ({ authenticateApiToken, createApiToken, revokeApiToken } = await import('./api-tokens.ts'));
   ({
+    approveSection,
     attachCoverLetter,
     createApplication,
     createProposedApplication,
@@ -72,7 +76,9 @@ if (!skip) {
     getApplicationRow,
     listApplications,
     recordApplied,
+    recordFinalApproval,
     setProposedSelection,
+    submitForReview,
     updateApplication,
   } = await import('./applications.ts'));
   ({
@@ -422,6 +428,78 @@ test("setProposedSelection on another user's application writes nothing", { skip
     assert.equal((await getApplicationRow(bob.id, bobApplication.id))?.proposedSelection, null);
   } finally {
     await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The review flow (D-044). Each of these writes a flow status or a stamp, so
+// reaching another user's row would approve their application for them.
+// ---------------------------------------------------------------------------
+
+test(
+  "approving, submitting or finally approving another user's application writes nothing",
+  { skip },
+  async () => {
+    const { alice, bob, tag } = await twoUsers();
+    const bobResume = await fixtures.insertTestResume(bob.id, tag);
+    const inReview = await fixtures.insertTestApplication(bob.id, `${tag}-review`, {
+      status: 'needs_review',
+      resumeId: bobResume.id,
+      resumeApprovedAt: new Date(),
+    });
+    const proposing = await fixtures.insertTestApplication(bob.id, `${tag}-proposing`, {
+      status: 'proposing',
+      resumeId: bobResume.id,
+    });
+    try {
+      await assert.rejects(() => approveSection(alice.id, inReview.id, 'resume'), NotFoundError);
+      assert.equal(await submitForReview(alice.id, proposing.id), false);
+      await assert.rejects(
+        () =>
+          recordFinalApproval(alice.id, inReview.id, {
+            resumeId: bobResume.id,
+            snapshot: { filename: 'stolen.pdf', bytes: Buffer.from('%PDF'), tex: '' },
+            letter: null,
+          }),
+        NotFoundError,
+      );
+
+      // Nothing moved, and the snapshot Alice's call stored rolled back with it.
+      assert.equal((await getApplicationRow(bob.id, proposing.id))?.status, 'proposing');
+      const bobs = await getApplicationRow(bob.id, inReview.id);
+      assert.equal(bobs?.status, 'needs_review');
+      assert.equal(bobs?.approvedAt, null);
+      assert.equal(bobs?.resumePdfId, null);
+      assert.deepEqual(await fixtures.listResumePdfIds(bobResume.id), []);
+    } finally {
+      await fixtures.deleteApplicationRow(inReview.id);
+      await fixtures.deleteApplicationRow(proposing.id);
+      await fixtures.deleteResumeRow(bobResume.id);
+    }
+  },
+);
+
+test("your selection write never reopens another user's application", { skip }, async () => {
+  const { alice, bob, aliceExp, tag } = await twoUsers();
+  const aliceResume = await fixtures.insertTestResume(alice.id, tag);
+  // Impossible through the API, which refuses a stranger's resume id; written
+  // directly, to prove the reopen itself is scoped to the caller.
+  const stamp = new Date('2026-10-12T10:00:00.000Z');
+  const bobsReady = await fixtures.insertTestApplication(bob.id, tag, {
+    status: 'ready',
+    resumeId: aliceResume.id,
+    resumeApprovedAt: stamp,
+    approvedAt: stamp,
+  });
+  try {
+    await replaceSelections(alice.id, aliceResume.id, { experiences: [aliceExp.id] });
+    const row = await getApplicationRow(bob.id, bobsReady.id);
+    assert.equal(row?.status, 'ready');
+    assert.deepEqual(row?.resumeApprovedAt, stamp);
+    assert.deepEqual(row?.approvedAt, stamp);
+  } finally {
+    await fixtures.deleteApplicationRow(bobsReady.id);
+    await fixtures.deleteResumeRow(aliceResume.id);
   }
 });
 

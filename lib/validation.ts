@@ -254,6 +254,12 @@ export const patchApplicationFileSchema = z.object({
   isArchived: z.boolean(),
 });
 
+/** One section of the review flow. Final approval is its own endpoint,
+ *  because it compiles and snapshots where this only stamps (D-044). */
+export const approveSectionSchema = z.object({
+  section: z.enum(['resume', 'coverLetter'], { error: 'must be resume or coverLetter' }),
+});
+
 // ---------------------------------------------------------------------------
 // Feedback (in-app "Give feedback" widget → GitHub issue)
 // ---------------------------------------------------------------------------

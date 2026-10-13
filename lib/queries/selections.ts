@@ -39,6 +39,7 @@ import {
   technicalSkillRow,
 } from '../db/schema.ts';
 import type { Selections } from '../types.ts';
+import { reopenForResume } from './approvals.ts';
 import { BadRequestError } from './errors.ts';
 
 type Tx = PgTransaction<any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -353,6 +354,9 @@ export async function replaceSelections(
     if (patch.skills !== undefined) {
       await replaceSkills(tx, userId, resumeId, patch.skills);
     }
+    // Changing what this resume shows unapproves it on every application in
+    // review that sends it, in the same transaction (C3, D-044).
+    await reopenForResume(tx, userId, resumeId);
   });
 }
 

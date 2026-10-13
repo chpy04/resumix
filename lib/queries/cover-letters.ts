@@ -11,10 +11,11 @@
  * clone. Copying one is copying a string (D-035).
  */
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { db } from '../db/index.ts';
+import { db, type Executor } from '../db/index.ts';
 import { coverLetter } from '../db/schema.ts';
 import { DEFAULT_COVER_LETTER } from '../render/default-cover-letter.ts';
 import type { CoverLetter, CoverLetterSummary } from '../types.ts';
+import { reopenForCoverLetter } from './approvals.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
 
 type CoverLetterRow = typeof coverLetter.$inferSelect;
@@ -147,12 +148,22 @@ export async function updateCoverLetter(
     }
   }
 
-  const [row] = await db
-    .update(coverLetter)
-    .set(patch)
-    .where(and(eq(coverLetter.id, id), eq(coverLetter.userId, userId)))
-    .returning();
-  if (!row) throw new NotFoundError(`cover letter ${id} not found`);
+  async function write(executor: Executor): Promise<CoverLetterRow> {
+    const [row] = await executor
+      .update(coverLetter)
+      .set(patch)
+      .where(and(eq(coverLetter.id, id), eq(coverLetter.userId, userId)))
+      .returning();
+    if (!row) throw new NotFoundError(`cover letter ${id} not found`);
+    return row;
+  }
 
-  return toWire(row);
+  // Only the text is what gets sent, so only `content` unapproves the letter
+  // on an application in review; a rename or an archive leaves it (D-044).
+  if (patch.content === undefined) return toWire(await write(db));
+  return db.transaction(async (tx) => {
+    const row = await write(tx);
+    await reopenForCoverLetter(tx, userId, id);
+    return toWire(row);
+  });
 }

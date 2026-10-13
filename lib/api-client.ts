@@ -7,6 +7,7 @@
  * convention: it attaches the stored token and handles 401 -> logout.
  */
 
+import type { ReviewSection } from './applications/review.ts';
 import type { ManualStatus } from './applications/status.ts';
 import { authedFetch } from './auth-client.ts';
 import type { FeedbackKind } from './feedback/issue.ts';
@@ -445,6 +446,26 @@ export function saveResumeToApplication(id: string): Promise<ApplicationPdfResul
  */
 export function markApplicationApplied(id: string): Promise<ApplicationPdfResult> {
   return requestJson<ApplicationPdfResult>(`/api/applications/${id}/apply`, { method: 'POST' });
+}
+
+/** `POST /api/applications/:id/approvals` — approves one review section.
+ *  A `400` (thrown as `ApiError`) says why when it cannot be approved. */
+export function approveApplicationSection(
+  id: string,
+  section: ReviewSection,
+): Promise<ApplicationDetail> {
+  return requestJson<ApplicationDetail>(`/api/applications/${id}/approvals`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ section }),
+  });
+}
+
+/** `POST /api/applications/:id/approve` — final approval: compiles both
+ *  documents, pins them, and makes it `ready`. A section left unapproved is
+ *  a thrown `400`; a LaTeX failure is the usual `200 { ok: false, ... }`. */
+export function approveApplication(id: string): Promise<ApplicationPdfResult> {
+  return requestJson<ApplicationPdfResult>(`/api/applications/${id}/approve`, { method: 'POST' });
 }
 
 /** `GET /api/applications/:id/pdf` — the bytes that were actually sent, not

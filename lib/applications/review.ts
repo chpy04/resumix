@@ -84,6 +84,12 @@ export const REOPENABLE_STATUSES = [
   'ready',
 ] as const satisfies readonly ApplicationStatus[];
 
+/** What a reopen reads: the status and the three stamps. */
+export type ApprovalStamps = Pick<
+  ReviewState,
+  'status' | 'resumeApprovedAt' | 'coverLetterApprovedAt' | 'approvedAt'
+>;
+
 /** The columns a reopen writes: only the ones that change. */
 export interface ReopenPatch {
   status?: 'needs_review';
@@ -101,7 +107,7 @@ export interface ReopenPatch {
  * fact. The pinned snapshot is left alone until the next final approval
  * replaces it.
  */
-export function reopenedApproval(row: ReviewState, section: ReviewSection): ReopenPatch | null {
+export function reopenedApproval(row: ApprovalStamps, section: ReviewSection): ReopenPatch | null {
   if (!(REOPENABLE_STATUSES as readonly ApplicationStatus[]).includes(row.status)) return null;
 
   const patch: ReopenPatch = {};

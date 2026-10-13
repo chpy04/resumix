@@ -154,7 +154,7 @@ test(
 );
 
 test(
-  'outside proposing the selection is written but proposed_selection is not',
+  'outside proposing the selection is written but proposed_selection is not, and ready reopens',
   { skip },
   async () => {
     const latex = stubLatex({ ok: true, pages: 1 });
@@ -167,7 +167,9 @@ test(
           assert.deepEqual(await getSelections(s.resume.id), toSelections(s.selection));
           const row = await getApplicationRow(s.user.id, s.app.id);
           assert.equal(row?.proposedSelection, null, status);
-          assert.equal(row?.status, status, "the status is not this tool's to change");
+          // An edit to a ready application reopens it, as any selection
+          // write does (C3, D-044); the tool itself never sets a status.
+          assert.equal(row?.status, status === 'ready' ? 'needs_review' : status, status);
         } finally {
           await s.cleanup();
         }
