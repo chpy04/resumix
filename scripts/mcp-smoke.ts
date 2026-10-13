@@ -249,7 +249,8 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     // All thirteen characters the escaper replaces, so the real sidecar
     // proves each replacement exists in its TeX Live.
     const letterText =
-      'Dear Hiring Team,\n\nEvery special as text: \\ { } $ & # ^ _ % ~ < > |.\n\nBest,\nChris';
+      'October 13, 2026\n\nDear Hiring Team,\n\nEvery special as text: \\ { } $ & # ^ _ % ~ < > |.' +
+      '\n\nBest,\nChris';
     const letter = await callJson(mcp, 'set_cover_letter_body', {
       application_id: applicationId,
       text: letterText,

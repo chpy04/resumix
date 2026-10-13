@@ -34,8 +34,9 @@ export const setCoverLetterBody = defineTool({
   description:
     "Writes an application's cover letter as plain text, then compiles it. Call it only when " +
     'the application form asks for a cover letter file; a cover letter text box on the form is ' +
-    'a question, not this. Pass the whole letter, from the salutation to the sign-off: a blank ' +
-    'line starts a paragraph, and a single line break is kept. Write plain text, never LaTeX, ' +
+    'a question, not this. Pass the whole letter: today\'s date written out (e.g. "October 13, ' +
+    '2026"), a blank line, then the salutation and on to the sign-off. A blank line starts a ' +
+    'paragraph, and a single line break is kept. Write plain text, never LaTeX, ' +
     'with curly quotes (“ ” ‘ ’) rather than straight ones; Resumix escapes it and lays it out ' +
     "in Chris's Default letter's design. Each call replaces the letter's text, and an " +
     'application with no letter is first given one copied from Default. Returns JSON ' +

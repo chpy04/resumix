@@ -28,14 +28,14 @@ export default function CoverLetterBodyField({
         {status}
       </div>
       <p className="shrink-0 text-xs text-ink-dim">
-        Plain text. Resumix lays it out in your Default letter&apos;s design. A blank line starts a
-        paragraph.
+        Plain text. Start with the date. Resumix lays it out in your Default letter&apos;s design. A
+        blank line starts a paragraph.
       </p>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Cover letter text"
-        placeholder={'Dear Hiring Team,\n\n…\n\nBest,\nChris'}
+        placeholder={'October 13, 2026\n\nDear Hiring Team,\n\n…\n\nBest,\nChris'}
         className="min-h-0 w-full flex-1 resize-none rounded-md border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed text-ink outline-none focus:border-accent"
       />
     </div>

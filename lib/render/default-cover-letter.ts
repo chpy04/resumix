@@ -5,7 +5,7 @@
  * Unlike `DEFAULT_TEMPLATE` this is not a template in any technical sense —
  * there are no `<<TOKENS>>` in it and the resume renderer never touches it.
  * It is copied byte-for-byte into each new `cover_letter` row, and edited
- * from there (D-035). The prose, from the salutation to the sign-off, is the
+ * from there (D-035). The prose, from the date line to the sign-off, is the
  * body, which the agent drafts and the review page edits; `coverLetterTex`
  * escapes it into the marker's place. A letter with no body compiles as it
  * stands, and the marker, a TeX comment, prints nothing.
@@ -14,7 +14,8 @@
  * `[Company]` or a typed date here would be copied into every letter, never
  * filled in, and mailed out. `\today` cannot stand in for one: the sidecar
  * compiles with `SOURCE_DATE_EPOCH=0` so identical input gives identical
- * bytes, and it would print January 1, 1970.
+ * bytes, and it would print January 1, 1970. So the date is part of the
+ * text: the body's first line, written out when the letter is drafted.
  *
  * The header matches the resume's so the two documents look like a pair. It
  * stays inside `texlive-latex-recommended`, which is what the sidecar image

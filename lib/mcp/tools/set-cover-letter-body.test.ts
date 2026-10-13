@@ -36,8 +36,9 @@ after(async () => {
   if (!skip) await fixtures.closeTestDb();
 });
 
-const TEXT = 'Dear Team,\n\nI build R&D tools at 100%.\n\nBest,\nChris';
-const TEX_BODY = 'Dear Team,\n\nI build R\\&D tools at 100\\%.\n\nBest,\\newline\nChris';
+const TEXT = 'October 13, 2026\n\nDear Team,\n\nI build R&D tools at 100%.\n\nBest,\nChris';
+const TEX_BODY =
+  'October 13, 2026\n\nDear Team,\n\nI build R\\&D tools at 100\\%.\n\nBest,\\newline\nChris';
 const STAMP = new Date('2026-10-12T10:00:00.000Z');
 
 /** A fresh account, so its Default is the built-in shell, and one

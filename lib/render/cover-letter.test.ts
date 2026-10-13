@@ -14,8 +14,10 @@ const SHELL = '\\begin{document}\n%%BODY%%\n\\end{document}\n';
 
 test('a blank line starts a paragraph and a single line break is kept', () => {
   assert.equal(
-    plainBodyToLatex(' Dear Team,\r\n\r\n\r\nWe & you \n  ship 100%\n\n\nBest,\nChris \n\n'),
-    'Dear Team,\n\nWe \\& you\\newline\nship 100\\%\n\nBest,\\newline\nChris',
+    plainBodyToLatex(
+      ' October 13, 2026\r\n\r\nDear Team,\r\n\r\n\r\nWe & you \n  ship 100%\n\n\nBest,\nChris \n\n',
+    ),
+    'October 13, 2026\n\nDear Team,\n\nWe \\& you\\newline\nship 100\\%\n\nBest,\\newline\nChris',
   );
 });
 

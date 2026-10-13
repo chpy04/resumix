@@ -63,7 +63,9 @@ test('review step 2 writes the letter as plain text, and an edit reopens it', as
         response.url().endsWith(`/api/cover-letters/${letterId}`),
     );
 
-  const prose = `Dear Hiring Team,\n\nWe ran R&D at 100% for $5 #1, ${marker}.\n\nBest,\nChris`;
+  const prose =
+    `October 13, 2026\n\nDear Hiring Team,\n\nWe ran R&D at 100% for $5 #1, ${marker}.` +
+    '\n\nBest,\nChris';
   let saved = bodySaved();
   await field.fill(prose);
   expect((await saved).ok()).toBe(true);
@@ -78,7 +80,15 @@ test('review step 2 writes the letter as plain text, and an edit reopens it', as
   // every special printed, and the marker gone.
   const text = await fetchPdfText(page, `/api/cover-letters/${letterId}/pdf`);
   expect(text).toContain(marker);
-  for (const piece of ['Dear Hiring Team,', 'R&D', '100%', '#1', 'Best,', 'Chris']) {
+  for (const piece of [
+    'October 13, 2026',
+    'Dear Hiring Team,',
+    'R&D',
+    '100%',
+    '#1',
+    'Best,',
+    'Chris',
+  ]) {
     expect(text).toContain(piece);
   }
   expect(text).not.toContain('%%BODY%%');

@@ -41,11 +41,11 @@ test('a body is escaped into the marker line', { skip }, async () => {
     const compiled = await compileCoverLetterPdf({
       name: 'Acme',
       content: SHELL,
-      body: 'Dear Team,\n\nR&D at 100%\nfor $5\n\nBest,\nChris',
+      body: 'October 13, 2026\n\nDear Team,\n\nR&D at 100%\nfor $5\n\nBest,\nChris',
     });
     assert.ok(compiled.ok);
     assert.deepEqual(latex.sent, [
-      '\\begin{document}\nDear Team,\n\nR\\&D at 100\\%\\newline\nfor \\$5\n\n' +
+      '\\begin{document}\nOctober 13, 2026\n\nDear Team,\n\nR\\&D at 100\\%\\newline\nfor \\$5\n\n' +
         'Best,\\newline\nChris\n\\end{document}\n',
     ]);
   } finally {
