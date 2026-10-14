@@ -44,9 +44,12 @@ picks by the same reasoning.
 - [ ] The report in chat quotes no bullet text that is not in
       `mcp__resumix__get_library`, and names gaps without writing bullets
       for them.
-- [ ] At most 3 `mcp__resumix__suggest_bullet` calls, all after the last
-      `mcp__resumix__set_resume_selection`, and the report lists each as
-      edit or add with a one-line why.
+- [ ] At most 3 suggestions, an edit re-suggested shorter counting once,
+      all made after `mcp__resumix__set_resume_selection` answered
+      `"ok":true`, and the report lists each as edit or add with a one-line
+      why.
+- [ ] The last `mcp__resumix__suggest_bullet` answered `"pages":1`, or the
+      run stopped there and told Chris which suggestion ran past a page.
 - [ ] Each suggestion traces to `cv.md` or the career-ops report: none
       invents a number, tool, employer or result that is in neither, nor in
       the library.
