@@ -196,8 +196,9 @@ export interface RecordedQuestion {
  * A new question linked to a saved answer (`savedAnswerId`) arrives with
  * that answer, `source: 'saved'`, already approved, EEO or not: Chris made
  * the answer, and he still sees the question (D-048). A redraft linked to
- * one takes it, but stays unapproved, since Chris asked to see it again. A
- * question already recorded ignores the link. Every link must be one of
+ * one takes it, but stays unapproved, since Chris asked to see it again. An
+ * agent's own redraft of a remembered question unlinks it, leaving the
+ * saved answer as it was. A question already recorded ignores the link. Every link must be one of
  * the caller's live saved answers that fits the question exactly
  * (`savedAnswerProblem`), or nothing is written and every problem is named.
  *
@@ -298,6 +299,10 @@ export async function addQuestions(
                 answerMode: 'value' as const,
                 proposedAnswer: proposal,
                 answer: proposal,
+                // The agent's words are not the saved answer, so the box
+                // unticks rather than claim they are. The saved answer
+                // itself stays live for other forms (D-048).
+                savedAnswerId: null,
               }),
               redraftNote: null,
               // Even from a saved answer: Chris asked to see this one again.
