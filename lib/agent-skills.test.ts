@@ -48,6 +48,46 @@ const QUALIFIED_TOOL = /\bmcp__resumix__([a-z0-9_]+)/g;
 const TOOL_LIKE =
   /`((?:get|set|list|create|update|delete|add|suggest|submit|mark|report)_[a-z0-9_]+)\b/g;
 
+/**
+ * The tools `@playwright/mcp@0.0.83` serves by default, core automation plus
+ * tabs, from its README. Any other name needs a `--caps` flag that
+ * agent/.mcp.json does not pass, so a skill naming one would name nothing.
+ * The version test below makes a bump re-check this list.
+ */
+const PLAYWRIGHT_VERSION = '@playwright/mcp@0.0.83';
+const PLAYWRIGHT_TOOLS = new Set([
+  'browser_click',
+  'browser_close',
+  'browser_console_messages',
+  'browser_drag',
+  'browser_drop',
+  'browser_emulate_media',
+  'browser_evaluate',
+  'browser_file_upload',
+  'browser_fill_form',
+  'browser_find',
+  'browser_handle_dialog',
+  'browser_hover',
+  'browser_navigate',
+  'browser_navigate_back',
+  'browser_network_request',
+  'browser_network_requests',
+  'browser_press_key',
+  'browser_resize',
+  'browser_run_code_unsafe',
+  'browser_select_option',
+  'browser_snapshot',
+  'browser_take_screenshot',
+  'browser_type',
+  'browser_wait_for',
+  'browser_tabs',
+]);
+
+const QUALIFIED_PLAYWRIGHT = /\bmcp__playwright__([a-z0-9_]+)/g;
+
+/** `_` is a word character, so the qualified form never matches here. */
+const BARE_PLAYWRIGHT = /\bbrowser_[a-z0-9_]+/g;
+
 function git(...args: string[]): string {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
 }
@@ -101,6 +141,24 @@ function frontmatter(text: string): Map<string, string> {
 /** Lines that start with a marker. The begin line carries its own comment after it. */
 function markerLines(text: string, marker: string): number[] {
   return text.split('\n').flatMap((line, i) => (line.startsWith(marker) ? [i] : []));
+}
+
+/** A `## ` section, from its heading to the next one, or null when it is missing. */
+function section(text: string, heading: string): string | null {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.startsWith(heading));
+  if (start < 0) return null;
+  const next = lines.findIndex((line, i) => i > start && line.startsWith('## '));
+  return lines.slice(start, next < 0 ? undefined : next).join('\n');
+}
+
+/** A top-level `- ` bullet, through its wrapped lines, or null when none starts so. */
+function bullet(text: string, opening: string): string | null {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.startsWith(opening));
+  if (start < 0) return null;
+  const next = lines.findIndex((line, i) => i > start && !line.startsWith(' '));
+  return lines.slice(start, next < 0 ? undefined : next).join('\n');
 }
 
 test('every Resumix tool named in agent/ is one tools/list serves', () => {
@@ -176,10 +234,89 @@ test('resumix-propose runs only when typed, and takes the ticket path through Re
     'ping',
     'list_applications',
     'create_application',
+    'get_saved_answers',
+    'add_questions',
+    'get_application',
     'get_library',
     'set_resume_selection',
+    'set_cover_letter_body',
+    'submit_for_review',
   ]) {
     assert.ok(text.includes(`mcp__resumix__${tool}`), `resumix-propose never calls ${tool}`);
+  }
+  // Linking is the only way a saved answer reaches a form (D-048).
+  assert.ok(text.includes('`saved_answer_id`'), 'resumix-propose never links a saved answer');
+});
+
+test('resumix-propose discovers the form after creating, and submits for review last', () => {
+  const lines = read(PROPOSE).split('\n');
+  const order = [
+    '## 3. Track it in Resumix',
+    '## 4. Discover the form',
+    '## 5. Choose the resume',
+    '## 6. Cover letter',
+    '## 7. Submit for review',
+    '## 8. Report',
+  ];
+  let previous = -1;
+  for (const heading of order) {
+    const at = lines.findIndex((line) => line.startsWith(heading));
+    assert.ok(at >= 0, `${PROPOSE} has no "${heading}" step. ${RULES}`);
+    assert.ok(at > previous, `${PROPOSE}: "${heading}" is out of order. ${RULES}`);
+    previous = at;
+  }
+});
+
+// These pin the rule against deletion; they cannot prove the behaviour, which
+// only eval Case 4 does, by hand.
+test('resumix-propose never submits a form, and bans the tools that could in code', () => {
+  const rules = section(read(PROPOSE), '## Hard rules');
+  assert.ok(rules, `${PROPOSE} has no "## Hard rules" section`);
+  const never = bullet(rules, '- **Never submit');
+  assert.ok(never, `${PROPOSE}'s hard rules have no "**Never submit" rule. ${RULES}`);
+  for (const tool of ['browser_evaluate', 'browser_run_code_unsafe']) {
+    assert.ok(
+      never.includes(`mcp__playwright__${tool}`),
+      `the never-submit rule does not ban ${tool}, which can submit a form in code. ${RULES}`,
+    );
+  }
+
+  for (const file of skillFiles()) {
+    assert.doesNotMatch(
+      read(file),
+      /"?submit"?\s*:\s*true/,
+      `${file} sets submit: true, which presses Enter after typing. ${RULES}`,
+    );
+  }
+});
+
+test('every Playwright tool named in agent/ is one the pinned version serves', () => {
+  assert.ok(
+    read('agent/.mcp.json').includes(`"${PLAYWRIGHT_VERSION}"`),
+    `agent/.mcp.json no longer runs ${PLAYWRIGHT_VERSION}: re-check PLAYWRIGHT_TOOLS against ` +
+      `the new version's README, then update both. ${RULES}`,
+  );
+
+  let seen = 0;
+  for (const file of agentFiles()) {
+    for (const [, name = ''] of read(file).matchAll(QUALIFIED_PLAYWRIGHT)) {
+      seen++;
+      assert.ok(
+        PLAYWRIGHT_TOOLS.has(name),
+        `${file} names mcp__playwright__${name}, which ${PLAYWRIGHT_VERSION} does not serve ` +
+          `by default. ${RULES}`,
+      );
+    }
+  }
+  assert.ok(seen > 0, 'no mcp__playwright__ name found anywhere in agent/');
+
+  for (const file of skillFiles()) {
+    const [bare] = read(file).match(BARE_PLAYWRIGHT) ?? [];
+    assert.equal(
+      bare,
+      undefined,
+      `${file} names ${bare} bare; write mcp__playwright__${bare}, the name the model sees. ${RULES}`,
+    );
   }
 });
 
@@ -205,16 +342,19 @@ test('the routing file is one marked block', () => {
   assert.ok(begin < end, `${ROUTING}: the begin marker must come first. ${RULES}`);
 });
 
-test('the eval has three cases, each a posting and a checklist', () => {
-  const cases = read(EVAL)
-    .split(/^## Case /m)
-    .slice(1);
-  assert.equal(cases.length, 3, `${EVAL} must hold three "## Case" sections. ${RULES}`);
-  for (const section of cases) {
-    const title = section.split('\n', 1)[0];
-    assert.match(section, /^```/m, `case "${title}" has no fenced posting`);
-    assert.match(section, /^- \[ \] /m, `case "${title}" has no "- [ ]" checklist`);
+test('the eval has four cases, each a posting and a checklist, and a discovery checklist', () => {
+  const text = read(EVAL);
+  const cases = text.split(/^## Case /m).slice(1);
+  assert.equal(cases.length, 4, `${EVAL} must hold four "## Case" sections. ${RULES}`);
+  for (const one of cases) {
+    const title = one.split('\n', 1)[0];
+    assert.match(one, /^```/m, `case "${title}" has no fenced posting`);
+    assert.match(one, /^- \[ \] /m, `case "${title}" has no "- [ ]" checklist`);
   }
+
+  const discovery = section(text, '## Discovery checklist');
+  assert.ok(discovery, `${EVAL} has no "## Discovery checklist" section. ${RULES}`);
+  assert.match(discovery, /^- \[ \] /m, `the discovery checklist has no "- [ ]" items`);
 });
 
 // The installer, run the way claude.sh runs it, against a throwaway data
