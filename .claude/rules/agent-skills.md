@@ -58,10 +58,12 @@ the apply pass fills it. Both read a question's `field_ref` the same way
   Never a snapshot ref such as `e23`: refs change with every snapshot.
 
 **No skill submits a form; Chris does.** The propose skill's hard rules
-carry a `**Never submit` rule that bans `browser_evaluate` and
-`browser_run_code_unsafe`, either of which can submit in code, and no skill
-may set `submit: true` on `browser_type`. The test pins both against
-deletion; only the eval's live-form case can show the skill obeys them.
+carry a `**Never submit` rule that bans clicking "Submit", pressing Enter
+(`browser_press_key`), setting `submit` on `browser_type`, and
+`browser_evaluate` and `browser_run_code_unsafe`, either of which can
+submit in code. No skill may contain `submit: true`. The test pins each of
+these against deletion; only the eval's live-form case can show the skill
+obeys them.
 
 ## The career-ops routing
 

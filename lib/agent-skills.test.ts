@@ -278,13 +278,18 @@ test('resumix-propose discovers the form after creating, and submits for review 
 test('resumix-propose never submits a form, and bans the tools that could in code', () => {
   const rules = section(read(PROPOSE), '## Hard rules');
   assert.ok(rules, `${PROPOSE} has no "## Hard rules" section`);
-  const never = bullet(rules, '- **Never submit');
-  assert.ok(never, `${PROPOSE}'s hard rules have no "**Never submit" rule. ${RULES}`);
-  for (const tool of ['browser_evaluate', 'browser_run_code_unsafe']) {
-    assert.ok(
-      never.includes(`mcp__playwright__${tool}`),
-      `the never-submit rule does not ban ${tool}, which can submit a form in code. ${RULES}`,
-    );
+  const found = bullet(rules, '- **Never submit');
+  assert.ok(found, `${PROPOSE}'s hard rules have no "**Never submit" rule. ${RULES}`);
+  // One line, so a ban may wrap anywhere; `[^.]*` keeps each one sentence.
+  const never = found.replace(/\s+/g, ' ');
+  for (const [ban, pattern] of [
+    ['clicking Submit', /\bclick\b[^.]*"Submit"/],
+    ['pressing Enter', /\bEnter\b[^.]*`mcp__playwright__browser_press_key`/],
+    ['typing with submit set', /`submit`[^.]*`mcp__playwright__browser_type`/],
+    ['browser_evaluate, which can submit in code', /`mcp__playwright__browser_evaluate`/],
+    ['browser_run_code_unsafe, which can too', /`mcp__playwright__browser_run_code_unsafe`/],
+  ] as const) {
+    assert.match(never, pattern, `the never-submit rule no longer bans ${ban}. ${RULES}`);
   }
 
   for (const file of skillFiles()) {

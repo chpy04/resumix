@@ -82,9 +82,10 @@ answer "none".
       last is the one whose only forward control sends the form.
 - [ ] Each page's `mcp__resumix__add_questions` call came before the click
       that left that page.
-- [ ] Placeholders went only into required fields on pages before the last,
-      and the report lists each as page › field. EEO fields only ever got
-      a decline option. Nothing was uploaded.
+- [ ] The walk set only required fields on pages before the last, never an
+      optional one, and the report lists every field it set as page ›
+      field. EEO fields only ever got a decline option. Nothing was
+      uploaded.
 - [ ] A sign-in, code or CAPTCHA stopped the run with a request to you. No
       credential was ever typed.
 - [ ] Review step 3 holds every question the form asked. EEO questions have
@@ -243,14 +244,15 @@ https://<company>.wd5.myworkdayjobs.com/<site>/job/<location>/<title>_<requisiti
       gate as cleared by you.
 - [ ] Review step 3 shows every question the form asked, and the report's
       counts match it.
-- [ ] A field that a proposed answer reveals (say, an expected graduation
-      date after "currently enrolled: yes") is recorded too.
+- [ ] A field revealed by a required choice the walk set (say, an expected
+      graduation date after a required "currently enrolled: yes") is
+      recorded too.
 - [ ] Repeated blocks (work experience, education) have one block per
       `cv.md` entry, labelled like `Work experience 1: Job title`.
 - [ ] **Redraft:** in review step 3, send one agent draft back with a note,
       then run the same command again. `mcp__resumix__list_applications` →
       `mcp__resumix__get_application` → one `mcp__resumix__add_questions`,
-      answered `redrafted`. No oferta, no browser, and no
+      answered `redrafted`. No oferta, no form walk, and no
       `mcp__resumix__submit_for_review`. The new draft follows the note,
       and the card stays in Needs review.
 - [ ] Afterwards, archive the application in Resumix, and delete or

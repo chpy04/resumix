@@ -141,14 +141,18 @@ so a walk stopped at a gate keeps what it found.
 4. **Each page, in order:**
    1. Read it with `mcp__playwright__browser_snapshot`, all of it: fields
       below the fold count.
-   2. Set each choice that has a proposed answer (see Recording) to that
-      option, and type a placeholder (below) into each required field
-      still empty, with `mcp__playwright__browser_fill_form`,
-      `mcp__playwright__browser_type`, `mcp__playwright__browser_select_option`
-      or `mcp__playwright__browser_click`. Snapshot again, and repeat until
-      no new field appears: what that reveals is part of the page. The
-      other branches of a conditional are left; the apply pass reports any
-      it meets.
+   2. Set only what the page needs to let you on: each required field
+      that is still empty, with its placeholder (below), which for a
+      choice is its proposed option when it has one. Leave every optional
+      field untouched, even one you have an answer for: an ATS that saves
+      drafts would keep whatever you set. Use
+      `mcp__playwright__browser_fill_form`, `mcp__playwright__browser_type`,
+      `mcp__playwright__browser_select_option` or
+      `mcp__playwright__browser_click`, and note each field you set, as
+      `page › field`, for the report. Snapshot again, and repeat until no
+      new field appears: what that reveals is part of the page. Other
+      branches of a conditional are left; the apply pass reports any it
+      meets.
    3. Call `mcp__resumix__add_questions` with the `application_id` and
       every question on this page (see Recording), in one call. Hold back
       the letter text box for step 6. A page with no questions takes no
@@ -162,10 +166,11 @@ so a walk stopped at a gate keeps what it found.
      record any field among them not yet recorded, and advance again, at
      most 3 times on one page. Then ask Chris.
    - At most **15** pages. Then ask Chris whether to go on.
-5. **Repeated blocks** ("Add another", for work history or education): one
-   block per matching `cv.md` entry, filled from it. Scope each field's
-   label and prompt to its block, as in `Work experience 1: Job title`, so
-   two blocks on one page never share a `field_ref`.
+5. **Repeated blocks** ("Add another", for work history or education): add
+   one block per matching `cv.md` entry, so each block's fields are
+   recorded, and in each set only what the page needs, as above. Scope each
+   field's label and prompt to its block, as in `Work experience 1: Job
+   title`, so two blocks on one page never share a `field_ref`.
 6. **Uploads.** Keep a form map for yourself, never in Resumix, of each
    upload field and its page:
    - The resume or CV: the apply pass uploads the snapshot. Not recorded.
@@ -182,7 +187,8 @@ so a walk stopped at a gate keeps what it found.
 
 Typed only to get past a page: into a required field that is still empty,
 on a page that isn't the last. Never one anywhere else, and never one to
-Resumix. The apply pass types the approved answer over each.
+Resumix. They are the only fields the walk sets, and the apply pass types
+the approved answer over each.
 
 - A field that checks its format, or asks for his name: Chris's own name,
   email, phone and links, from `config/profile.yml`.
@@ -224,19 +230,20 @@ Resumix. The apply pass types the approved answer over each.
   disability, sexual orientation or pronouns, and anything under "voluntary
   self-identification". Set it the first time you send the question:
   Resumix keeps a question as it was first recorded.
-- **The answer**, the first of these that applies:
+- **The answer**, the first of these that applies. An EEO question takes
+  only a saved answer, or nothing (C10):
   1. A saved answer that plainly answers it: its `saved_answer_id`, sent
      alone, with no `source`, `answer_mode` or `proposed_answer`. It fits
      only as `mcp__resumix__get_saved_answers` says: the same kind (text and
      letter count as one), and a value exactly one of this question's
      options. If you are not sure it fits, leave it out.
-  2. `source: "profile"`, with `proposed_answer` copied verbatim from
-     `config/profile.yml` or `cv.md`, or, for a choice, the option that
-     says the same.
-  3. `source: "agent"`, with your draft as `proposed_answer`. A choice
-     takes one of its options exactly, a multi a list of them, and a bool
-     `yes` or `no`. Never send `answer_mode`: an instruction in place of a
-     choice is Chris's to write. Prose follows career-ops'
+  2. Not EEO: `source: "profile"`, with `proposed_answer` copied verbatim
+     from `config/profile.yml` or `cv.md`, or, for a choice, the option
+     that says the same.
+  3. Not EEO: `source: "agent"`, with your draft as `proposed_answer`. A
+     choice takes one of its options exactly, a multi a list of them, and
+     a bool `yes` or `no`. Never send `answer_mode`: an instruction in
+     place of a choice is Chris's to write. Prose follows career-ops'
      `modes/_writing.md` Professional Writing rules, starts from oferta's
      Section H when the report has one, and stays within any limit the
      form shows.
@@ -338,8 +345,9 @@ In chat, and nowhere else:
   that advancing required but that was already recorded as optional.
 - **Uploads:** each upload field, and what becomes of it: the apply pass,
   the letter, or a `file` question for Chris.
-- **Placeholders:** each one you typed, as `page › field`. The apply pass
-  replaces them.
+- **Fields set:** every field the walk set, as `page › field`, with what
+  it was set to, and every block it added. The apply pass clears or
+  overwrites each.
 - **Gates:** each one Chris cleared, or skipped.
 - **Picked:** one line per experience and project, and one for any skill
   reordering, each tied to the JD requirement it answers.
@@ -369,7 +377,7 @@ to change. The note is his instruction, and it wins over your first draft.
 4. Report each question, its note and its outcome. Any other outcome means
    Chris approved or changed that question meanwhile: name it.
 
-No browser, no oferta, no resume, no letter, and no
+No form walk, no oferta, no resume, no letter, and no
 `mcp__resumix__submit_for_review`. The application is already in review,
 and stays in Needs review.
 

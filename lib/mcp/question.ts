@@ -30,7 +30,9 @@ const fieldRef = z.strictObject({
     .string()
     .nullable()
     .optional()
-    .describe('A CSS selector hint for the field, when you have one.'),
+    .describe(
+      'A Playwright role selector for the field (e.g. role=textbox[name="…"]), when you have one.',
+    ),
 });
 
 export const questionInput = z.strictObject({
