@@ -69,7 +69,8 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   agent pick, and its bullet suggestions inline: an edit on its bullet in
   yellow, an addition in green, both already in the preview, each applied
   or rejected by Chris before the resume can be approved, D-045), the cover
-  letter's plain text beside its PDF when there is one, the form's questions when the agent recorded any, and a final
+  letter's plain text beside its PDF when there is one, the form's questions
+  when the agent recorded any, and a final
   Approve. Questions are approved one by one, profile answers in bulk; an
   open-ended answer can be sent back to the agent for a redraft, and an EEO
   question is answered only by Chris (D-047). An answer ticked "remember this

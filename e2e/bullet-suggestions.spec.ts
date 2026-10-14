@@ -206,9 +206,10 @@ test('suggestions: inline cards, in the preview, then Apply and Add', async ({ p
     await approveResume.click();
     await expect(page.getByTestId('review-step-resume')).toHaveText('1 Resume – ok');
     await page.getByTestId('review-step-approve').click();
-    await expect(page.getByTestId('approve-row-suggestions')).toContainText(
-      'Bullet suggestions · 2 applied',
-    );
+    // The row's parts are spans spaced by `gap`, so each is checked alone.
+    const suggestionsRow = page.getByTestId('approve-row-suggestions');
+    await expect(suggestionsRow).toContainText('Bullet suggestions');
+    await expect(suggestionsRow).toContainText('2 applied');
     const after = await getApplicationDetail(page, appId);
     expect(after.bulletSuggestions.map((s) => [s.id, s.status])).toEqual([
       [editId, 'applied'],
