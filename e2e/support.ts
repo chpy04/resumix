@@ -209,6 +209,7 @@ export interface ApplicationDetailLike {
     redraftNote: string | null;
     approvedAt: string | null;
   }[];
+  bulletSuggestions: { id: string; status: string; proposedText: string }[];
 }
 
 export function getApplicationDetail(
@@ -327,6 +328,87 @@ export async function insertApplicationQuestions(
   }
 }
 
+/** An experience with these bullets, through the real API, so a test that
+ *  edits a bullet globally never touches seeded content another spec reads.
+ *  Returns the ids, bullets in the order given. */
+export async function createExperienceViaApi(
+  page: Page,
+  company: string,
+  bullets: string[],
+): Promise<{ experienceId: string; bulletIds: string[] }> {
+  const created = await apiRequest<{ id: string }>(page, '/api/experiences', {
+    method: 'POST',
+    body: { company, title: 'Test Engineer', dateRange: '2024', location: 'Remote' },
+  });
+  const bulletIds: string[] = [];
+  for (const content of bullets) {
+    const bullet = await apiRequest<{ id: string }>(
+      page,
+      `/api/experiences/${created.id}/bullets`,
+      { method: 'POST', body: { content } },
+    );
+    bulletIds.push(bullet.id);
+  }
+  return { experienceId: created.id, bulletIds };
+}
+
+/** `PUT /api/resumes/:id/selections`, for setup. */
+export async function setSelectionsViaApi(
+  page: Page,
+  resumeId: string,
+  selections: ResumeDetailLike['selections'],
+): Promise<void> {
+  await apiRequest(page, `/api/resumes/${resumeId}/selections`, {
+    method: 'PUT',
+    body: selections,
+  });
+}
+
+/** One of the agent's bullet suggestions, as `suggest_bullet` records it. */
+export type SuggestionSetup =
+  | { kind: 'edit'; bulletId: string; proposedText: string; rationale: string }
+  | { kind: 'add'; parentId: string; position: number; proposedText: string; rationale: string };
+
+/**
+ * Gives an application the agent's bullet suggestions, on experiences, by
+ * writing the rows directly: only the agent records them, over MCP, and only
+ * while the application is proposing (D-045). Past the tool's checks, so a
+ * test may use text the tool would refuse. Returns their ids, in order.
+ */
+export async function insertBulletSuggestions(
+  applicationId: string,
+  rows: SuggestionSetup[],
+): Promise<string[]> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const ids: string[] = [];
+    // One statement each, so each gets its own `created_at` and the order
+    // they were written is the order they are listed in.
+    for (const row of rows) {
+      const [inserted] = await sql<{ id: string }[]>`
+        insert into bullet_suggestion (
+          application_id, kind, bullet_kind, bullet_id, parent_id, position,
+          proposed_text, rationale
+        ) values (
+          ${applicationId}, ${row.kind}, 'experience',
+          ${row.kind === 'edit' ? row.bulletId : null},
+          ${row.kind === 'add' ? row.parentId : null},
+          ${row.kind === 'add' ? row.position : null},
+          ${row.proposedText}, ${row.rationale}
+        )
+        returning id`;
+      if (!inserted) throw new Error(`could not add suggestion "${row.proposedText}"`);
+      ids.push(inserted.id);
+    }
+    return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
 export function findExperienceId(detail: ResumeDetailLike, company: string): string {
   const experience = detail.library.experiences.find((e) => e.company === company);
   if (!experience) throw new Error(`no experience found for company "${company}"`);
@@ -342,11 +424,17 @@ interface RenderResultLike {
 
 /** Calls the real (never-persisting) render endpoint and returns the decoded
  *  PDF text — the most reliable way to assert "X is/isn't on the page"
- *  without pixel-diffing a canvas. */
-export async function renderResumeText(page: Page, resumeId: string): Promise<string> {
+ *  without pixel-diffing a canvas. `suggestionsFor` renders it as the
+ *  review preview does, with that application's pending bullet suggestions
+ *  laid over it. */
+export async function renderResumeText(
+  page: Page,
+  resumeId: string,
+  suggestionsFor?: string,
+): Promise<string> {
   const result = await apiRequest<RenderResultLike>(page, `/api/resumes/${resumeId}/render`, {
     method: 'POST',
-    body: {},
+    body: suggestionsFor === undefined ? {} : { suggestionsFor },
   });
   if (!result.ok || !result.pdfBase64) {
     throw new Error(`render failed for resume ${resumeId}: ${result.errors.join('; ')}`);
