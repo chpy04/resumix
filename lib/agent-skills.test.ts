@@ -36,6 +36,9 @@ const ROUTING = 'agent/career-ops-custom.md';
 const INSTALLER = 'agent/install-career-ops-custom.sh';
 const EVAL = 'agent/evals/propose.md';
 const FETCHER = 'agent/fetch-apply-files.sh';
+const APPLY = `${SKILLS_DIR}resumix-apply/SKILL.md`;
+const APPLY_READY = `${SKILLS_DIR}resumix-apply-ready/SKILL.md`;
+const APPLY_EVAL = 'agent/evals/apply.md';
 
 const BEGIN = '<!-- resumix-routing:begin';
 const END = '<!-- resumix-routing:end';
@@ -170,7 +173,7 @@ function bullet(text: string, opening: string): string | null {
 test('every Resumix tool named in agent/ is one tools/list serves', () => {
   const files = agentFiles();
   // Without these, a scan that matched nothing would pass vacuously.
-  for (const file of [PROPOSE, ROUTING, INSTALLER, EVAL]) {
+  for (const file of [PROPOSE, ROUTING, INSTALLER, EVAL, APPLY, APPLY_READY, FETCHER, APPLY_EVAL]) {
     assert.ok(files.includes(file), `the scan missed ${file}`);
   }
 
@@ -189,7 +192,9 @@ test('every Resumix tool named in agent/ is one tools/list serves', () => {
 
 test('a skill writes Resumix tools fully qualified, never bare', () => {
   const skills = skillFiles();
-  assert.ok(skills.includes(PROPOSE), `the scan missed ${PROPOSE}`);
+  for (const skill of [PROPOSE, APPLY, APPLY_READY]) {
+    assert.ok(skills.includes(skill), `the scan missed ${skill}`);
+  }
 
   for (const file of skills) {
     const text = read(file);
@@ -301,6 +306,87 @@ test('resumix-propose never submits a form, and bans the tools that could in cod
   }
 });
 
+test('the apply skills carry the never-submit rule byte for byte', () => {
+  // One rule, so the propose skill's checks above pin it for all three:
+  // a skill that reworded it could weaken a ban without failing them.
+  const rule = (file: string) => {
+    const rules = section(read(file), '## Hard rules');
+    assert.ok(rules, `${file} has no "## Hard rules" section. ${RULES}`);
+    return bullet(rules, '- **Never submit');
+  };
+  const propose = rule(PROPOSE);
+  assert.ok(propose);
+  for (const file of [APPLY, APPLY_READY]) {
+    assert.equal(
+      rule(file),
+      propose,
+      `${file}'s "**Never submit" rule is not ${PROPOSE}'s, byte for byte. ${RULES}`,
+    );
+  }
+});
+
+test('resumix-apply runs only when typed, and fills from the packet', () => {
+  const text = read(APPLY);
+  const keys = frontmatter(text);
+  assert.equal(keys.get('disable-model-invocation'), 'true');
+  assert.ok(!keys.has('arguments'), 'it reads one id from $ARGUMENTS whole');
+  assert.match(text, /\$ARGUMENTS/);
+  for (const tool of ['ping', 'get_apply_packet', 'report_question', 'mark_applied']) {
+    assert.ok(text.includes(`mcp__resumix__${tool}`), `resumix-apply never calls ${tool}`);
+  }
+
+  const lines = text.split('\n');
+  const order = [
+    '## 0. Check the connection',
+    '## 1. Fetch the packet',
+    '## 2. Download the files',
+    '## 3. Open the form',
+    '## 4. Fill each page',
+    '## 5. Stop before Submit',
+    '## 6. Mark it applied',
+    '## 7. Report',
+  ];
+  let previous = -1;
+  for (const heading of order) {
+    const at = lines.findIndex((line) => line.startsWith(heading));
+    assert.ok(at >= 0, `${APPLY} has no "${heading}" step. ${RULES}`);
+    assert.ok(at > previous, `${APPLY}: "${heading}" is out of order. ${RULES}`);
+    previous = at;
+  }
+
+  assert.ok(
+    section(text, '## 2. Download the files')?.includes('./fetch-apply-files.sh'),
+    'step 2 never runs the download script',
+  );
+  // Only Chris's "submitted" leads to it, and that comes after the stop.
+  assert.ok(
+    text.indexOf('mcp__resumix__mark_applied') > text.indexOf('## 5. Stop before Submit'),
+    `${APPLY} names mark_applied before it stops before Submit. ${RULES}`,
+  );
+  assert.ok(
+    section(text, "## A field the packet doesn't have")?.includes('mcp__resumix__report_question'),
+    'an unseen field is never reported',
+  );
+  // Discovery's placeholders may sit in a saved draft: the fill step must
+  // overwrite the approved and clear the rest.
+  const fill = section(text, '## 4. Fill each page') ?? '';
+  assert.match(fill, /overwriting whatever the field holds/);
+  assert.match(fill, /`answer: null` is cleared/);
+  assert.match(fill, /No placeholder ever survives/);
+});
+
+test('resumix-apply-ready lists what is Ready and follows resumix-apply for each', () => {
+  const text = read(APPLY_READY);
+  const keys = frontmatter(text);
+  assert.equal(keys.get('disable-model-invocation'), 'true');
+  assert.ok(!keys.has('arguments'));
+  assert.ok(text.includes('mcp__resumix__list_applications'), 'it never lists applications');
+  assert.match(text, /\{ "status": "ready" \}/);
+  assert.ok(text.includes('.claude/skills/resumix-apply/SKILL.md'), 'it never reads resumix-apply');
+  assert.ok(existsSync(join(ROOT, APPLY)), `${APPLY} is missing`);
+  assert.match(text, /Never start the next application on your own/);
+});
+
 test('every Playwright tool named in agent/ is one the pinned version serves', () => {
   assert.ok(
     read('agent/.mcp.json').includes(`"${PLAYWRIGHT_VERSION}"`),
@@ -366,6 +452,27 @@ test('the eval has four cases, each a posting and a checklist, and a discovery c
   const discovery = section(text, '## Discovery checklist');
   assert.ok(discovery, `${EVAL} has no "## Discovery checklist" section. ${RULES}`);
   assert.match(discovery, /^- \[ \] /m, `the discovery checklist has no "- [ ]" items`);
+});
+
+test('the apply eval has two cases, each with a checklist', () => {
+  const text = read(APPLY_EVAL);
+  const cases = text.split(/^## Case /m).slice(1);
+  assert.equal(cases.length, 2, `${APPLY_EVAL} must hold two "## Case" sections. ${RULES}`);
+  for (const one of cases) {
+    const title = one.split('\n', 1)[0];
+    assert.match(one, /^- \[ \] /m, `case "${title}" has no "- [ ]" checklist`);
+  }
+});
+
+test('every career-ops mode is routed, and the routing is read from the data directory', () => {
+  // career-ops' router may resolve modes/ against the submodule; the
+  // workspace's CLAUDE.md, loaded in every session, says where it is.
+  assert.ok(read('agent/CLAUDE.md').includes('$CAREER_OPS_DATA_DIR/modes/_custom.md'));
+  const text = read(ROUTING);
+  // A job in Resumix is looked up before any tracker step, and its apply
+  // goes through Resumix rather than career-ops' apply mode (D10).
+  assert.ok(text.includes('mcp__resumix__list_applications'));
+  assert.ok(text.includes('/resumix-apply'));
 });
 
 // The installer, run the way claude.sh runs it, against a throwaway data

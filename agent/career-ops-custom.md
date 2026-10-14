@@ -36,12 +36,27 @@ procedural only and add no fact about the candidate.
 
 ### Tracker
 
-- Never run `set-status.mjs`. Once a job is in Resumix, its status lives
-  there.
-- During `/resumix-propose`, skip `oferta`'s "Record in tracker" step. Write
-  no `data/applications.md` row and no `batch/tracker-additions/` TSV, and
-  never run `merge-tracker.mjs`: Resumix is the tracker from the moment the
-  application is created there. Save the report as usual.
+Resumix is the tracker of record for every job it holds (D10). A job is in
+Resumix once `mcp__resumix__create_application` has run for it. Before any
+tracker step, in any mode, look it up: call
+`mcp__resumix__list_applications` with `{ "posting_url": <its URL> }`, the
+URL with every `utm_*` parameter and the `#fragment` removed. Any match
+means the job is in Resumix.
+
+- For a job in Resumix: write no `data/applications.md` row, no
+  `batch/tracker-additions/` TSV and no `status-log.tsv` line, and never
+  run `merge-tracker.mjs`, `set-status.mjs`, `outcome.mjs` or
+  `followup-seed.mjs` for it. Its status lives in Resumix. Save reports as
+  usual.
+- Never run the `apply` mode for a job in Resumix: its last step marks the
+  job Applied in career-ops' tracker. Tell Chris to approve it in Resumix
+  and run `/resumix-apply <application_id>`, which fills the form with
+  what he approved.
+- During `/resumix-propose`, skip `oferta`'s "Record in tracker" step:
+  Resumix is the tracker from the moment the application is created there.
+- Never run `set-status.mjs`, for any job.
+- `scan`, `triage` and `pipeline.md` stay career-ops' inbox, for postings
+  not yet in Resumix (R14).
 
 ## Off-Limits: Resumix routing
 
