@@ -14,12 +14,14 @@ let submitForReview: typeof import('./submit-for-review.ts').submitForReview;
 let getApplicationRow: typeof import('../../queries/applications.ts').getApplicationRow;
 let createCoverLetter: typeof import('../../queries/cover-letters.ts').createCoverLetter;
 let updateCoverLetter: typeof import('../../queries/cover-letters.ts').updateCoverLetter;
+let replaceSelections: typeof import('../../queries/selections.ts').replaceSelections;
 let fixtures: typeof import('../../queries/test-fixtures.ts');
 
 if (!skip) {
   ({ submitForReview } = await import('./submit-for-review.ts'));
   ({ getApplicationRow } = await import('../../queries/applications.ts'));
   ({ createCoverLetter, updateCoverLetter } = await import('../../queries/cover-letters.ts'));
+  ({ replaceSelections } = await import('../../queries/selections.ts'));
   fixtures = await import('../../queries/test-fixtures.ts');
 }
 
@@ -87,6 +89,40 @@ test('one page each moves proposing to needs_review', { skip }, async () => {
     await s.cleanup();
   }
 });
+
+test(
+  'the resume is counted with its pending bullet suggestions laid over it',
+  { skip },
+  async () => {
+    const s = await setup('proposing', false);
+    const exp = await fixtures.insertExperience(s.user.id, 'submit');
+    const bullet = await fixtures.insertExperienceBullet(exp.id, 'Shipped it');
+    await replaceSelections(s.user.id, s.app.resumeId!, {
+      experiences: [exp.id],
+      experienceBullets: { [exp.id]: [bullet.id] },
+    });
+    await fixtures.insertBulletSuggestion(s.app.id, {
+      kind: 'add',
+      parentId: exp.id,
+      position: 1,
+      proposedText: 'Ran on-call for a year',
+    });
+    // Two pages only with the suggestion: what Chris's preview will show.
+    const latex = fixtures.stubLatex((tex) => (tex.includes('Ran on-call for a year') ? 2 : 1));
+    try {
+      const result = await call(s.user.id, s.app.id);
+      assert.equal(result.isError, true);
+      assert.match(
+        text(result),
+        /^The resume is 2 pages; it must be one\. Nothing was submitted\./,
+      );
+      assert.equal(await s.status(), 'proposing');
+    } finally {
+      latex.restore();
+      await s.cleanup();
+    }
+  },
+);
 
 test(
   'with no letter only the resume is compiled, and cover_letter_pages is null',

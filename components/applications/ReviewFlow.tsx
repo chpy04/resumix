@@ -19,6 +19,7 @@ import { reopenedQuestions } from '@/lib/applications/questions';
 import {
   initialStep,
   reopenedSections,
+  reviewStateOf,
   reviewSteps,
   sectionApprovalProblem,
   type ReviewSection,
@@ -37,10 +38,11 @@ interface ReviewFlowProps {
  * (D-047), then final approval.
  *
  * This component owns the application and re-reads it after every approval,
- * every selection write and every letter body write, because a write can
- * clear an approval on the server (C3) and the stepper, the header's status
- * and the buttons all follow from what the server says. Responses that
- * arrive out of order are dropped: only the latest request counts.
+ * every selection write, every resolved bullet suggestion and every letter
+ * body write, because a write can clear an approval on the server (C3) and
+ * the stepper, the header's status and the buttons all follow from what the
+ * server says. Responses that arrive out of order are dropped: only the
+ * latest request counts.
  *
  * The resume, letter and questions steps stay mounted while hidden, so
  * switching steps never cuts off an autosave in flight.
@@ -80,7 +82,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       .then((loaded) => {
         if (cancelled || request !== latestRequest.current) return;
         accept(loaded);
-        setActive(initialStep(reviewSteps(loaded)));
+        setActive(initialStep(reviewSteps(reviewStateOf(loaded))));
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -112,7 +114,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       latestRequest.current++;
       accept(next);
       setReopened((prev) => new Set([...prev].filter((s) => s !== section)));
-      const steps = reviewSteps(next);
+      const steps = reviewSteps(reviewStateOf(next));
       const index = steps.findIndex((step) => step.key === section);
       setActive(steps[index + 1]?.key ?? 'approve');
     },
@@ -178,7 +180,8 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
     );
   }
 
-  const steps = reviewSteps(application);
+  const state = reviewStateOf(application);
+  const steps = reviewSteps(state);
   // A letter unlinked elsewhere takes its step with it.
   const shown = steps.some((step) => step.key === active) ? active : 'approve';
 
@@ -209,10 +212,11 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       <div className={shown === 'resume' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
         <ResumeReviewStep
           application={application}
-          blockedBy={sectionApprovalProblem(application, 'resume')}
+          blockedBy={sectionApprovalProblem(state, 'resume')}
           reopened={reopened.has('resume')}
           onApprove={() => approveSection('resume')}
           onSelectionsSaved={refresh}
+          onSuggestionsChanged={refresh}
           onSaveStatusChange={setResumeSaveStatus}
           visible={shown === 'resume'}
         />
@@ -221,7 +225,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
         <div className={shown === 'coverLetter' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
           <CoverLetterReviewStep
             application={{ ...application, coverLetterId: application.coverLetterId }}
-            blockedBy={sectionApprovalProblem(application, 'coverLetter')}
+            blockedBy={sectionApprovalProblem(state, 'coverLetter')}
             reopened={reopened.has('coverLetter')}
             onApprove={() => approveSection('coverLetter')}
             onBodySaved={refresh}

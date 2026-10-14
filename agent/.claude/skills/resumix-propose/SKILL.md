@@ -283,6 +283,32 @@ the approved answer over each.
 6. At most **8** `mcp__resumix__set_resume_selection` calls, retries
    included. If none of them fit, stop, and tell Chris what you tried and
    the last `overflow.advice`.
+7. Once the last call has answered `ok: true`, you **may** propose changes
+   to bullets with `mcp__resumix__suggest_bullet`. Chris applies or rejects
+   each in review; nothing reaches the library until he does. If the resume
+   already fits and nothing would clearly match the JD better, make none.
+   - At most **3** per application. On a re-run, the `bullet_suggestions`
+     from item 1 count toward the 3; never repeat one.
+   - **`edit`:** a selected bullet (`bullet_id`) that a small rewording
+     would match to the JD better.
+   - **`add`:** under a selected experience or project (`parent_id`, at a
+     `position` among its bullets, 0 first), only when the library plainly
+     lacks a bullet for something `cv.md` or the oferta report shows Chris
+     did, and only when the resume has room for it: nothing was dropped in
+     item 4 to make it fit. An addition cannot be withdrawn.
+   - `proposed_text` is plain text on one line, never LaTeX, and states no
+     fact that is not in the library, `cv.md` or the report. Each carries a
+     short `rationale`.
+   - Each answer's `pages` counts the resume with every suggestion so far in
+     it, and it must stay 1: step 7 refuses a resume over one page.
+     - **An `edit` over one page:** suggest it again, shorter, on the same
+       `bullet_id`. That replaces it, so it is still one of the 3. If two
+       shorter tries still run over, stop and tell Chris.
+     - **An `add` over one page:** stop, tell Chris which one, and make no
+       more.
+   - Any later `mcp__resumix__set_resume_selection` call keeps every bullet
+     you suggested an edit to, and every item you suggested an add under.
+   - When one is refused, do what its text says.
 
 ## 6. Cover letter
 
@@ -318,8 +344,8 @@ application to Needs review only while each fits on one page. At most **3**
 calls.
 
 - **"The resume is N pages":** trim it with
-  `mcp__resumix__set_resume_selection`, as in step 5 (those calls count
-  toward its 8), then call again.
+  `mcp__resumix__set_resume_selection`, as in step 5, keeping what you made
+  suggestions on (those calls count toward its 8), then call again.
 - **"The cover letter is N pages":** shorten it with
   `mcp__resumix__set_cover_letter_body` (those count toward its 3), then
   call again.
@@ -355,6 +381,9 @@ In chat, and nowhere else:
   space).
 - **Gaps the library cannot cover:** JD requirements nothing in the library
   supports. Name each one; never write a bullet for it.
+- **Suggested:** one line per `mcp__resumix__suggest_bullet` suggestion, as
+  edit or add, the item it is under, and a one-line why. Name any edit you
+  shortened to fit on one page. Say "none" if you made none.
 - The path of the career-ops report.
 
 Name library items as `mcp__resumix__get_library` names them. Quote no
@@ -383,10 +412,11 @@ and stays in Needs review.
 
 ## Hard rules
 
-- **Never write or rewrite resume text, anywhere:** not in Resumix, not in
-  `cv.md` or any other file, and not in chat as a bullet to add. Resumix has
-  no tool that writes it, and none for suggesting edits. You choose and
-  order what exists.
+- **Never write to the library, and never write resume text anywhere
+  else:** not in `cv.md` or any other file, and not in chat as a bullet to
+  add. The only way you propose resume text is
+  `mcp__resumix__suggest_bullet` (step 5), which Chris applies or rejects.
+  Otherwise you choose and order what exists.
 - **Never run career-ops' CV, cover-letter or tracker steps:** not the
   `pdf`, `latex`, `latex-tex`, `text` or `cover` modes, not oferta's cover
   letter draft or tracker step, and never `generate-pdf.mjs`,

@@ -23,7 +23,7 @@
  */
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
-import { db } from '../db/index.ts';
+import { db, type Executor } from '../db/index.ts';
 import {
   experience,
   experienceBullet,
@@ -47,16 +47,17 @@ type Tx = PgTransaction<any, any, any>; // eslint-disable-line @typescript-eslin
 /** Reads a resume's selections. Takes no `userId`: bridge rows are keyed by
  *  `resume_id`, and every caller has already resolved that resume through a
  *  user-scoped lookup (`getResumeRow(userId, id)`), which is what proves
- *  ownership. */
-export async function getSelections(resumeId: string): Promise<Selections> {
+ *  ownership. `exec` reads inside a caller's transaction, as a resolved
+ *  bullet suggestion does before it writes the selection back (D-045). */
+export async function getSelections(resumeId: string, exec: Executor = db): Promise<Selections> {
   const [experiences, experienceBullets, projects, projectBullets, skillRows, skills] =
     await Promise.all([
-      db
+      exec
         .select({ id: resumeExperience.experienceId })
         .from(resumeExperience)
         .where(eq(resumeExperience.resumeId, resumeId))
         .orderBy(asc(resumeExperience.sortOrder)),
-      db
+      exec
         .select({
           bulletId: resumeExperienceBullet.experienceBulletId,
           experienceId: experienceBullet.experienceId,
@@ -68,12 +69,12 @@ export async function getSelections(resumeId: string): Promise<Selections> {
         )
         .where(eq(resumeExperienceBullet.resumeId, resumeId))
         .orderBy(asc(resumeExperienceBullet.sortOrder)),
-      db
+      exec
         .select({ id: resumeProject.projectId })
         .from(resumeProject)
         .where(eq(resumeProject.resumeId, resumeId))
         .orderBy(asc(resumeProject.sortOrder)),
-      db
+      exec
         .select({
           bulletId: resumeProjectBullet.projectBulletId,
           projectId: projectBullet.projectId,
@@ -82,12 +83,12 @@ export async function getSelections(resumeId: string): Promise<Selections> {
         .innerJoin(projectBullet, eq(resumeProjectBullet.projectBulletId, projectBullet.id))
         .where(eq(resumeProjectBullet.resumeId, resumeId))
         .orderBy(asc(resumeProjectBullet.sortOrder)),
-      db
+      exec
         .select({ id: resumeTechnicalSkillRow.technicalSkillRowId })
         .from(resumeTechnicalSkillRow)
         .where(eq(resumeTechnicalSkillRow.resumeId, resumeId))
         .orderBy(asc(resumeTechnicalSkillRow.sortOrder)),
-      db
+      exec
         .select({
           skillId: resumeTechnicalSkill.technicalSkillId,
           rowId: technicalSkill.technicalSkillRowId,
@@ -330,12 +331,16 @@ async function replaceSkills(
   await tx.insert(resumeTechnicalSkill).values(values);
 }
 
+/** `exec` joins a caller's transaction, where this one becomes a savepoint:
+ *  a resolved bullet suggestion swaps its bullet in alongside its other
+ *  writes (D-045). */
 export async function replaceSelections(
   userId: string,
   resumeId: string,
   patch: Partial<Selections>,
+  exec: Executor = db,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  await exec.transaction(async (tx) => {
     if (patch.experiences !== undefined) {
       await replaceExperiences(tx, userId, resumeId, patch.experiences);
     }

@@ -226,6 +226,32 @@ export interface ApplicationSummary {
   updatedAt: string;
 }
 
+/**
+ * A change to the bullets the agent proposed for one application, which only
+ * Chris's click in review applies (D-045). The agent never writes to the
+ * library: an edit names a bullet and the text it would read, an addition
+ * names a parent and a slot.
+ */
+export interface BulletSuggestion {
+  id: string;
+  kind: 'edit' | 'add';
+  /** Which pair of tables `bulletId` and `parentId` point into. */
+  bulletKind: 'experience' | 'project';
+  /** The bullet an edit changes; null on an addition. */
+  bulletId: string | null;
+  /** The experience or project an addition goes under; null on an edit. */
+  parentId: string | null;
+  /** An addition's slot among the parent's bullets this resume shows: 0 is
+   *  first, and anything past the last is last. Null on an edit. */
+  position: number | null;
+  /** Plain text, one line. Escaped on its way into LaTeX, never stored as it. */
+  proposedText: string;
+  rationale: string;
+  /** `applied` (Apply to bullet, or Add bullet), `copied` (Save as new). */
+  status: 'pending' | 'applied' | 'copied' | 'rejected';
+  createdAt: string;
+}
+
 // Application questions (D-047): what an application's form asks, and the
 // answer Chris approves for each. The vocabularies and their rules are in
 // `lib/applications/questions.ts`.
@@ -278,6 +304,10 @@ export interface ApplicationQuestion {
   approvedAt: string | null;
 }
 
+/** What Chris does with a suggestion: `apply` (Apply to bullet, or Add
+ *  bullet on an addition), `copy` (Save as new) or `reject`. */
+export type BulletSuggestionAction = 'apply' | 'copy' | 'reject';
+
 /** An answer Chris ticked "remember" on, for the agent to reuse on a later
  *  form (D-048). Never a file: attachments belong to one application. */
 export interface SavedAnswer {
@@ -310,6 +340,9 @@ export interface ApplicationDetail extends ApplicationSummary {
    *  them; null for a document that is not linked. */
   pdfFilenames: { resume: string | null; coverLetter: string | null };
   files: ApplicationFile[];
+  /** Every suggestion the agent made for this application, resolved ones
+   *  included, oldest first. */
+  bulletSuggestions: BulletSuggestion[];
   /** The form's questions, in the order they were added (D-047). */
   questions: ApplicationQuestion[];
 }

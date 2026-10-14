@@ -21,8 +21,10 @@ import {
   downloadResumePdf,
   getResumeDetail,
   renderResume,
+  resolveBulletSuggestion,
   saveResumePdf,
   saveResumeToApplication,
+  updateBulletSuggestion,
   updateExperience,
   updateExperienceBullet,
   updateProject,
@@ -33,6 +35,7 @@ import {
   updateSkillRow,
   updateTemplate,
 } from '@/lib/api-client';
+import { normalizeSuggestionText, suggestionTextProblem } from '@/lib/applications/suggestions';
 import { agentPickIds, sameSelections, SLICES } from '@/lib/editor/agent-pick';
 import type { SaveStatus } from '@/lib/editor/autosave';
 import {
@@ -40,10 +43,19 @@ import {
   selectionsReducer,
   type SelectionsAction,
 } from '@/lib/editor/selections-reducer';
-import { EMPTY_SELECTIONS, type Library, type Selections, type Template } from '@/lib/types';
+import { suggestionsByParent } from '@/lib/editor/suggestions';
+import {
+  EMPTY_SELECTIONS,
+  type BulletSuggestion,
+  type BulletSuggestionAction,
+  type Library,
+  type Selections,
+  type Template,
+} from '@/lib/types';
 import ContentPane, { type ContentPaneCallbacks } from './ContentPane';
 import EditorHeader, { type EditorTab } from './EditorHeader';
 import PreviewPane from './PreviewPane';
+import type { SuggestionHandlers } from './SuggestionCard';
 import TemplateTab from './TemplateTab';
 import { useAutosaveRegistry } from './useAutosaveRegistry';
 
@@ -64,7 +76,19 @@ export interface ResumeReviewMode {
   /** False while another step is showing. Hiding the editor sends any edit
    *  still in its debounce, so the status a later step sees is the truth. */
   visible: boolean;
+  /** The application under review: the preview lays its pending bullet
+   *  suggestions over the resume (D-045). */
+  applicationId: string;
+  /** Its pending bullet suggestions, shown inline in the bullet lists. */
+  suggestions: BulletSuggestion[];
+  /** Why none can be resolved now (outside Needs review), or null. */
+  suggestionsLocked: string | null;
+  /** Called once a suggestion is resolved: the application must be re-read,
+   *  since what is pending gates approval. */
+  onSuggestionsChanged: () => void;
 }
+
+const NO_SUGGESTIONS: BulletSuggestion[] = [];
 
 interface ResumeEditorProps {
   resumeId: string;
@@ -115,6 +139,7 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
     getController,
     retryAll: retryAllSaves,
     flushAll: flushAllSaves,
+    flushAndSettle: settleSaves,
     status: saveStatus,
   } = useAutosaveRegistry();
 
@@ -135,29 +160,34 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   // saved since, re-ticking what the server has unticked.
   const latestLoad = useRef(0);
 
-  const loadResume = useCallback(async () => {
-    const load = ++latestLoad.current;
-    setState({ status: 'loading' });
-    try {
-      const detail = await getResumeDetail(resumeId);
-      if (load !== latestLoad.current) return;
-      selectionsRef.current = detail.selections;
-      dispatchSelections({ type: 'replace', selections: detail.selections });
-      setState({
-        status: 'ready',
-        resumeName: detail.resume.name,
-        latestPdf: detail.resume.latestPdf,
-        template: detail.template,
-        library: detail.library,
-      });
-    } catch (error) {
-      if (load !== latestLoad.current) return;
-      setState({
-        status: 'error',
-        message: error instanceof ApiError ? error.message : 'Could not load this resume.',
-      });
-    }
-  }, [resumeId]);
+  /** `quiet` keeps the editor on screen while it re-reads, as after a
+   *  resolved suggestion changed the library or the selection. */
+  const loadResume = useCallback(
+    async (quiet = false) => {
+      const load = ++latestLoad.current;
+      if (!quiet) setState({ status: 'loading' });
+      try {
+        const detail = await getResumeDetail(resumeId);
+        if (load !== latestLoad.current) return;
+        selectionsRef.current = detail.selections;
+        dispatchSelections({ type: 'replace', selections: detail.selections });
+        setState({
+          status: 'ready',
+          resumeName: detail.resume.name,
+          latestPdf: detail.resume.latestPdf,
+          template: detail.template,
+          library: detail.library,
+        });
+      } catch (error) {
+        if (load !== latestLoad.current) return;
+        setState({
+          status: 'error',
+          message: error instanceof ApiError ? error.message : 'Could not load this resume.',
+        });
+      }
+    },
+    [resumeId],
+  );
 
   useEffect(() => {
     void loadResume();
@@ -208,6 +238,81 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   }
 
   const agentPicks = useMemo(() => agentPickIds(proposedSelection), [proposedSelection]);
+
+  // -- Bullet suggestions (review only, D-045) ------------------------------
+  // Chris's edits to the proposed texts, and the ones he has resolved here,
+  // which drop out at once rather than when the application is re-read.
+  const [suggestionDrafts, setSuggestionDrafts] = useState<Record<string, string>>({});
+  const [resolvedHere, setResolvedHere] = useState<ReadonlySet<string>>(new Set());
+  const reviewSuggestions = review?.suggestions ?? NO_SUGGESTIONS;
+  const pendingSuggestions = useMemo(
+    () => reviewSuggestions.filter((s) => s.status === 'pending' && !resolvedHere.has(s.id)),
+    [reviewSuggestions, resolvedHere],
+  );
+  const library = state.status === 'ready' ? state.library : null;
+  const filedSuggestions = useMemo(
+    () => ({
+      experiences: suggestionsByParent(
+        library?.experiences ?? [],
+        pendingSuggestions.filter((s) => s.bulletKind === 'experience'),
+      ),
+      projects: suggestionsByParent(
+        library?.projects ?? [],
+        pendingSuggestions.filter((s) => s.bulletKind === 'project'),
+      ),
+    }),
+    [library, pendingSuggestions],
+  );
+  const suggestionText = useCallback(
+    (s: BulletSuggestion) => suggestionDrafts[s.id] ?? s.proposedText,
+    [suggestionDrafts],
+  );
+
+  const onSuggestionsChanged = review?.onSuggestionsChanged;
+  const suggestionsLocked = review?.suggestionsLocked ?? null;
+  const suggestionHandlers: SuggestionHandlers | undefined = review
+    ? {
+        textOf: suggestionText,
+        onTextChange: (suggestion, text) => {
+          // Outside review the server refuses the edit, so nothing is
+          // scheduled; the card's field is read-only then too.
+          if (suggestionsLocked) return;
+          setSuggestionDrafts((prev) => ({ ...prev, [suggestion.id]: text }));
+          const normalized = normalizeSuggestionText(text);
+          // The card says what is wrong; a save the server must refuse
+          // would only turn the badge red.
+          if (suggestionTextProblem(normalized)) return;
+          getController<string>(
+            `suggestion:${suggestion.id}`,
+            (value) => updateBulletSuggestion(suggestion.id, value).then(() => undefined),
+            500,
+          ).schedule(normalized);
+        },
+        onResolve: async (suggestion: BulletSuggestion, action: BulletSuggestionAction) => {
+          // Every edit on screen lands first, this card's text and any
+          // bullet's included: one still in its debounce would land after
+          // the resolve and undo it, or resolve the agent's wording.
+          if ((await settleSaves()) === 'error') {
+            return "A change didn't save; retry it before resolving this.";
+          }
+          await resolveBulletSuggestion(suggestion.id, action);
+          setResolvedHere((prev) => new Set([...prev, suggestion.id]));
+          // Apply, Save as new and Add bullet changed the library or the
+          // selection; re-read both without the loading screen.
+          if (action !== 'reject') await loadResume(true);
+          onSuggestionsChanged?.();
+          return null;
+        },
+        locked: suggestionsLocked,
+        disabledReason:
+          suggestionsLocked ??
+          (saveStatus === 'saving'
+            ? 'Waiting for your changes to save'
+            : saveStatus === 'error'
+              ? "A change didn't save; retry it first"
+              : null),
+      }
+    : undefined;
 
   const onSaveStatusChange = review?.onSaveStatusChange;
   useEffect(() => {
@@ -645,22 +750,29 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   }
 
   // -- Live preview ---------------------------------------------------------
-  // The pane re-renders whenever any of these three change; it never reads
-  // the key, only compares it. Selections and library are a change *signal*
-  // only — `POST /render` re-reads the resume's persisted state itself, and
-  // the one piece of client state it needs is the template draft, which
-  // rides along as `templateOverride` so unsaved LaTeX previews too.
+  // The pane re-renders whenever any of these change; it never reads the
+  // key, only compares it. Selections, library and the pending suggestions
+  // are a change *signal* only — `POST /render` re-reads the resume's
+  // persisted state, and in review the application's pending suggestions,
+  // itself. The one piece of client state it needs is the template draft,
+  // which rides along as `templateOverride` so unsaved LaTeX previews too.
   const templateContent = state.status === 'ready' ? state.template.content : '';
   const previewKey = useMemo(
     () =>
       state.status === 'ready'
-        ? JSON.stringify([selections, state.library, templateContent])
+        ? JSON.stringify([
+            selections,
+            state.library,
+            templateContent,
+            pendingSuggestions.map((s) => [s.id, suggestionText(s)]),
+          ])
         : 'loading',
-    [state, selections, templateContent],
+    [state, selections, templateContent, pendingSuggestions, suggestionText],
   );
+  const suggestionsFor = review?.applicationId;
   const renderPreview = useCallback(
-    () => renderResume(resumeId, templateContent),
-    [resumeId, templateContent],
+    () => renderResume(resumeId, templateContent, suggestionsFor),
+    [resumeId, templateContent, suggestionsFor],
   );
 
   // -- Resizable divider (cheap: raw mouse events, percentage split) --------
@@ -740,6 +852,8 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
               selections={selections}
               callbacks={contentCallbacks}
               agentPicks={agentPicks}
+              suggestions={filedSuggestions}
+              suggestionHandlers={suggestionHandlers}
             />
           ) : (
             <TemplateTab

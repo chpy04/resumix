@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { ANSWER_MODES } from './applications/questions.ts';
 import { MANUAL_STATUSES } from './applications/status.ts';
+import { normalizeSuggestionText, suggestionTextProblem } from './applications/suggestions.ts';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -72,6 +73,9 @@ export const selectionsPatchSchema = z
 
 export const renderBodySchema = z.object({
   templateOverride: z.string().optional(),
+  /** Lay this application's pending bullet suggestions over the preview
+   *  (D-045). The application must send this resume. */
+  suggestionsFor: uuid.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -288,6 +292,38 @@ export const approveQuestionsSchema = z.object({
 /** Ticks or unticks "remember this answer" (D-048). */
 export const rememberAnswerSchema = z.object({
   remember: z.boolean({ error: 'must be true or false' }),
+});
+
+// ---------------------------------------------------------------------------
+// Bullet suggestions (D-045)
+//
+// The text rules are one schema, shared by `suggest_bullet` and the PATCH
+// Chris's edits go through, so the agent and the page cannot disagree about
+// what a suggestion may say.
+// ---------------------------------------------------------------------------
+
+/** One line of plain text, as the bullet should read; the rules are in
+ *  `lib/applications/suggestions.ts`, which the review page checks too. */
+export const bulletSuggestionText = z
+  .string()
+  .transform(normalizeSuggestionText)
+  .superRefine((text, ctx) => {
+    const problem = suggestionTextProblem(text);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  });
+
+/** Why the agent suggests it, shown beside the card. */
+export const bulletSuggestionRationale = z
+  .string()
+  .trim()
+  .min(1, 'is required')
+  .max(300, 'must be at most 300 characters');
+
+export const patchBulletSuggestionSchema = z.object({ proposedText: bulletSuggestionText });
+
+/** Apply to bullet (Add bullet, on an addition), Save as new, Reject. */
+export const resolveBulletSuggestionSchema = z.object({
+  action: z.enum(['apply', 'copy', 'reject'], { error: 'must be apply, copy or reject' }),
 });
 
 // ---------------------------------------------------------------------------

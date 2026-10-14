@@ -7,10 +7,12 @@ import {
   reopenedApproval,
   reopenedSections,
   repinRefusal,
+  reviewStateOf,
   reviewSteps,
   sectionApprovalProblem,
   type ReviewState,
 } from './review.ts';
+import type { ApplicationDetail, BulletSuggestion } from '../types.ts';
 import { APPLICATION_STATUSES } from './status.ts';
 
 const STAMP = '2026-10-12T10:00:00.000Z';
@@ -23,6 +25,7 @@ function state(overrides: Partial<ReviewState> = {}): ReviewState {
     coverLetterId: null,
     coverLetterApprovedAt: null,
     approvedAt: null,
+    pendingSuggestions: 0,
     questions: [],
     ...overrides,
   };
@@ -128,6 +131,19 @@ test('Date stamps count the same as ISO strings', () => {
   assert.deepEqual(finalApprovalProblems(state({ resumeApprovedAt: new Date(STAMP) })), []);
 });
 
+test('final approval waits for every bullet suggestion, right after the resume (D-045)', () => {
+  assert.deepEqual(
+    finalApprovalProblems(
+      state({ resumeApprovedAt: STAMP, pendingSuggestions: 1, coverLetterId: 'letter-1' }),
+    ),
+    ['Apply or reject the bullet suggestion first.', 'Approve the cover letter first.'],
+  );
+  assert.deepEqual(finalApprovalProblems(state({ pendingSuggestions: 2 })), [
+    'Approve the resume first.',
+    'Apply or reject the 2 bullet suggestions first.',
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // One section
 // ---------------------------------------------------------------------------
@@ -150,6 +166,40 @@ test('a section is refused outside Needs review, or with nothing to approve', ()
     sectionApprovalProblem(state({ resumeId: null }), 'resume'),
     'This application has no resume to approve.',
   );
+});
+
+test('the resume is refused while a bullet suggestion is pending, the letter is not', () => {
+  const pending = state({ pendingSuggestions: 3, coverLetterId: 'letter-1' });
+  assert.equal(
+    sectionApprovalProblem(pending, 'resume'),
+    'Apply or reject the 3 bullet suggestions first.',
+  );
+  assert.equal(sectionApprovalProblem(pending, 'coverLetter'), null);
+  // Outside review, the status is what is said first.
+  assert.equal(
+    sectionApprovalProblem({ ...pending, status: 'ready' }, 'resume'),
+    'Only an application in Needs review can be approved; this one is Ready.',
+  );
+});
+
+test('the page counts only pending suggestions', () => {
+  const suggestion = (status: BulletSuggestion['status']): BulletSuggestion => ({
+    id: status,
+    kind: 'edit',
+    bulletKind: 'experience',
+    bulletId: 'b1',
+    parentId: null,
+    position: null,
+    proposedText: 'x',
+    rationale: 'y',
+    status,
+    createdAt: STAMP,
+  });
+  const detail = {
+    ...state(),
+    bulletSuggestions: [suggestion('pending'), suggestion('applied'), suggestion('rejected')],
+  } as unknown as ApplicationDetail;
+  assert.equal(reviewStateOf(detail).pendingSuggestions, 1);
 });
 
 // ---------------------------------------------------------------------------

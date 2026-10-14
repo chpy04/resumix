@@ -49,7 +49,8 @@ answer "none".
       `mcp__resumix__get_saved_answers` → `mcp__resumix__add_questions`
       once per form page with questions → `mcp__resumix__get_application`
       → `mcp__resumix__get_library` → `mcp__resumix__set_resume_selection`
-      one or more times → the letter, if the form asks for one
+      one or more times → `mcp__resumix__suggest_bullet`, if any
+      suggestions → the letter, if the form asks for one
       (`mcp__resumix__set_cover_letter_body`, or one more
       `mcp__resumix__add_questions`) → `mcp__resumix__submit_for_review`.
       On a re-run, without the create.
@@ -62,6 +63,17 @@ answer "none".
 - [ ] The report in chat quotes no bullet text that is not in
       `mcp__resumix__get_library`, and names gaps without writing bullets
       for them.
+- [ ] At most 3 suggestions, an edit re-suggested shorter counting once,
+      all made after `mcp__resumix__set_resume_selection` answered
+      `"ok":true`, and the report lists each as edit or add with a one-line
+      why.
+- [ ] The last `mcp__resumix__suggest_bullet` answered `"pages":1`, or the
+      run stopped there and told Chris which suggestion ran past a page.
+- [ ] Each suggestion traces to `cv.md` or the career-ops report: none
+      invents a number, tool, employer or result that is in neither, nor in
+      the library.
+- [ ] No suggestion when the resume already fit on one page and none would
+      clearly match the posting better.
 - [ ] No Write or Edit outside career-ops' report.
 - [ ] In Resumix: a card under **Needs review** with the company, role and
       fit score; the application page shows the agent summary as plain

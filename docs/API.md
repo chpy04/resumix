@@ -100,6 +100,20 @@ type ApplicationSummary = {
 
 type ApplicationFile = { id; filename; contentType; byteSize; isArchived; createdAt };
 
+// The agent's proposed change to a bullet, applied only by Chris (D-045).
+type BulletSuggestion = {
+  id;
+  kind: 'edit' | 'add';
+  bulletKind: 'experience' | 'project'; // which tables the next two ids point into
+  bulletId: string | null; // an edit's bullet
+  parentId: string | null; // an addition's experience or project
+  position: number | null; // an addition's slot among the bullets this resume shows
+  proposedText: string; // plain text, one line
+  rationale: string;
+  status: 'pending' | 'applied' | 'copied' | 'rejected';
+  createdAt;
+};
+
 // One question an application's form asks (D-047). An answer is a string,
 // or the options picked for a multi question; a file answer is an
 // ApplicationFile id, and an instruction is its words.
@@ -141,6 +155,7 @@ type ApplicationDetail = ApplicationSummary & {
   approvedAt: string | null; // final approval, which made it ready; cleared with it
   pdfFilenames: { resume: string | null; coverLetter: string | null }; // what approval names the PDFs
   files: ApplicationFile[];
+  bulletSuggestions: BulletSuggestion[]; // every one, resolved included, oldest first
   questions: ApplicationQuestion[]; // in the order they were added
 };
 ```
@@ -300,10 +315,11 @@ stored content stays raw (D-008).
 | `get_library`           | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
 | `get_saved_answers`     | none                                                                                                                                                                    | `[{ saved_answer_id, prompt, kind, answer_mode, answer }]`: Chris's saved answers that are not archived, oldest first; `[]` when there are none. `answer` is a `string[]` for a multi value                                                                                              |
 | `list_applications`     | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
-| `get_application`       | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null with no resume      |
+| `get_application`       | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, bullet_suggestions, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null |
 | `create_application`    | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
 | `add_questions`         | `{ application_id, questions: [{ field_ref, prompt, kind, options?, required, is_eeo?, source?, answer_mode?, proposed_answer?, saved_answer_id? }] }`                  | `{ questions: [{ question_id, outcome, note? }] }`, in input order: `outcome` is `added`, `unchanged` or `redrafted`, and `note: "eeo_answer_dropped"` means a proposed EEO answer was dropped (C10)                                                                                     |
 | `set_resume_selection`  | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
+| `suggest_bullet`        | `{ application_id, kind, bullet_id?, parent_id?, position?, proposed_text, rationale }`: an edit names `bullet_id`; an add, `parent_id` and `position` (0 is first)     | `{ suggestion_id, kind, replaced, ok, pages }`. Records a pending suggestion and writes no library row; `pages` counts the resume with every pending suggestion applied                                                                                                                  |
 | `set_cover_letter_body` | `{ application_id, text }`: the whole letter as plain text, date line to sign-off, non-empty after trimming                                                             | `{ ok, pages }`; `ok` is `pages === 1`. `text` replaces the letter's `body`; an application with no letter is first given a copy of Default                                                                                                                                              |
 | `submit_for_review`     | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
 
@@ -404,6 +420,37 @@ and `skills` likewise.
   a `ready` application goes back to `needs_review` (see "The review flow"
   under Applications).
 
+**`suggest_bullet`** proposes a change to one bullet of an application's
+resume, for Chris to resolve in review (see "Bullet suggestions" under
+Applications). It never writes to the library or the selection (D-045);
+`bullet_kind` is worked out from the id.
+
+- **Refused, writing nothing:** an application that is not `proposing`; one
+  with no resume, or linked to the Default resume; an edit whose bullet is
+  not in `get_library` or not on this resume, or whose text is the bullet's
+  current text; an add whose experience or project is not in `get_library` or
+  not on this resume, whose `position` is past the end (0 puts it first, `n`
+  last, where `n` is how many of its bullets the resume shows), or whose text
+  is already one of that item's bullets (the text names it, to select
+  instead) or one of its pending adds. Text is compared as it prints,
+  ignoring case.
+- **A second edit of the same bullet** replaces the pending one
+  (`replaced: true`, same `suggestion_id`).
+- **`ok`** is `pages === 1`, counted with every pending suggestion laid
+  over the resume, as Chris's preview shows it.
+- **`isError`, with the suggestion saved:** a LaTeX error, or a sidecar that
+  cannot be reached; the text names the saved `suggestion_id`.
+- **`get_application`** lists every suggestion as `bullet_suggestions:
+[{ suggestion_id, kind, bullet_id, parent_id, position, proposed_text,
+rationale, status }]`, oldest first, resolved ones included, so the agent
+  can see what Chris did with each.
+
+**Page counts include pending suggestions.** `set_resume_selection`,
+`suggest_bullet` and `submit_for_review` compile the resume with every
+pending suggestion applied, so the count the agent sees is the one Chris's
+preview shows. Final approval compiles without them, and is refused while any
+is pending.
+
 **`set_cover_letter_body`** writes an application's cover letter as plain
 text, then compiles it. `text` replaces the letter's `body`, which Resumix
 escapes into the letter's `%%BODY%%` line (see Cover letters), so the agent
@@ -443,9 +490,13 @@ both), remembers one in-process and finds it in `get_saved_answers`, links it
 to a third question, which `get_application` must show as `source: "saved"`
 and approved, while an unknown `saved_answer_id` must be refused with nothing
 written, selects a small resume into it, which the real sidecar must compile to
-one page, writes its cover letter with `set_cover_letter_body`, in text
-holding every character the escaper replaces, which must also compile to one
-page, twice into the same letter, and submits it for review, which
+one page, suggests an edit (in text holding every character the escaper
+replaces but `\`) and an add, each of which must also compile to one page,
+which `get_application` must then show as pending, with the library unchanged
+and an unknown `bullet_id` refused, writes its cover letter with
+`set_cover_letter_body`, in text holding every character the escaper
+replaces, which must also compile to one page, twice into the same letter,
+and submits it for review, which
 `get_application` must then show as `needs_review`; submitting an unknown id
 must be `isError`. The application and its letter are archived, its resume
 deleted and the saved answer archived when it ends. `npm run verify` runs it
@@ -473,13 +524,20 @@ in the body are untouched. Idempotent — safe to call on every debounced keystr
 
 ## Rendering & PDFs
 
-| method | path                      | body                    | returns                                                                                                  |
-| ------ | ------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/resumes/:id/render` | `{ templateOverride? }` | `{ ok, pdfBase64?, pages, errors: string[], warnings: string[], log }` — **preview only, saves nothing** |
-| POST   | `/api/resumes/:id/pdf`    | —                       | `{ ok: true, filename, createdAt }` — renders, stores a `resume_pdf` snapshot                            |
-| GET    | `/api/resumes/:id/pdf`    | —                       | `application/pdf` of the **latest snapshot** + `Content-Disposition: attachment`; `404` if never saved   |
+| method | path                      | body                                     | returns                                                                                                  |
+| ------ | ------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/resumes/:id/render` | `{ templateOverride?, suggestionsFor? }` | `{ ok, pdfBase64?, pages, errors: string[], warnings: string[], log }` — **preview only, saves nothing** |
+| POST   | `/api/resumes/:id/pdf`    | —                                        | `{ ok: true, filename, createdAt }` — renders, stores a `resume_pdf` snapshot                            |
+| GET    | `/api/resumes/:id/pdf`    | —                                        | `application/pdf` of the **latest snapshot** + `Content-Disposition: attachment`; `404` if never saved   |
 
 `templateOverride` lets the Template tab preview unsaved LaTeX without persisting it.
+
+`suggestionsFor` is an application id. The preview then shows that
+application's pending bullet suggestions as if applied: an edit's text in
+place of its bullet, an addition at its position, each escaped (D-045).
+Preview only; never in a snapshot. `404` unless the application is the
+caller's and sends this resume. A suggestion whose bullet or parent is gone
+is skipped with a warning.
 
 A LaTeX compile failure is **not** an HTTP error on either POST — it is a `200`
 with `ok: false`. `POST /pdf` then returns the same failure shape `/render` does
@@ -616,19 +674,22 @@ it `ready` (C3, D-044).
 Only in `needs_review`, and only for a section the application has; anything
 else is a `400` saying why ("Only an application in Needs review can be
 approved; this one is Ready.", "This application has no cover letter to
-approve.").
+approve."). The resume is also refused while a bullet suggestion is pending
+("Apply or reject the 2 bullet suggestions first."): the preview shows them
+applied, so approving it would approve text that may never be sent.
 
 **`POST /approve`** is refused with a `400` listing what is left ("Approve the
 resume first. Approve the cover letter first.") unless the application is in
-`needs_review`, has a resume, and every section it shows is approved: the
-resume, the cover letter when one is linked, and every **required** question
-("Approve the 2 required questions still open in step 3."). An optional
-question left unapproved is left blank. It then compiles both
-documents, writing nothing yet, and in one transaction stores a `resume_pdf`
-snapshot named after the company and pins it as `sentPdf` (the path `POST
-/pdf` takes), stores the letter's PDF as an `application/pdf` attachment named
-like its download (`<prefix>_<Company>_Cover_Letter.pdf`), archiving any
-earlier one of that name, and sets `approvedAt` and `ready`. A LaTeX failure,
+`needs_review`, has a resume, no bullet suggestion is pending, and every
+section it shows is approved: the resume, the cover letter when one is
+linked, and every **required** question ("Approve the 2 required questions
+still open in step 3."). An optional question left unapproved is left blank.
+It then compiles both documents, writing nothing yet, and in one transaction
+stores a `resume_pdf` snapshot named after the company and pins it as
+`sentPdf` (the path `POST /pdf` takes), stores the letter's PDF as an
+`application/pdf` attachment named like its download
+(`<prefix>_<Company>_Cover_Letter.pdf`), archiving any earlier one of that
+name, and sets `approvedAt` and `ready`. A LaTeX failure,
 or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
 with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
 If an edit lands while the documents compile, the transaction finds the
@@ -641,8 +702,9 @@ they change, and `approvedAt` with it, on every one of the caller's
 applications in `needs_review` or `ready` that sends that document; a `ready`
 one goes back to `needs_review`:
 
-- the resume: `PUT /api/resumes/:id/selections` (so editor autosave), and the
-  agent's `set_resume_selection`;
+- the resume: `PUT /api/resumes/:id/selections` (so editor autosave), the
+  agent's `set_resume_selection`, and resolving a bullet suggestion with Save
+  as new or Add bullet, which write the selection;
 - the letter: `PATCH /api/cover-letters/:id` with `content` or `body`, and
   the agent's `set_cover_letter_body`;
 - `PATCH /api/applications/:id` changing `resumeId` or `coverLetterId`,
@@ -661,6 +723,45 @@ is what gets sent. There is no diffing: a selection write that puts back what
 was there still reopens. Applications that have been sent (`applied` and
 later) are never reopened, and a reopened one keeps its pinned `sentPdf` until
 a new one is pinned.
+
+### Bullet suggestions
+
+| method | path                                  | body                                        | returns            |
+| ------ | ------------------------------------- | ------------------------------------------- | ------------------ |
+| PATCH  | `/api/bullet-suggestions/:id`         | `{ proposedText }`                          | `BulletSuggestion` |
+| POST   | `/api/bullet-suggestions/:id/resolve` | `{ action: 'apply' \| 'copy' \| 'reject' }` | `BulletSuggestion` |
+
+The agent proposes changes to bullets with `suggest_bullet` (see MCP) and
+never writes to the library itself (D-045). They arrive on
+`ApplicationDetail.bulletSuggestions`, and only these two routes act on them,
+both only on a `pending` suggestion of an application in `needs_review`; a
+resolved one, or one whose application has left review, is a `400` saying
+why, and another user's is a `404`.
+
+**PATCH** is Chris's edit to the text before he resolves it. `proposedText`
+is plain text: whitespace collapses to one line, 1–500 characters, and no
+`\` ("plain text: write it as it should read, without LaTeX"). It overwrites
+the agent's wording.
+
+**`/resolve`** acts on the escaped `proposedText` (`40% & $2M` becomes
+`40\% \& \$2M`), in one transaction:
+
+- `apply` on an edit (Apply to bullet) replaces the library bullet's whole
+  content, formatting included. A global edit, like any edit to a bullet:
+  every resume that shows it changes, and no application reopens (C6).
+  Status `applied`.
+- `copy` on an edit (Save as new) creates a sibling bullet under the same
+  parent and puts it where the original sat in this application's resume, or
+  last if the original is no longer ticked. The original is untouched.
+  Status `copied`.
+- `apply` on an addition (Add bullet) creates the bullet under its parent and
+  selects it at `position`, or last. Status `applied`. `copy` on an addition
+  is a `400`.
+- `reject` sets the status `rejected` and nothing else.
+
+Save as new and Add bullet write the selection, so they reopen an approved
+resume as any selection write does (see "What reopens an approval"). A second
+resolve of the same suggestion is a `400` and writes nothing.
 
 ### Questions
 

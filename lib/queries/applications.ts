@@ -10,7 +10,7 @@
  * two nullable references instead — the live resume it is being tailored
  * from, and the immutable snapshot that was actually sent (D-032).
  */
-import { and, desc, eq, inArray, isNotNull, isNull, ne, notExists } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, notExists, type SQL } from 'drizzle-orm';
 import {
   repinRefusal,
   sectionApprovalProblem,
@@ -23,6 +23,7 @@ import {
   application,
   applicationFile,
   applicationQuestion,
+  bulletSuggestion,
   coverLetter,
   resume,
   resumePdf,
@@ -33,11 +34,13 @@ import type {
   ApplicationFile,
   ApplicationQuestion,
   ApplicationSummary,
+  BulletSuggestion,
   Selections,
 } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
 import { listQuestions, lockApplication } from './application-questions.ts';
 import { reopenRelinked } from './approvals.ts';
+import { countPendingSuggestions, listBulletSuggestions } from './bullet-suggestions.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
 import { createResume, getDefaultResumeRow } from './resumes.ts';
@@ -88,6 +91,7 @@ function toDetail(
   sentPdf: SentPdfMeta | null,
   files: ApplicationFile[],
   coverLetterName: string | null,
+  bulletSuggestions: BulletSuggestion[],
   questions: ApplicationQuestion[],
 ): ApplicationDetail {
   return {
@@ -105,6 +109,7 @@ function toDetail(
       coverLetter: coverLetterName === null ? null : buildCoverLetterFilename(coverLetterName),
     },
     files,
+    bulletSuggestions,
     questions,
   };
 }
@@ -178,13 +183,14 @@ async function coverLetterName(
 }
 
 async function detailFor(row: ApplicationRow): Promise<ApplicationDetail> {
-  const [sentPdf, files, letterName, questions] = await Promise.all([
+  const [sentPdf, files, letterName, suggestions, questions] = await Promise.all([
     sentPdfMeta(row.resumePdfId),
     listApplicationFiles(row.userId, row.id),
     coverLetterName(row.userId, row.coverLetterId),
+    listBulletSuggestions(row.userId, row.id),
     listQuestions(row.userId, row.id),
   ]);
-  return toDetail(row, sentPdf, files, letterName, questions);
+  return toDetail(row, sentPdf, files, letterName, suggestions, questions);
 }
 
 export async function getApplicationDetail(
@@ -517,9 +523,22 @@ export async function attachCoverLetter(userId: string, id: string): Promise<App
 // so a concurrent edit cannot slip an approval past the gate.
 // ---------------------------------------------------------------------------
 
+/** No bullet suggestion on this application is still pending (D-045): the
+ *  resume Chris approves must be the one he will send, not one with the
+ *  agent's proposals laid over it. */
+function noPendingSuggestions(executor: Executor, id: string): SQL {
+  return notExists(
+    executor
+      .select({ id: bulletSuggestion.id })
+      .from(bulletSuggestion)
+      .where(and(eq(bulletSuggestion.applicationId, id), eq(bulletSuggestion.status, 'pending'))),
+  );
+}
+
 /**
- * Chris approves one section. Only in `needs_review`, and only a section
- * the application actually has; the reason for a refusal comes from
+ * Chris approves one section. Only in `needs_review`, only a section the
+ * application actually has, and the resume only once no bullet suggestion
+ * is pending (D-045); the reason for a refusal comes from
  * `sectionApprovalProblem`, the same rule the page shows.
  */
 export async function approveSection(
@@ -540,6 +559,7 @@ export async function approveSection(
         eq(application.userId, userId),
         eq(application.status, 'needs_review'),
         isNotNull(section === 'resume' ? application.resumeId : application.coverLetterId),
+        section === 'resume' ? noPendingSuggestions(db, id) : undefined,
       ),
     )
     .returning();
@@ -547,8 +567,10 @@ export async function approveSection(
 
   const existing = await getApplicationRow(userId, id);
   if (!existing) throw new NotFoundError(`application ${id} not found`);
+  const pendingSuggestions = await countPendingSuggestions(userId, id);
   throw new BadRequestError(
-    sectionApprovalProblem(existing, section) ?? 'This section cannot be approved right now.',
+    sectionApprovalProblem({ ...existing, pendingSuggestions }, section) ??
+      'This section cannot be approved right now.',
   );
 }
 
@@ -581,9 +603,9 @@ export async function submitForReview(userId: string, id: string): Promise<boole
  * Everything was compiled before this is called, so no sidecar call holds
  * the transaction open. The guarded UPDATE re-checks what the compile was
  * based on: still in review, both approvals still set, the same resume and
- * letter, and no required question left unapproved. An edit that landed in
- * between has cleared an approval, so the guard fails and the whole
- * transaction rolls back.
+ * letter, no bullet suggestion pending (D-045), and no required question
+ * left unapproved. An edit that landed in between has cleared an approval,
+ * so the guard fails and the whole transaction rolls back.
  *
  * The approved letter is the application's one non-archived file with the
  * letter's download name; approving again archives the previous one, since
@@ -616,6 +638,7 @@ export async function recordFinalApproval(
           eq(application.status, 'needs_review'),
           eq(application.resumeId, input.resumeId),
           isNotNull(application.resumeApprovedAt),
+          noPendingSuggestions(tx, id),
           input.letter
             ? and(
                 eq(application.coverLetterId, input.letter.coverLetterId),

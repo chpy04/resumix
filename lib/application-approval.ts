@@ -22,6 +22,7 @@ import { compileCoverLetterPdf } from './cover-letter-pdf.ts';
 import { LatexServiceError } from './latex.ts';
 import { listQuestionRows } from './queries/application-questions.ts';
 import { getApplicationRow, recordFinalApproval } from './queries/applications.ts';
+import { countPendingSuggestions } from './queries/bullet-suggestions.ts';
 import { getCoverLetterRow } from './queries/cover-letters.ts';
 import { BadRequestError, NotFoundError } from './queries/errors.ts';
 import type { ApplicationPdfResult } from './types.ts';
@@ -53,6 +54,7 @@ export async function approveApplication(
 
   const problems = finalApprovalProblems({
     ...row,
+    pendingSuggestions: await countPendingSuggestions(userId, id),
     questions: await listQuestionRows(userId, id),
   });
   // The gate guarantees a resume; the narrowing below is for the compiler.

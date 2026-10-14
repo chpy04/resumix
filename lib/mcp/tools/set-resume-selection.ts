@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { hasBeenSent } from '../../applications/status.ts';
 import { compileTex, LatexServiceError } from '../../latex.ts';
 import { setProposedSelection } from '../../queries/applications.ts';
+import { listBulletSuggestions } from '../../queries/bullet-suggestions.ts';
 import { assembleLibrary } from '../../queries/library.ts';
 import { renderResumeById } from '../../queries/render.ts';
 import { getResumeRow } from '../../queries/resumes.ts';
@@ -75,7 +76,10 @@ export const setResumeSelection = defineTool({
     // A no-op once the application has left proposing (C7).
     await setProposedSelection(ctx.userId, app.id, selections);
 
-    const { tex } = await renderResumeById(ctx.userId, resume.id);
+    // Counted with any pending bullet suggestion applied, as Chris's preview
+    // will show it (D-045).
+    const suggestions = await listBulletSuggestions(ctx.userId, app.id);
+    const { tex } = await renderResumeById(ctx.userId, resume.id, undefined, suggestions);
     let compiled;
     try {
       compiled = await compileTex(tex);

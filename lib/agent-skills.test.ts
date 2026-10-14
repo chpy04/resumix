@@ -241,6 +241,8 @@ test('resumix-propose runs only when typed, and takes the ticket path through Re
     'set_resume_selection',
     'set_cover_letter_body',
     'submit_for_review',
+    // Its only way to propose text, which Chris applies or rejects (D-045).
+    'suggest_bullet',
   ]) {
     assert.ok(text.includes(`mcp__resumix__${tool}`), `resumix-propose never calls ${tool}`);
   }
