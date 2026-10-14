@@ -6,12 +6,13 @@
  *
  * Then it does what the agent does first (D-042): reads the library, logs an
  * application, finds it again, records two of its form's questions (D-047),
- * selects a small resume into it, which the real sidecar compiles, suggests
- * an edit and an addition to its bullets without touching the library
- * (D-045), writes its cover letter in plain text (D-046), and submits it for
- * review (D-044). That application and its letter are archived and its
- * resume deleted when the script ends, so later specs'
- * boards stay as they were.
+ * remembers one in-process, as the review page's checkbox would, and links
+ * that saved answer to a third (D-048), selects a small resume into it,
+ * which the real sidecar compiles, suggests an edit and an addition to its
+ * bullets without touching the library (D-045), writes its cover letter in
+ * plain text (D-046), and submits it for review (D-044). That application and
+ * its letter are archived, its resume deleted and its saved answer archived
+ * when the script ends, so later specs' boards stay as they were.
  *
  * It needs a running server. `npm run verify` runs it from
  * `e2e/mcp.spec.ts`, against Playwright's own server; by hand, start
@@ -33,11 +34,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-import { sql } from '../lib/db/index.ts';
+import { db, sql } from '../lib/db/index.ts';
 import { createApiToken, revokeApiToken } from '../lib/queries/api-tokens.ts';
+import { setQuestionRemembered } from '../lib/queries/application-questions.ts';
 import { getApplicationRow, updateApplication } from '../lib/queries/applications.ts';
 import { updateCoverLetter } from '../lib/queries/cover-letters.ts';
 import { deleteResume } from '../lib/queries/resumes.ts';
+import { archiveSavedAnswer } from '../lib/queries/saved-answers.ts';
 import { getFirstUser } from '../lib/queries/users.ts';
 
 const DEFAULT_URL = 'http://localhost:3000/api/mcp';
@@ -49,6 +52,7 @@ const PROTOCOL_VERSION = '2025-11-25';
 const TOOL_NAMES = [
   'ping',
   'get_library',
+  'get_saved_answers',
   'list_applications',
   'get_application',
   'create_application',
@@ -175,8 +179,8 @@ interface LibraryJson {
 
 /**
  * The agent's first moves, one call to each library and application tool.
- * The application it logs is archived, and its resume deleted, however this
- * ends.
+ * The application it logs is archived, its resume deleted and the answer it
+ * remembers archived, however this ends.
  */
 async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
   const library = await callJson<LibraryJson>(mcp, 'get_library', {});
@@ -201,6 +205,7 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     },
   );
   const applicationId = created.application_id;
+  let rememberedId: string | null = null;
   try {
     assert.equal(created.status, 'proposing');
     check('create_application logs one in proposing');
@@ -267,6 +272,59 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
       ],
     );
     check('add_questions drops the EEO answer, a re-send is unchanged, get_application lists both');
+
+    // What ticking "remember this answer" does, then the agent's side.
+    const remembered = await setQuestionRemembered(userId, name.question_id, true);
+    rememberedId = remembered.savedAnswerId;
+    assert.ok(rememberedId, 'remembering saved nothing');
+    const saved = await callJson<{ saved_answer_id: string }[]>(mcp, 'get_saved_answers', {});
+    assert.deepEqual(
+      saved.find((a) => a.saved_answer_id === rememberedId),
+      {
+        saved_answer_id: rememberedId,
+        prompt: 'Full name',
+        kind: 'text',
+        answer_mode: 'value',
+        answer: 'Smoke Tester',
+      },
+    );
+    const [preferred] = (
+      await callJson<Recorded>(mcp, 'add_questions', {
+        application_id: applicationId,
+        questions: [
+          {
+            field_ref: { page: 1, label: 'Preferred name' },
+            prompt: 'Preferred name',
+            kind: 'text',
+            required: false,
+            saved_answer_id: rememberedId,
+          },
+        ],
+      })
+    ).questions;
+    assert.equal(preferred?.outcome, 'added');
+    const withLink = await callJson<{
+      questions: { question_id: string; source: string; answer: unknown; approved_at: unknown }[];
+    }>(mcp, 'get_application', { application_id: applicationId });
+    const filled = withLink.questions.find((q) => q.question_id === preferred?.question_id);
+    assert.equal(filled?.source, 'saved');
+    assert.equal(filled?.answer, 'Smoke Tester');
+    assert.ok(filled?.approved_at, 'a linked question arrives approved');
+    const badLink = await callTool(mcp, 'add_questions', {
+      application_id: applicationId,
+      questions: [
+        {
+          field_ref: { page: 1, label: 'Nickname' },
+          prompt: 'Nickname',
+          kind: 'text',
+          required: false,
+          saved_answer_id: randomUUID(),
+        },
+      ],
+    });
+    assert.equal(badLink.isError, true, 'an unknown saved_answer_id was accepted');
+    assert.match(badLink.content[0]?.text ?? '', /^Nothing was written/);
+    check('get_saved_answers lists a remembered answer, and add_questions links it approved');
 
     // Built from the live library, not from Default's selection: earlier
     // specs may have archived some of what Default selects.
@@ -404,6 +462,8 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     );
     check('submit_for_review on an unknown id is isError');
   } finally {
+    // Archived, never deleted (D-048), so the agent never links it again.
+    if (rememberedId) await archiveSavedAnswer(db, userId, rememberedId);
     const row = await getApplicationRow(userId, applicationId);
     await updateApplication(userId, applicationId, { isArchived: true });
     if (row?.resumeId) await deleteResume(userId, row.resumeId);

@@ -72,7 +72,9 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   letter's plain text beside its PDF when there is one, the form's questions when the agent recorded any, and a final
   Approve. Questions are approved one by one, profile answers in bulk; an
   open-ended answer can be sent back to the agent for a redraft, and an EEO
-  question is answered only by Chris (D-047). Each section and each question
+  question is answered only by Chris (D-047). An answer ticked "remember this
+  answer" is saved for the agent to reuse on later forms, where it arrives
+  already approved and shows as one green line (D-048). Each section and each question
   is approved on its own, and editing it afterwards unapproves it and sends a
   Ready application back to Needs review; library and template edits do not. Final approval pins the resume snapshot, stores
   the letter's PDF as an attachment, makes the application Ready and copies
@@ -88,7 +90,7 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   live PDF preview and a LaTeX template tab on the right.
   `/resume/[id]?application=<id>` is the same editor in **application mode**,
   where back returns to the application and saving writes the PDF to it.
-- **Database** — Postgres, 22 tables, Drizzle for typed queries and
+- **Database** — Postgres, 23 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
   the pool on first query, because `next build` evaluates every route module
@@ -131,9 +133,9 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
 
 ## Users and isolation
 
-Every query is scoped to a user. `user_id` sits on the eight root tables
+Every query is scoped to a user. `user_id` sits on the nine root tables
 (`template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`cover_letter`, `application`, `api_token`); every other table inherits its owner through a join to its
+`cover_letter`, `application`, `api_token`, `saved_answer`); every other table inherits its owner through a join to its
 parent (D-018). Every
 query function takes a `userId` and filters on it, and another user's id reads
 as "not found", never "forbidden". Isolation is enforced in the query layer,

@@ -297,6 +297,9 @@ export interface ApplicationQuestion {
   answer: AnswerValue | null;
   /** Set while Chris has asked the agent for a new draft. */
   redraftNote: string | null;
+  /** The saved answer this one is remembered as (D-048): null when there is
+   *  none, or when the one it was linked to has since been archived. */
+  savedAnswerId: string | null;
   /** Cleared by any change to the answer (C3). */
   approvedAt: string | null;
 }
@@ -304,6 +307,17 @@ export interface ApplicationQuestion {
 /** What Chris does with a suggestion: `apply` (Apply to bullet, or Add
  *  bullet on an addition), `copy` (Save as new) or `reject`. */
 export type BulletSuggestionAction = 'apply' | 'copy' | 'reject';
+
+/** An answer Chris ticked "remember" on, for the agent to reuse on a later
+ *  form (D-048). Never a file: attachments belong to one application. */
+export interface SavedAnswer {
+  id: string;
+  /** The question's wording when it was first saved. */
+  prompt: string;
+  kind: QuestionKind;
+  answerMode: AnswerMode;
+  answer: AnswerValue;
+}
 
 /** `GET /api/applications/:id` — the summary plus what the list view has no
  *  use for. */

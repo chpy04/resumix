@@ -32,6 +32,7 @@ import {
   projectBullet,
   resume,
   resumePdf,
+  savedAnswer,
   technicalSkill,
   technicalSkillRow,
   users,
@@ -246,6 +247,47 @@ export async function getQuestionRow(id: string) {
     .limit(1);
   if (!row) throw new Error(`no application_question row ${id}`);
   return row;
+}
+
+/**
+ * A saved answer written straight to the row: a text answer unless
+ * `overrides` says otherwise. The only way to reach a state the query layer
+ * refuses to write, which the CHECK tests need, and the way to give a test
+ * one to link without going through a question. Left behind, like content
+ * rows: saved answers are archived, never deleted (D-048).
+ */
+export async function insertSavedAnswer(
+  userId: string,
+  overrides: Partial<typeof savedAnswer.$inferInsert> = {},
+) {
+  const [row] = await db
+    .insert(savedAnswer)
+    .values({
+      userId,
+      prompt: 'How did you hear about us?',
+      kind: 'text',
+      answer: 'A friend.',
+      ...overrides,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test saved answer');
+  return row;
+}
+
+/** The raw row, archived or not, answer encoding and all. */
+export async function getSavedAnswerRow(id: string) {
+  const [row] = await db.select().from(savedAnswer).where(eq(savedAnswer.id, id)).limit(1);
+  if (!row) throw new Error(`no saved_answer row ${id}`);
+  return row;
+}
+
+/** Every saved answer a user has, archived ones included, oldest first. */
+export async function listSavedAnswerRows(userId: string) {
+  return db
+    .select()
+    .from(savedAnswer)
+    .where(eq(savedAnswer.userId, userId))
+    .orderBy(asc(savedAnswer.createdAt), asc(savedAnswer.id));
 }
 
 /** Cover letters are archived rather than deleted in the app, but like

@@ -5,6 +5,9 @@ import QuestionAnswerInput, {
   type AnswerDraft,
 } from '@/components/applications/QuestionAnswerInput';
 import QuestionApproveButton from '@/components/applications/QuestionApproveButton';
+import RememberAnswerCheckbox, {
+  type RememberState,
+} from '@/components/applications/RememberAnswerCheckbox';
 import { ApiError } from '@/lib/api-client';
 import { canRedraft, hasOptions } from '@/lib/applications/questions';
 import type { ApplicationFile, ApplicationQuestion } from '@/lib/types';
@@ -20,7 +23,10 @@ interface QuestionCardProps {
   /** `approvalProblem` for what is on screen. */
   problem: string | null;
   disabledReason: string | null;
+  /** "Remember this answer", offered on every kind but a file (D-048). */
+  remember: RememberState;
   onChange: (next: AnswerDraft, immediate: boolean) => void;
+  onRemember: (remember: boolean) => void;
   onApprove: () => Promise<void>;
   /** Sends a redraft request, or cancels one with null. Throws to show. */
   onRedraft: (note: string | null) => Promise<void>;
@@ -42,7 +48,6 @@ function tone(question: ApplicationQuestion, approved: boolean, waiting: boolean
 function sourceLabel(question: ApplicationQuestion): string | null {
   if (question.source === 'agent') return 'agent draft';
   if (question.source === 'profile') return 'from profile';
-  if (question.source === 'saved') return 'saved answer';
   return null;
 }
 
@@ -50,7 +55,8 @@ function sourceLabel(question: ApplicationQuestion): string | null {
  * One question that is not a profile answer: open-ended prose, which can be
  * sent back for a redraft; a choice, which takes a value or an instruction;
  * a file, answered with an attachment; or an EEO question, which only Chris
- * answers and which starts with nothing picked (C10, D-047).
+ * answers and which starts with nothing picked (C10, D-047). Every kind but
+ * a file can be remembered for later forms (D-048).
  */
 export default function QuestionCard({
   question,
@@ -61,7 +67,9 @@ export default function QuestionCard({
   reopened,
   problem,
   disabledReason,
+  remember,
   onChange,
+  onRemember,
   onApprove,
   onRedraft,
   onFileUploaded,
@@ -105,6 +113,11 @@ export default function QuestionCard({
           <span className="ml-2 text-xs font-normal text-warning-ink">* Required</span>
         ) : null}
         {source ? <span className="text-xs font-normal text-ink-dim"> · {source}</span> : null}
+        {question.source === 'saved' ? (
+          <span className="ml-2 rounded-full border border-success-line px-2 py-0.5 text-[10px] font-normal text-success-ink">
+            saved answer
+          </span>
+        ) : null}
       </h3>
 
       <QuestionAnswerInput
@@ -171,6 +184,11 @@ export default function QuestionCard({
 
       {waiting ? null : (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {question.kind === 'file' ? null : (
+            <div className="mr-auto">
+              <RememberAnswerCheckbox {...remember} onChange={onRemember} />
+            </div>
+          )}
           {canRedraft(question) && !noteOpen && !approved ? (
             <button
               type="button"

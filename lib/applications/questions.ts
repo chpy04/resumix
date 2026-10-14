@@ -17,6 +17,7 @@ import type {
   FieldRef,
   QuestionKind,
   QuestionSource,
+  SavedAnswer,
 } from '../types.ts';
 
 /** The order and spelling of the Postgres enums
@@ -39,6 +40,9 @@ export const QUESTION_SOURCES = [
 export const ANSWER_MODES = ['value', 'instruction'] as const satisfies readonly AnswerMode[];
 
 export const BOOL_ANSWERS = ['yes', 'no'] as const;
+
+/** How a bool answer reads on screen. */
+export const BOOL_LABELS: Record<(typeof BOOL_ANSWERS)[number], string> = { yes: 'Yes', no: 'No' };
 
 /** Choice and multi offer options, and so are the only kinds that take an
  *  instruction instead of a value (R8). */
@@ -223,6 +227,61 @@ export function approvalProblem(
 }
 
 // ---------------------------------------------------------------------------
+// Saved answers (D-048)
+// ---------------------------------------------------------------------------
+
+/** Prose answers prose, whether the form calls it a text box or a letter. */
+function sameKindOfAnswer(a: QuestionKind, b: QuestionKind): boolean {
+  const prose = (kind: QuestionKind) => kind === 'text' || kind === 'letter';
+  return a === b || (prose(a) && prose(b));
+}
+
+/**
+ * Why this saved answer cannot answer this question, or null when it can.
+ * It must be the same kind, text and letter counting as one, and then fit
+ * exactly, as an answer typed here would: a choice's value one of this
+ * question's options. An instruction is words, so it fits any choice. Never
+ * a file question, since an attachment belongs to one application. There is
+ * no fuzzy matching: which saved answer suits a question is the agent's
+ * call (D15).
+ */
+export function savedAnswerProblem(
+  question: AnswerShape,
+  saved: Pick<SavedAnswer, 'kind' | 'answerMode' | 'answer'>,
+): string | null {
+  if (question.kind === 'file') return 'A file question takes no saved answer.';
+  if (!sameKindOfAnswer(question.kind, saved.kind)) {
+    return `It is a ${saved.kind} answer, and this is a ${question.kind} question.`;
+  }
+  return answerProblem(question, saved.answer, saved.answerMode);
+}
+
+/** An answer on one line, as the saved-answer row shows it: picks joined,
+ *  yes and no capitalised, an instruction quoted. Empty for no answer. */
+export function answerText(answer: {
+  kind: QuestionKind;
+  answerMode: AnswerMode;
+  answer: AnswerValue | null;
+}): string {
+  const value = answer.answer;
+  if (value === null) return '';
+  if (Array.isArray(value)) return value.join(', ');
+  if (answer.answerMode === 'instruction') return `“${value}”`;
+  if (answer.kind === 'bool' && (value === 'yes' || value === 'no')) return BOOL_LABELS[value];
+  return value;
+}
+
+/** Why this question's answer cannot be remembered, or null when it can:
+ *  it needs one that `answerProblem` accepts, and never an attachment. */
+export function rememberProblem(
+  question: AnswerShape & { answerMode: AnswerMode; answer: AnswerValue | null },
+): string | null {
+  if (question.kind === 'file') return "File answers can't be remembered.";
+  if (encodeAnswer(question.answer) === null) return 'Answer it first.';
+  return answerProblem(question, question.answer, question.answerMode);
+}
+
+// ---------------------------------------------------------------------------
 // The review step
 // ---------------------------------------------------------------------------
 
@@ -233,10 +292,16 @@ export interface QuestionProgress {
   requiredOpen: number;
   /** Optional and not approved: left blank at apply. */
   optionalOpen: number;
+  /** Approved, and answered from a saved answer. */
+  fromSaved: number;
 }
 
 export function questionProgress(
-  questions: readonly { required: boolean; approvedAt: Date | string | null }[],
+  questions: readonly {
+    required: boolean;
+    source: QuestionSource | null;
+    approvedAt: Date | string | null;
+  }[],
 ): QuestionProgress {
   const open = questions.filter((q) => q.approvedAt === null);
   const requiredOpen = open.filter((q) => q.required).length;
@@ -245,18 +310,23 @@ export function questionProgress(
     total: questions.length,
     requiredOpen,
     optionalOpen: open.length - requiredOpen,
+    fromSaved: questions.filter((q) => q.approvedAt !== null && q.source === 'saved').length,
   };
 }
 
 /** Profile answers are the ones approved in bulk. An EEO question never is,
- *  whatever its source (C10). `rest` keeps the questions' own order. */
+ *  whatever its source (C10). Saved answers are shown apart, EEO ones
+ *  included: Chris made each of them (D-048). Each group keeps the
+ *  questions' own order. */
 export function reviewGroups<Q extends Pick<ApplicationQuestion, 'source' | 'isEeo'>>(
   questions: readonly Q[],
-): { profile: Q[]; rest: Q[] } {
+): { profile: Q[]; saved: Q[]; rest: Q[] } {
   const isProfile = (q: Q) => q.source === 'profile' && !q.isEeo;
+  const isSaved = (q: Q) => q.source === 'saved';
   return {
     profile: questions.filter(isProfile),
-    rest: questions.filter((q) => !isProfile(q)),
+    saved: questions.filter(isSaved),
+    rest: questions.filter((q) => !isProfile(q) && !isSaved(q)),
   };
 }
 

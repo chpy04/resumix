@@ -12,7 +12,8 @@
  * sees what the first committed (`recordFinalApproval`).
  *
  * C10 is enforced here as well as by a CHECK: a proposal on an EEO question
- * is dropped before it is written, whoever flagged it.
+ * is dropped before it is written, whoever flagged it. A saved answer is not
+ * a proposal: Chris made it, so it is kept on an EEO question too (D-048).
  */
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
 import {
@@ -26,11 +27,13 @@ import {
   hasOptions,
   looksLikeEeo,
   normalizeFieldRef,
+  rememberProblem,
+  savedAnswerProblem,
 } from '../applications/questions.ts';
 import { sectionApprovalProblem } from '../applications/review.ts';
 import { hasBeenSent, statusLabel } from '../applications/status.ts';
 import { db, type Executor } from '../db/index.ts';
-import { application, applicationFile, applicationQuestion } from '../db/schema.ts';
+import { application, applicationFile, applicationQuestion, savedAnswer } from '../db/schema.ts';
 import type {
   AnswerMode,
   AnswerValue,
@@ -40,10 +43,18 @@ import type {
 } from '../types.ts';
 import { reopenForQuestions } from './approvals.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
+import {
+  archiveSavedAnswer,
+  insertSavedAnswer,
+  liveSavedAnswers,
+  updateSavedAnswer,
+} from './saved-answers.ts';
 
 type QuestionRow = typeof applicationQuestion.$inferSelect;
 
-function toWire(row: QuestionRow): ApplicationQuestion {
+/** `liveSavedAnswerId` is the row's link when it names one of the owner's
+ *  saved answers that is not archived, and null otherwise (D-048). */
+function toWire(row: QuestionRow, liveSavedAnswerId: string | null): ApplicationQuestion {
   return {
     id: row.id,
     prompt: row.prompt,
@@ -61,6 +72,7 @@ function toWire(row: QuestionRow): ApplicationQuestion {
     proposedAnswer: decodeProposal(row.kind, row.proposedAnswer),
     answer: decodeAnswer(row.kind, row.answerMode, row.answer),
     redraftNote: row.redraftNote,
+    savedAnswerId: liveSavedAnswerId,
     approvedAt: row.approvedAt?.toISOString() ?? null,
   };
 }
@@ -90,29 +102,51 @@ export async function lockApplication(executor: Executor, userId: string, applic
 }
 
 /** In the order they were added. The rows themselves, for the gates; the
- *  wire gets `listQuestions`. */
+ *  wire gets `listQuestions`. Each carries its live saved-answer link
+ *  (`toWire`). */
 export async function listQuestionRows(
   userId: string,
   applicationId: string,
   executor: Executor = db,
-): Promise<QuestionRow[]> {
+): Promise<(QuestionRow & { liveSavedAnswerId: string | null })[]> {
   const rows = await executor
-    .select({ question: applicationQuestion })
+    .select({ question: applicationQuestion, liveSavedAnswerId: savedAnswer.id })
     .from(applicationQuestion)
     .innerJoin(application, eq(applicationQuestion.applicationId, application.id))
+    // On the caller as well: a link to anyone else's reads as no link.
+    .leftJoin(
+      savedAnswer,
+      and(
+        eq(savedAnswer.id, applicationQuestion.savedAnswerId),
+        eq(savedAnswer.userId, userId),
+        eq(savedAnswer.isArchived, false),
+      ),
+    )
     .where(
       and(eq(applicationQuestion.applicationId, applicationId), eq(application.userId, userId)),
     )
     // sort_order is dense, but the id breaks a tie all the same (D-030).
     .orderBy(asc(applicationQuestion.sortOrder), asc(applicationQuestion.id));
-  return rows.map((row) => row.question);
+  return rows.map((row) => ({ ...row.question, liveSavedAnswerId: row.liveSavedAnswerId }));
 }
 
 export async function listQuestions(
   userId: string,
   applicationId: string,
 ): Promise<ApplicationQuestion[]> {
-  return (await listQuestionRows(userId, applicationId)).map(toWire);
+  return (await listQuestionRows(userId, applicationId)).map((row) =>
+    toWire(row, row.liveSavedAnswerId),
+  );
+}
+
+/** Which of these rows' links are live, for `toWire`. */
+async function liveLinks(
+  executor: Executor,
+  userId: string,
+  rows: readonly QuestionRow[],
+): Promise<Set<string>> {
+  const ids = rows.flatMap((row) => (row.savedAnswerId ? [row.savedAnswerId] : []));
+  return new Set((await liveSavedAnswers(executor, userId, ids)).map((saved) => saved.id));
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +167,10 @@ export interface QuestionInput {
   source: 'profile' | 'agent' | null;
   answerMode: AnswerMode;
   proposedAnswer: AnswerValue | null;
+  /** One of Chris's saved answers that answers this question (D-048). When
+   *  set, it supplies the source, mode and answer, and the three above are
+   *  ignored; the caller refuses a request that sends both. */
+  savedAnswerId?: string;
 }
 
 export interface RecordedQuestion {
@@ -154,6 +192,15 @@ export interface RecordedQuestion {
  *
  * An EEO question, flagged by the caller or matched by `looksLikeEeo`, is
  * recorded with no source and no proposal: it still has to reach Chris.
+ *
+ * A new question linked to a saved answer (`savedAnswerId`) arrives with
+ * that answer, `source: 'saved'`, already approved, EEO or not: Chris made
+ * the answer, and he still sees the question (D-048). A redraft linked to
+ * one takes it, but stays unapproved, since Chris asked to see it again. An
+ * agent's own redraft of a remembered question unlinks it, leaving the
+ * saved answer as it was. A question already recorded ignores the link. Every link must be one of
+ * the caller's live saved answers that fits the question exactly
+ * (`savedAnswerProblem`), or nothing is written and every problem is named.
  *
  * `statuses` are the ones the caller may add to. They are re-checked here
  * under the lock, because the caller's own check ran before it.
@@ -181,6 +228,34 @@ export async function addQuestions(
     const byKey = new Map(existing.map((row) => [fieldKey(row.fieldRef), row]));
     let nextOrder = existing.reduce((last, row) => Math.max(last, row.sortOrder), -1) + 1;
 
+    const linked = await liveSavedAnswers(
+      tx,
+      userId,
+      inputs.flatMap((input) => (input.savedAnswerId ? [input.savedAnswerId] : [])),
+    );
+    const savedById = new Map(linked.map((saved) => [saved.id, saved]));
+    const problems = inputs.flatMap((input, index) => {
+      if (input.savedAnswerId === undefined) return [];
+      const name = `questions.${index} ("${normalizeFieldRef(input.fieldRef).label}")`;
+      const saved = savedById.get(input.savedAnswerId);
+      // Unknown, archived and another user's all read the same.
+      if (!saved) {
+        return [`${name}: no saved answer ${input.savedAnswerId} (get_saved_answers lists yours)`];
+      }
+      // Checked against the question as it would be stored: as first
+      // recorded, when it already is.
+      const problem = savedAnswerProblem(byKey.get(fieldKey(input.fieldRef)) ?? input, saved);
+      // Its own full stop would sit before the next problem's semicolon.
+      const reason = problem && lowerFirst(problem).replace(/\.$/, '');
+      return reason ? [`${name}: saved answer ${saved.id} does not fit: ${reason}`] : [];
+    });
+    if (problems.length > 0) {
+      throw new BadRequestError(
+        `Nothing was written: ${problems.join('; ')}. Call again with those questions sent ` +
+          'without saved_answer_id; Chris answers them in review.',
+      );
+    }
+
     const outcomes: RecordedQuestion[] = [];
     let wrote = false;
     for (const input of inputs) {
@@ -190,28 +265,47 @@ export async function addQuestions(
         input.isEeo ||
         looksLikeEeo(input.prompt) ||
         (found !== undefined && (found.isEeo || looksLikeEeo(found.prompt)));
-      const sent = encodeAnswer(input.proposedAnswer);
+      const saved = input.savedAnswerId ? savedById.get(input.savedAnswerId) : undefined;
+      // A link stands in for a proposal: the saved answer supplies it.
+      const sent = saved ? null : encodeAnswer(input.proposedAnswer);
       const proposal = eeo || input.source === null ? null : sent;
       // Said whenever an answer was sent, with a source or without: the tool
       // checks neither on an EEO question, since nothing of it is kept.
       const note = eeo && sent !== null ? { note: 'eeo_answer_dropped' as const } : {};
+      // A saved answer is Chris's own, so EEO does not drop it (C10).
+      const fromSaved = saved
+        ? {
+            source: 'saved' as const,
+            savedAnswerId: saved.id,
+            answerMode: saved.answerMode,
+            proposedAnswer: encodeAnswer(saved.answer),
+            answer: encodeAnswer(saved.answer),
+          }
+        : null;
 
       if (found) {
-        // A redraft is prose for prose: `canRedraft` held when it was asked for.
+        // A redraft is prose for prose: `canRedraft` held when it was asked
+        // for, and `savedAnswerProblem` holds for a saved one.
         const redraft =
           found.redraftNote !== null &&
           canRedraft(found) &&
-          proposal !== null &&
-          typeof input.proposedAnswer === 'string';
+          (fromSaved !== null || (proposal !== null && typeof input.proposedAnswer === 'string'));
         if (redraft) {
           const [row] = await tx
             .update(applicationQuestion)
             .set({
-              source: input.source,
-              answerMode: 'value',
-              proposedAnswer: proposal,
-              answer: proposal,
+              ...(fromSaved ?? {
+                source: input.source,
+                answerMode: 'value' as const,
+                proposedAnswer: proposal,
+                answer: proposal,
+                // The agent's words are not the saved answer, so the box
+                // unticks rather than claim they are. The saved answer
+                // itself stays live for other forms (D-048).
+                savedAnswerId: null,
+              }),
               redraftNote: null,
+              // Even from a saved answer: Chris asked to see this one again.
               approvedAt: null,
             })
             .where(eq(applicationQuestion.id, found.id))
@@ -237,10 +331,15 @@ export async function addQuestions(
           fieldRef,
           required: input.required,
           isEeo: eeo,
-          source: proposal === null ? null : input.source,
-          answerMode: proposal !== null && hasOptions(input.kind) ? input.answerMode : 'value',
-          proposedAnswer: proposal,
-          answer: proposal,
+          ...(fromSaved
+            ? { ...fromSaved, approvedAt: new Date() }
+            : {
+                source: proposal === null ? null : input.source,
+                answerMode:
+                  proposal !== null && hasOptions(input.kind) ? input.answerMode : 'value',
+                proposedAnswer: proposal,
+                answer: proposal,
+              }),
         })
         .returning();
       if (!row) throw new Error('failed to record an application question');
@@ -299,6 +398,11 @@ async function assertLiveAttachment(
  * (C3, D-044). There is no diffing: a write that puts back what was there
  * still reopens. Switching mode without an answer clears the answer, since
  * a value read as an instruction, or the reverse, is not what Chris chose.
+ *
+ * While the question is remembered, a new answer is written through to its
+ * saved answer as well: a global edit, like a bullet's, and the checkbox's
+ * hint says so (D-048). Clearing the answer writes nothing through, and the
+ * prompt stays as it was first saved.
  */
 export async function updateApplicationQuestion(
   userId: string,
@@ -328,6 +432,9 @@ export async function updateApplicationQuestion(
       );
     }
 
+    const [remembered] = row.savedAnswerId
+      ? await liveSavedAnswers(tx, userId, [row.savedAnswerId])
+      : [];
     const mode = patch.answerMode ?? row.answerMode;
     if (mode === 'instruction' && !hasOptions(row.kind)) {
       throw new BadRequestError('Only a choice question takes an instruction.');
@@ -364,8 +471,90 @@ export async function updateApplicationQuestion(
       .returning();
     if (!updated) throw new NotFoundError(`application question ${questionId} not found`);
 
+    const stored = answer === undefined ? null : encodeAnswer(answer);
+    if (remembered && stored !== null) {
+      await updateSavedAnswer(tx, userId, remembered.id, { answer: stored, answerMode: mode });
+    }
+
     await reopenForQuestions(tx, userId, row.applicationId);
-    return toWire(updated);
+    return toWire(updated, remembered?.id ?? null);
+  });
+}
+
+/**
+ * Chris ticks or unticks "remember this answer" (D-048). Ticking needs an
+ * answer `rememberProblem` accepts: it updates the saved answer the question
+ * is linked to, or saves a new one from the question's prompt, kind, mode
+ * and answer and links it. Unticking archives the linked one and unlinks
+ * it, which is the only way to retire a saved answer, since there is no
+ * page for them. Refused once the application has been sent.
+ *
+ * Neither touches the answer, its source or its approval, and neither
+ * reopens anything: remembering an answer is not an edit to it (C3). So it
+ * is its own endpoint, apart from the PATCH, which unapproves on every
+ * write.
+ */
+export async function setQuestionRemembered(
+  userId: string,
+  questionId: string,
+  remember: boolean,
+): Promise<ApplicationQuestion> {
+  return db.transaction(async (tx) => {
+    const [owned] = await tx
+      .select({ applicationId: applicationQuestion.applicationId })
+      .from(applicationQuestion)
+      .innerJoin(application, eq(applicationQuestion.applicationId, application.id))
+      .where(and(eq(applicationQuestion.id, questionId), eq(application.userId, userId)));
+    if (!owned) throw new NotFoundError(`application question ${questionId} not found`);
+
+    const app = await lockApplication(tx, userId, owned.applicationId);
+    const [row] = await tx
+      .select()
+      .from(applicationQuestion)
+      .where(eq(applicationQuestion.id, questionId))
+      .for('update');
+    if (!row) throw new NotFoundError(`application question ${questionId} not found`);
+
+    if (hasBeenSent(app.status)) {
+      throw new BadRequestError(
+        `This application is ${statusLabel(app.status)}: it has been sent, so its answers are ` +
+          'what went out.',
+      );
+    }
+
+    // A dead link, or one to another user's, is no link: ticking saves anew,
+    // and unticking archives nothing.
+    const [linked] = row.savedAnswerId
+      ? await liveSavedAnswers(tx, userId, [row.savedAnswerId])
+      : [];
+    let link: string | null = null;
+    if (remember) {
+      const problem = rememberProblem(approvable(row));
+      // `rememberProblem` refuses no answer, so `row.answer` is set past it.
+      if (problem || row.answer === null) throw new BadRequestError(problem ?? 'Answer it first.');
+      const values = { answer: row.answer, answerMode: row.answerMode };
+      if (linked) {
+        await updateSavedAnswer(tx, userId, linked.id, values);
+        link = linked.id;
+      } else {
+        const saved = await insertSavedAnswer(tx, userId, {
+          ...values,
+          prompt: row.prompt,
+          kind: row.kind,
+        });
+        link = saved.id;
+      }
+    } else if (linked) {
+      await archiveSavedAnswer(tx, userId, linked.id);
+    }
+
+    const [updated] = await tx
+      .update(applicationQuestion)
+      .set({ savedAnswerId: link })
+      .where(eq(applicationQuestion.id, questionId))
+      .returning();
+    if (!updated) throw new NotFoundError(`application question ${questionId} not found`);
+    return toWire(updated, link);
   });
 }
 
@@ -428,7 +617,14 @@ export async function approveApplicationQuestions(
       .where(inArray(applicationQuestion.id, ids))
       .returning();
     const approvedById = new Map(approved.map((row) => [row.id, row]));
-    return ids.map((id) => toWire(approvedById.get(id)!));
+    const live = await liveLinks(tx, userId, approved);
+    return ids.map((id) => {
+      const row = approvedById.get(id)!;
+      return toWire(
+        row,
+        row.savedAnswerId && live.has(row.savedAnswerId) ? row.savedAnswerId : null,
+      );
+    });
   });
 }
 

@@ -40,7 +40,9 @@ let updateApplicationFile: typeof import('./application-files.ts').updateApplica
 let addQuestions: typeof import('./application-questions.ts').addQuestions;
 let approveApplicationQuestions: typeof import('./application-questions.ts').approveApplicationQuestions;
 let listQuestions: typeof import('./application-questions.ts').listQuestions;
+let setQuestionRemembered: typeof import('./application-questions.ts').setQuestionRemembered;
 let updateApplicationQuestion: typeof import('./application-questions.ts').updateApplicationQuestion;
+let listSavedAnswers: typeof import('./saved-answers.ts').listSavedAnswers;
 let createCoverLetter: typeof import('./cover-letters.ts').createCoverLetter;
 let getCoverLetter: typeof import('./cover-letters.ts').getCoverLetter;
 let getDefaultCoverLetter: typeof import('./cover-letters.ts').getDefaultCoverLetter;
@@ -100,8 +102,14 @@ if (!skip) {
   } = await import('./cover-letters.ts'));
   ({ addApplicationFile, getApplicationFileBlob, listApplicationFiles, updateApplicationFile } =
     await import('./application-files.ts'));
-  ({ addQuestions, approveApplicationQuestions, listQuestions, updateApplicationQuestion } =
-    await import('./application-questions.ts'));
+  ({
+    addQuestions,
+    approveApplicationQuestions,
+    listQuestions,
+    setQuestionRemembered,
+    updateApplicationQuestion,
+  } = await import('./application-questions.ts'));
+  ({ listSavedAnswers } = await import('./saved-answers.ts'));
   ({
     createResume,
     deleteResume,
@@ -879,9 +887,11 @@ test(
 );
 
 // ---------------------------------------------------------------------------
-// API tokens. An eighth root table, and the one whose rows are credentials:
-// reaching another user's token means acting as them, not just reading
-// their data (D-039).
+// The eighth and ninth root tables, API tokens and saved answers: `user_id`
+// on the row, and one WHERE clause each. Both are worth more than they look.
+// A token is a credential, so reaching another user's means acting as them
+// (D-039). A saved answer is approved into every application that links it,
+// so linking another user's would answer your form with their words (D-048).
 // ---------------------------------------------------------------------------
 
 test(
@@ -900,3 +910,118 @@ test(
     assert.equal((await fixtures.getApiTokenRow(bobToken.id)).revokedAt, null);
   },
 );
+
+/** One text question on an application, answered. */
+const WHY_INPUT = {
+  fieldRef: { page: 0, label: 'Why us?' },
+  prompt: 'Why us?',
+  kind: 'text' as const,
+  options: null,
+  required: true,
+  isEeo: false,
+  source: null,
+  answerMode: 'value' as const,
+  proposedAnswer: null,
+};
+
+test("another user's saved answers are never listed or remembered into", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobSaved = await fixtures.insertSavedAnswer(bob.id, { answer: "Bob's words" });
+  const bobApplication = await fixtures.insertTestApplication(bob.id, `b-${tag}`, {
+    status: 'needs_review',
+  });
+  try {
+    const aliceSaved = await fixtures.insertSavedAnswer(alice.id);
+    assert.deepEqual(
+      (await listSavedAnswers(alice.id)).map((a) => a.id),
+      [aliceSaved.id],
+    );
+
+    const bobQuestion = await fixtures.insertTestQuestion(bobApplication.id, { answer: "Bob's" });
+    for (const remember of [true, false]) {
+      await assert.rejects(
+        () => setQuestionRemembered(alice.id, bobQuestion.id, remember),
+        NotFoundError,
+        String(remember),
+      );
+    }
+    // Nothing was written for either of them.
+    assert.deepEqual(
+      (await fixtures.listSavedAnswerRows(alice.id)).map((a) => a.id),
+      [aliceSaved.id],
+    );
+    assert.deepEqual(
+      (await fixtures.listSavedAnswerRows(bob.id)).map((a) => [a.id, a.isArchived]),
+      [[bobSaved.id, false]],
+    );
+    assert.equal((await fixtures.getQuestionRow(bobQuestion.id)).savedAnswerId, null);
+  } finally {
+    await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+test("add_questions cannot link another user's saved answer", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobSaved = await fixtures.insertSavedAnswer(bob.id);
+  const aliceApplication = await fixtures.insertTestApplication(alice.id, `a-${tag}`, {
+    status: 'proposing',
+  });
+  try {
+    const refusal = async (savedAnswerId: string) => {
+      let message = '';
+      await assert.rejects(
+        () =>
+          addQuestions(
+            alice.id,
+            aliceApplication.id,
+            [{ ...WHY_INPUT, savedAnswerId }],
+            ['proposing'],
+          ),
+        (error: Error) => {
+          message = error.message.replace(savedAnswerId, '<id>');
+          return error instanceof BadRequestError;
+        },
+      );
+      return message;
+    };
+    // Bob's reads exactly as one that does not exist.
+    const unknown = '3f2a91c4-0b7d-4a55-9c1e-2d8e6a8f3c1e';
+    assert.equal(await refusal(bobSaved.id), await refusal(unknown));
+    assert.deepEqual(await listQuestions(alice.id, aliceApplication.id), []);
+  } finally {
+    await fixtures.deleteApplicationRow(aliceApplication.id);
+  }
+});
+
+test("a question linked to another user's saved answer cannot reach it", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobSaved = await fixtures.insertSavedAnswer(bob.id, { answer: "Bob's words" });
+  const aliceApplication = await fixtures.insertTestApplication(alice.id, `a-${tag}`, {
+    status: 'needs_review',
+  });
+  try {
+    // A state no query writes, so it is written directly.
+    const question = await fixtures.insertTestQuestion(aliceApplication.id, {
+      answer: 'Alice',
+      savedAnswerId: bobSaved.id,
+    });
+    const [listed] = await listQuestions(alice.id, aliceApplication.id);
+    assert.equal(listed?.savedAnswerId, null, 'it reads as no link');
+
+    await updateApplicationQuestion(alice.id, question.id, { answer: 'Overwritten?' });
+    await setQuestionRemembered(alice.id, question.id, false);
+    const untouched = await fixtures.getSavedAnswerRow(bobSaved.id);
+    assert.deepEqual([untouched.answer, untouched.isArchived], ["Bob's words", false]);
+
+    // Ticking saves one of Alice's own.
+    const ticked = await setQuestionRemembered(alice.id, question.id, true);
+    assert.notEqual(ticked.savedAnswerId, bobSaved.id);
+    assert.deepEqual(
+      (await listSavedAnswers(alice.id)).map((a) => a.answer),
+      ['Overwritten?'],
+    );
+    assert.equal((await fixtures.getSavedAnswerRow(bobSaved.id)).answer, "Bob's words");
+  } finally {
+    await fixtures.deleteApplicationRow(aliceApplication.id);
+  }
+});

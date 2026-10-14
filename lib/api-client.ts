@@ -524,6 +524,17 @@ export function updateApplicationQuestion(
   });
 }
 
+/** `PUT /api/application-questions/:id/remember` — ticks or unticks
+ *  "remember this answer". Unticking archives the saved answer. Never
+ *  unapproves anything, unlike the PATCH. */
+export function setQuestionRemembered(id: string, remember: boolean): Promise<ApplicationQuestion> {
+  return requestJson<ApplicationQuestion>(`/api/application-questions/${id}/remember`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ remember }),
+  });
+}
+
 /** `POST /api/applications/:id/questions/approve` — all of `questionIds` or
  *  none; a `400` (thrown as `ApiError`) lists every one that cannot be. */
 export function approveApplicationQuestions(
