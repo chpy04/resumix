@@ -23,6 +23,7 @@ let updateCoverLetter: typeof import('./cover-letters.ts').updateCoverLetter;
 let updateExperienceBullet: typeof import('./experience-bullets.ts').updateExperienceBullet;
 let updateTemplate: typeof import('./templates.ts').updateTemplate;
 let replaceSelections: typeof import('./selections.ts').replaceSelections;
+let resolveBulletSuggestion: typeof import('./bullet-suggestions.ts').resolveBulletSuggestion;
 let fixtures: typeof import('./test-fixtures.ts');
 
 if (!skip) {
@@ -34,6 +35,7 @@ if (!skip) {
   ({ updateExperienceBullet } = await import('./experience-bullets.ts'));
   ({ updateTemplate } = await import('./templates.ts'));
   ({ replaceSelections } = await import('./selections.ts'));
+  ({ resolveBulletSuggestion } = await import('./bullet-suggestions.ts'));
   fixtures = await import('./test-fixtures.ts');
 }
 
@@ -368,6 +370,41 @@ test(
     } finally {
       await fixtures.deleteApplicationRow(ready.id);
       await fixtures.deleteApplicationRow(noLetter.id);
+    }
+  },
+);
+
+test(
+  'approveSection refuses the resume while a bullet suggestion is pending (D-045)',
+  { skip },
+  async () => {
+    const s = await approved('needs_review');
+    try {
+      await replaceSelections(s.user.id, s.resume.id, { experiences: [s.exp.id] });
+      const edit = await fixtures.insertBulletSuggestion(s.app.id, { bulletId: s.bullet.id });
+      const add = await fixtures.insertBulletSuggestion(s.app.id, {
+        kind: 'add',
+        parentId: s.exp.id,
+        position: 0,
+      });
+      await assert.rejects(
+        () => approveSection(s.user.id, s.app.id, 'resume'),
+        (err: Error) =>
+          err instanceof BadRequestError &&
+          err.message === 'Apply or reject the 2 bullet suggestions first.',
+      );
+      assert.equal((await s.read())?.resumeApprovedAt, null);
+
+      // The letter is another section, and is approved as before.
+      await updateCoverLetter(s.user.id, s.letter.id, { content: 'changed' });
+      assert.ok((await approveSection(s.user.id, s.app.id, 'coverLetter')).coverLetterApprovedAt);
+
+      // Once both are resolved, the resume is approved.
+      await resolveBulletSuggestion(s.user.id, edit.id, 'reject');
+      await resolveBulletSuggestion(s.user.id, add.id, 'reject');
+      assert.ok((await approveSection(s.user.id, s.app.id, 'resume')).resumeApprovedAt);
+    } finally {
+      await s.cleanup();
     }
   },
 );

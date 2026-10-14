@@ -28,6 +28,7 @@ Everything else infers its owner through its parent and carries **no**
 | `resume_pdf`                  | its resume's owner      | `resume_id`              |
 | `application_file`            | its application's owner | `application_id`         |
 | `application_question`        | its application's owner | `application_id`         |
+| `bullet_suggestion`           | its application's owner | `application_id`         |
 
 This is deliberate. A second `user_id` on a bullet would be a second,
 independently-writable copy of a fact the parent already records, and the two
@@ -227,10 +228,12 @@ letters are copied from it.
 
 ## Applications
 
-Three tables, and deliberately only three: no company table, no event log,
-no tasks, no contacts. An application is one row of mostly-optional text plus
-a status, because applications differ from each other enough that structure
-gets in the way (D-032). Its attachments and its form's questions hang off it.
+Five tables, and deliberately only five: no company table, no event log, no
+tasks, no contacts. An application is one row of mostly-optional text plus a
+status, because applications differ from each other enough that structure
+gets in the way (D-032). Its attachments, its form's questions and the
+agent's bullet suggestions hang off it, and Chris's saved answers sit beside
+it.
 
 ### `application`
 
@@ -459,3 +462,41 @@ question instead, and the saved answer stays as it was, live for other forms.
 **Duplicate prompts are allowed.** The same words can need different answers
 on two forms ("Which office?"); choosing between them is the agent's call
 (D15), and Resumix does no matching of its own.
+
+### `bullet_suggestion`
+
+What the agent would change about the bullets on one application's resume,
+held until Chris applies or rejects it in review (D-045). The agent never
+writes to the library; this table is how it proposes to.
+
+| column           | type                                       | notes                                                                       |
+| ---------------- | ------------------------------------------ | --------------------------------------------------------------------------- |
+| `application_id` | uuid → `application(id)` on delete cascade | owner inherited through this                                                |
+| `kind`           | `bullet_suggestion_kind` not null          | `edit` \| `add`                                                             |
+| `bullet_kind`    | `bullet_kind` not null                     | `experience` \| `project`: which tables the two ids below point into        |
+| `bullet_id`      | uuid, no FK                                | an edit's bullet: an `experience_bullet` or a `project_bullet`              |
+| `parent_id`      | uuid, no FK                                | an addition's parent: an `experience` or a `project`                        |
+| `position`       | integer                                    | an addition's slot among the parent's bullets this resume shows; 0 is first |
+| `proposed_text`  | text not null                              | plain text, one line; escaped into LaTeX only when it renders               |
+| `rationale`      | text not null                              | why the agent suggests it                                                   |
+| `status`         | `bullet_suggestion_status` not null        | `pending` \| `applied` \| `copied` \| `rejected`, default `pending`         |
+
+Two CHECKs. `ck_bullet_suggestion_target`: an edit has a `bullet_id` and
+neither of the other two, an addition a `parent_id` and a `position` of 0 or
+more and no `bullet_id`. `ck_bullet_suggestion_text`: neither text is blank.
+The partial unique index `ux_bullet_suggestion_pending_edit` on
+`(application_id, bullet_id) where status = 'pending'` allows one pending edit
+per bullet per application; a second edit replaces the first, and additions,
+whose `bullet_id` is null, never collide.
+
+**`bullet_id` and `parent_id` have no foreign keys**, because each points into
+one of two tables, chosen by `bullet_kind`. Content is never deleted (D-011),
+so a target cannot vanish, and every use goes back through the user-scoped
+bullet queries, which re-check that the caller owns it.
+
+**A row is never deleted.** Resolving one sets `status` and keeps the row:
+`applied` for Apply to bullet (the library bullet's content becomes the
+escaped text) and for Add bullet (a new bullet, selected at `position`),
+`copied` for Save as new (a sibling bullet swapped into this resume's
+selection), `rejected` for Reject. Only a pending row's text can be edited,
+and only in `needs_review`; Chris's edit overwrites `proposed_text`.

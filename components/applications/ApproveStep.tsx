@@ -5,10 +5,12 @@ import { ApiError, approveApplication, renderCoverLetter, renderResume } from '@
 import {
   applyCommand,
   finalApprovalProblems,
+  reviewStateOf,
   type ReviewStep,
   type ReviewStepKey,
 } from '@/lib/applications/review';
 import { questionProgress } from '@/lib/applications/questions';
+import { suggestionTally } from '@/lib/applications/suggestions';
 import { canCopy, copyText, type CopyResult } from '@/lib/clipboard';
 import type { SaveStatus } from '@/lib/editor/autosave';
 import type { ApplicationDetail } from '@/lib/types';
@@ -74,7 +76,7 @@ export default function ApproveStep({
 
   const { id, resumeId, coverLetterId } = application;
   const command = applyCommand(id);
-  const problems = finalApprovalProblems(application);
+  const problems = finalApprovalProblems(reviewStateOf(application));
   const unsaved = unsavedReason(resumeSaveStatus, questionsSaveStatus);
   const isReady = application.status === 'ready';
 
@@ -152,6 +154,9 @@ export default function ApproveStep({
             stepNumber={stepNumber('resume')}
             onGoTo={() => onGoTo('resume')}
           />
+        ) : null}
+        {application.bulletSuggestions.length > 0 ? (
+          <SuggestionsRow application={application} onGoTo={() => onGoTo('resume')} />
         ) : null}
         {coverLetterId ? (
           <SummaryRow
@@ -313,6 +318,44 @@ function SummaryRow({
           className="underline transition-colors hover:text-accent"
         >
           not approved — go to step {stepNumber}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+interface SuggestionsRowProps {
+  application: ApplicationDetail;
+  onGoTo: () => void;
+}
+
+/** What became of the agent's bullet suggestions: green once each is
+ *  applied or rejected, a way back to the resume, always step 1, while any
+ *  is pending (D-045). */
+function SuggestionsRow({ application, onGoTo }: SuggestionsRowProps) {
+  const { pending, text } = suggestionTally(application.bulletSuggestions);
+  return (
+    <div
+      data-testid="approve-row-suggestions"
+      className={`flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border px-4 py-3 text-sm ${
+        pending === 0
+          ? 'border-success-line bg-success-surface/20 text-success-ink'
+          : 'border-line bg-surface text-ink-dim'
+      }`}
+    >
+      <span className="font-medium">Bullet suggestions</span>
+      <span>·</span>
+      {pending === 0 ? (
+        <span>{text}</span>
+      ) : (
+        <button
+          type="button"
+          onClick={onGoTo}
+          className="underline transition-colors hover:text-accent"
+        >
+          {text}
         </button>
       )}
     </div>

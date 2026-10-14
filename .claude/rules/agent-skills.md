@@ -32,9 +32,11 @@ You write its files and never run them: no `claude` in `agent/`, no
   opening with a tool-like name (`get_`, `set_`, `list_`, `create_`,
   `update_`, `delete_`, `add_`, `suggest_`, `submit_`, `mark_` or `report_`)
   that `TOOLS` lacks. Reword a non-tool identifier rather than weaken it.
-- A skill chooses and orders library content. It never writes resume text,
-  and nothing in `agent/` may tell the model to. The tools that would are on
-  the NOT EXPOSED list in `.claude/rules/mcp.md`.
+- A skill chooses and orders library content. It never writes to the
+  library, and nothing in `agent/` may tell the model to: the tools that
+  would are on the NOT EXPOSED list in `.claude/rules/mcp.md`. The only
+  resume text it proposes goes through `mcp__resumix__suggest_bullet`, which
+  Chris applies or rejects in review (D-045).
 - **Playwright tools are written `mcp__playwright__<name>`,** never bare in
   a skill, and only from `PLAYWRIGHT_TOOLS` in the test: the default tools
   of the `@playwright/mcp` version `agent/.mcp.json` pins (core automation

@@ -8,10 +8,12 @@
  * application, finds it again, records two of its form's questions (D-047),
  * remembers one in-process, as the review page's checkbox would, and links
  * that saved answer to a third (D-048), selects a small resume into it,
- * which the real sidecar compiles, writes its cover letter in plain text
- * (D-046), and submits it for review (D-044). Then the apply pass (D-050):
- * Chris's approval in-process, the packet, its files over HTTP, a reported
- * question that sends it back to review, approval again, and
+ * which the real sidecar compiles, suggests an edit and an addition to its
+ * bullets without touching the library (D-045), writes its cover letter in
+ * plain text (D-046), and submits it for review (D-044). Then the apply pass
+ * (D-050): Chris's side in-process, rejecting both suggestions, which leaves
+ * the library as it was, and approving; the packet, its files over HTTP, a
+ * reported question that sends it back to review, approval again, and
  * `mark_applied`. That application and its letter are archived and its
  * saved answer archived when the script ends, so later specs' boards stay
  * as they were. Its resume is deleted only if nothing pinned a snapshot of
@@ -52,6 +54,7 @@ import {
   getApplicationRow,
   updateApplication,
 } from '../lib/queries/applications.ts';
+import { resolveBulletSuggestion } from '../lib/queries/bullet-suggestions.ts';
 import { updateCoverLetter } from '../lib/queries/cover-letters.ts';
 import { deleteResume } from '../lib/queries/resumes.ts';
 import { archiveSavedAnswer } from '../lib/queries/saved-answers.ts';
@@ -73,6 +76,7 @@ const TOOL_NAMES = [
   'create_application',
   'add_questions',
   'set_resume_selection',
+  'suggest_bullet',
   'set_cover_letter_body',
   'submit_for_review',
   'report_question',
@@ -188,7 +192,7 @@ async function callJson<T>(mcp: Mcp, name: string, args: Record<string, unknown>
 }
 
 interface LibraryJson {
-  experiences: { id: string; bullets: { id: string }[] }[];
+  experiences: { id: string; bullets: { id: string; text: string }[] }[];
   projects: { id: string }[];
   skill_rows: { id: string; skills: { id: string }[] }[];
 }
@@ -374,6 +378,65 @@ async function smokeTools(mcp: Mcp, userId: string, url: URL, secret: string): P
     assert.deepEqual(after.selection, selection);
     check('an unknown id is refused, and the selection is unchanged');
 
+    // Suggestions, while it is still proposing. The edit carries every
+    // character the escaper replaces but `\`, which the tool refuses, so the
+    // real sidecar compiles each replacement inside a resume bullet.
+    type Suggested = { suggestion_id: string; kind: string; replaced: boolean; ok: boolean };
+    const edited = experience.bullets[0];
+    const edit = await callJson<Suggested & { pages: number }>(mcp, 'suggest_bullet', {
+      application_id: applicationId,
+      kind: 'edit',
+      bullet_id: edited.id,
+      proposed_text: `Smoke ${tag}: a<b>c | 50% ~x^2_y {z} $5 & #1`,
+      rationale: 'The MCP smoke checks a suggestion compiles.',
+    });
+    const add = await callJson<Suggested & { pages: number }>(mcp, 'suggest_bullet', {
+      application_id: applicationId,
+      kind: 'add',
+      parent_id: experience.id,
+      position: 1,
+      proposed_text: `Smoke ${tag}: an added bullet`,
+      rationale: 'The MCP smoke checks an addition compiles.',
+    });
+    for (const [answer, kind] of [
+      [edit, 'edit'],
+      [add, 'add'],
+    ] as const) {
+      assert.deepEqual(
+        { kind: answer.kind, replaced: answer.replaced, ok: answer.ok, pages: answer.pages },
+        { kind, replaced: false, ok: true, pages: 1 },
+      );
+    }
+    const suggested = await callJson<{
+      bullet_suggestions: { suggestion_id: string; status: string }[];
+    }>(mcp, 'get_application', { application_id: applicationId });
+    assert.deepEqual(
+      suggested.bullet_suggestions.map((x) => [x.suggestion_id, x.status]),
+      [
+        [edit.suggestion_id, 'pending'],
+        [add.suggestion_id, 'pending'],
+      ],
+    );
+    const strange = await callTool(mcp, 'suggest_bullet', {
+      application_id: applicationId,
+      kind: 'edit',
+      bullet_id: randomUUID(),
+      proposed_text: 'Anything',
+      rationale: 'An unknown bullet.',
+    });
+    assert.equal(strange.isError, true, 'an unknown bullet was accepted');
+    assert.match(strange.content[0]?.text ?? '', /^No bullet .* in the library/);
+    // Nothing reached the library: the bullet reads as it did, and no
+    // bullet carries the smoke's text.
+    const bullets = (await callJson<LibraryJson>(mcp, 'get_library', {})).experiences.flatMap(
+      (e) => e.bullets,
+    );
+    assert.equal(bullets.find((b) => b.id === edited.id)?.text, edited.text);
+    assert.ok(!bullets.some((b) => b.text.includes(tag)), 'a suggestion reached the library');
+    check(
+      'suggest_bullet records an edit and an add, each compiling to one page, and the library is untouched',
+    );
+
     // All thirteen characters the escaper replaces, so the real sidecar
     // proves each replacement exists in its TeX Live.
     const letterText =
@@ -422,6 +485,7 @@ async function smokeTools(mcp: Mcp, userId: string, url: URL, secret: string): P
     await smokeApply(mcp, userId, applicationId, url, secret, {
       name: name.question_id,
       gender: gender.question_id,
+      suggestions: [edit.suggestion_id, add.suggestion_id],
     });
   } finally {
     // Archived, never deleted (D-048), so the agent never links it again.
@@ -457,7 +521,7 @@ async function smokeApply(
   applicationId: string,
   url: URL,
   secret: string,
-  questions: { name: string; gender: string },
+  ids: { name: string; gender: string; suggestions: string[] },
 ): Promise<void> {
   const approve = async (questionIds: string[]) => {
     if (questionIds.length > 0) {
@@ -466,10 +530,13 @@ async function smokeApply(
     const approved = await approveApplication(userId, applicationId);
     assert.ok(approved.ok, `final approval failed: ${JSON.stringify(approved)}`);
   };
+  // A pending suggestion blocks approving the resume (D-045). Rejecting
+  // writes nothing to the library, so the smoke leaves it as it found it.
+  for (const id of ids.suggestions) await resolveBulletSuggestion(userId, id, 'reject');
   await approveSection(userId, applicationId, 'resume');
   await approveSection(userId, applicationId, 'coverLetter');
   // The EEO question has no answer and is optional, so it stays unapproved.
-  await approve([questions.name]);
+  await approve([ids.name]);
 
   const packet = await callJson<PacketJson>(mcp, 'get_apply_packet', {
     application_id: applicationId,
@@ -480,10 +547,10 @@ async function smokeApply(
   assert.match(packet.cover_letter.filename, /_Cover_Letter\.pdf$/);
   const byId = new Map(packet.questions.map((q) => [q.question_id, q]));
   assert.deepEqual(
-    [byId.get(questions.name)?.answer, byId.get(questions.gender)?.approved],
+    [byId.get(ids.name)?.answer, byId.get(ids.gender)?.approved],
     ['Smoke Tester', false],
   );
-  assert.equal(byId.get(questions.gender)?.answer, null, 'an unapproved answer is left blank');
+  assert.equal(byId.get(ids.gender)?.answer, null, 'an unapproved answer is left blank');
   check('get_apply_packet answers the approved packet, with an unapproved question blank');
 
   // The files, over real HTTP, as the agent's script fetches them.

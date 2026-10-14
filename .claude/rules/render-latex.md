@@ -20,8 +20,10 @@ single easiest invariant in the repo to break "helpfully".
 
 The one exception is text that was never LaTeX: a cover letter's plain-text
 `body`, which `lib/render/escape.ts` escapes on its way into the letter
-(`lib/render/cover-letter.ts`, D-046). Bullets, templates and a letter's
-`content` never go through it.
+(`lib/render/cover-letter.ts`, D-046), and the agent's plain-text bullet
+suggestions, escaped when they are laid over a preview
+(`lib/render/suggestions.ts`) or applied to a bullet (D-045). Stored bullets,
+templates and a letter's `content` never go through it.
 
 ## `renderResume()` is pure
 

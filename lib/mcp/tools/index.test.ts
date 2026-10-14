@@ -37,6 +37,7 @@ test('the registry serves the library, application and apply tools, in this orde
       'create_application',
       'add_questions',
       'set_resume_selection',
+      'suggest_bullet',
       'set_cover_letter_body',
       'submit_for_review',
       'report_question',

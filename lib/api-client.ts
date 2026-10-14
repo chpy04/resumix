@@ -20,6 +20,8 @@ import type {
   ApplicationQuestion,
   ApplicationSummary,
   Bullet,
+  BulletSuggestion,
+  BulletSuggestionAction,
   CoverLetter,
   CoverLetterSummary,
   Experience,
@@ -166,15 +168,21 @@ export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
 /**
  * `POST /api/resumes/:id/render` — the live preview pane's only network
  * call. **Never persists anything** (that's `/pdf`, above). `templateOverride`
- * lets the Template tab preview unsaved LaTeX. Check `.ok`: a LaTeX compile
- * failure is a normal `200 { ok: false, errors, warnings }`, never a thrown
- * `ApiError` — same shape as `saveResumePdf` (`docs/API.md`).
+ * lets the Template tab preview unsaved LaTeX, and `suggestionsFor` lays an
+ * application's pending bullet suggestions over the preview in review
+ * (D-045). Check `.ok`: a LaTeX compile failure is a normal
+ * `200 { ok: false, errors, warnings }`, never a thrown `ApiError` — same
+ * shape as `saveResumePdf` (`docs/API.md`).
  */
-export function renderResume(id: string, templateOverride?: string): Promise<RenderResult> {
+export function renderResume(
+  id: string,
+  templateOverride?: string,
+  suggestionsFor?: string,
+): Promise<RenderResult> {
   return requestJson<RenderResult>(`/api/resumes/${id}/render`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify(templateOverride === undefined ? {} : { templateOverride }),
+    body: JSON.stringify({ templateOverride, suggestionsFor }),
   });
 }
 
@@ -469,6 +477,33 @@ export function approveApplicationSection(
  *  a thrown `400`; a LaTeX failure is the usual `200 { ok: false, ... }`. */
 export function approveApplication(id: string): Promise<ApplicationPdfResult> {
   return requestJson<ApplicationPdfResult>(`/api/applications/${id}/approve`, { method: 'POST' });
+}
+
+/** `PATCH /api/bullet-suggestions/:id` — Chris's edit to a pending
+ *  suggestion's text, before he applies it. */
+export function updateBulletSuggestion(
+  id: string,
+  proposedText: string,
+): Promise<BulletSuggestion> {
+  return requestJson<BulletSuggestion>(`/api/bullet-suggestions/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ proposedText }),
+  });
+}
+
+/** `POST /api/bullet-suggestions/:id/resolve` — `apply` (Apply to bullet, or
+ *  Add bullet), `copy` (Save as new) or `reject`. A `400` says why when it
+ *  cannot be, and nothing is written. */
+export function resolveBulletSuggestion(
+  id: string,
+  action: BulletSuggestionAction,
+): Promise<BulletSuggestion> {
+  return requestJson<BulletSuggestion>(`/api/bullet-suggestions/${id}/resolve`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ action }),
+  });
 }
 
 /** `PATCH /api/application-questions/:id` — the questions step's autosave

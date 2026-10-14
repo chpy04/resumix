@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/index.ts';
+import { db, type Executor } from '../db/index.ts';
 import { project, projectBullet } from '../db/schema.ts';
 import type { Bullet } from '../types.ts';
 import { NotFoundError } from './errors.ts';
@@ -9,8 +9,8 @@ function toWire(row: typeof projectBullet.$inferSelect): Bullet {
 }
 
 /** Ownership comes from the parent project — see experience-bullets.ts. */
-async function assertOwned(userId: string, bulletId: string): Promise<void> {
-  const [row] = await db
+async function assertOwned(userId: string, bulletId: string, exec: Executor): Promise<void> {
+  const [row] = await exec
     .select({ id: projectBullet.id })
     .from(projectBullet)
     .innerJoin(project, eq(projectBullet.projectId, project.id))
@@ -19,19 +19,21 @@ async function assertOwned(userId: string, bulletId: string): Promise<void> {
   if (!row) throw new NotFoundError(`project bullet ${bulletId} not found`);
 }
 
+/** `exec`: see experience-bullets.ts. */
 export async function createProjectBullet(
   userId: string,
   projectId: string,
   content: string,
+  exec: Executor = db,
 ): Promise<Bullet> {
-  const [parent] = await db
+  const [parent] = await exec
     .select({ id: project.id })
     .from(project)
     .where(and(eq(project.id, projectId), eq(project.userId, userId)))
     .limit(1);
   if (!parent) throw new NotFoundError(`project ${projectId} not found`);
 
-  const [row] = await db.insert(projectBullet).values({ projectId, content }).returning();
+  const [row] = await exec.insert(projectBullet).values({ projectId, content }).returning();
   if (!row) throw new Error('failed to create project bullet');
   return toWire(row);
 }
@@ -40,10 +42,11 @@ export async function updateProjectBullet(
   userId: string,
   id: string,
   patch: Partial<{ content: string; isArchived: boolean }>,
+  exec: Executor = db,
 ): Promise<Bullet> {
-  await assertOwned(userId, id);
+  await assertOwned(userId, id, exec);
 
-  const [row] = await db
+  const [row] = await exec
     .update(projectBullet)
     .set(patch)
     .where(eq(projectBullet.id, id))
