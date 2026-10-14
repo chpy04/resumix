@@ -14,8 +14,11 @@ const skip = !process.env.DATABASE_URL;
 let getApplyPacket: typeof import('./get-apply-packet.ts').getApplyPacket;
 let addApplicationFile: typeof import('../../queries/application-files.ts').addApplicationFile;
 let updateApplicationFile: typeof import('../../queries/application-files.ts').updateApplicationFile;
+let approveApplication: typeof import('../../application-approval.ts').approveApplication;
+let approveSection: typeof import('../../queries/applications.ts').approveSection;
 let getApplicationRow: typeof import('../../queries/applications.ts').getApplicationRow;
 let updateApplication: typeof import('../../queries/applications.ts').updateApplication;
+let updateCoverLetter: typeof import('../../queries/cover-letters.ts').updateCoverLetter;
 let fixtures: typeof import('../../queries/test-fixtures.ts');
 
 if (!skip) {
@@ -23,7 +26,11 @@ if (!skip) {
   ({ addApplicationFile, updateApplicationFile } = await import(
     '../../queries/application-files.ts'
   ));
-  ({ getApplicationRow, updateApplication } = await import('../../queries/applications.ts'));
+  ({ approveApplication } = await import('../../application-approval.ts'));
+  ({ approveSection, getApplicationRow, updateApplication } = await import(
+    '../../queries/applications.ts'
+  ));
+  ({ updateCoverLetter } = await import('../../queries/cover-letters.ts'));
   fixtures = await import('../../queries/test-fixtures.ts');
 }
 
@@ -228,7 +235,22 @@ test('with no letter, cover_letter is null', { skip }, async () => {
   }
 });
 
-test('an archived letter PDF is refused, and nothing changes', { skip }, async () => {
+/** The packet's letter, which must not be an error. */
+async function packetLetter(userId: string, applicationId: string) {
+  const result = await call(userId, applicationId);
+  assert.equal(result.isError, undefined, text(result));
+  return (JSON.parse(text(result)) as { cover_letter: { filename: string; url: string } | null })
+    .cover_letter;
+}
+
+function fileUrl(id: string): string {
+  return `/api/mcp/files/application-file/${id}`;
+}
+
+// The letter is pinned by `cover_letter_pdf_id` (D-050): nothing about the
+// files' names, or which are archived, changes which one is sent.
+
+test('an archived pinned letter is still the one sent (D-011)', { skip }, async () => {
   const tag = fixtures.testTag();
   const user = await fixtures.insertUser(`packet-al-${tag}`);
   const ready = await fixtures.insertReadyApplication(user.id, tag);
@@ -237,18 +259,71 @@ test('an archived letter PDF is refused, and nothing changes', { skip }, async (
     assert.ok(letterFile);
     await updateApplicationFile(user.id, letterFile.id, { isArchived: true });
 
-    const result = await call(user.id, ready.app.id);
-    assert.equal(result.isError, true);
-    assert.equal(
-      text(result),
-      `This application is Ready, but its approved cover letter PDF (${letterFile.filename}) is ` +
-        'missing or archived. Nothing was changed. Stop and tell Chris to approve it again.',
-    );
+    assert.deepEqual(await packetLetter(user.id, ready.app.id), {
+      filename: letterFile.filename,
+      url: fileUrl(letterFile.id),
+    });
     assert.equal((await getApplicationRow(user.id, ready.app.id))?.status, 'ready');
   } finally {
     await ready.cleanup();
   }
 });
+
+test('an earlier letter taken out of the archive is never sent instead', { skip }, async () => {
+  const tag = fixtures.testTag();
+  const user = await fixtures.insertUser(`packet-ua-${tag}`);
+  const ready = await fixtures.insertReadyApplication(user.id, tag);
+  try {
+    const [first] = await fixtures.listApplicationFileRows(ready.app.id);
+    assert.ok(first && ready.letter);
+
+    // Edit the letter, which reopens it, and approve again: the first PDF is
+    // archived and a second is pinned. Then Chris un-archives the first.
+    await updateCoverLetter(user.id, ready.letter.id, { body: 'October 14, 2026\n\nHi.' });
+    await approveSection(user.id, ready.app.id, 'coverLetter');
+    const latex = fixtures.stubLatex(() => 1);
+    try {
+      assert.ok((await approveApplication(user.id, ready.app.id)).ok);
+    } finally {
+      latex.restore();
+    }
+    const second = (await fixtures.listApplicationFileRows(ready.app.id)).find(
+      (f) => f.id !== first.id,
+    );
+    assert.ok(second);
+    await updateApplicationFile(user.id, first.id, { isArchived: false });
+
+    // Both are live, share a name, and the earlier is older: the pin decides.
+    assert.equal(second.filename, first.filename);
+    assert.equal((await packetLetter(user.id, ready.app.id))?.url, fileUrl(second.id));
+  } finally {
+    await ready.cleanup();
+  }
+});
+
+test(
+  'renaming a Ready letter still sends the pinned file, named as approved',
+  { skip },
+  async () => {
+    const tag = fixtures.testTag();
+    const user = await fixtures.insertUser(`packet-rn-${tag}`);
+    const ready = await fixtures.insertReadyApplication(user.id, tag);
+    try {
+      const [letterFile] = await fixtures.listApplicationFileRows(ready.app.id);
+      assert.ok(letterFile && ready.letter);
+      // A rename reopens nothing (C6), so the application stays Ready.
+      await updateCoverLetter(user.id, ready.letter.id, { name: `Renamed ${tag}` });
+      assert.equal((await getApplicationRow(user.id, ready.app.id))?.status, 'ready');
+
+      assert.deepEqual(await packetLetter(user.id, ready.app.id), {
+        filename: letterFile.filename,
+        url: fileUrl(letterFile.id),
+      });
+    } finally {
+      await ready.cleanup();
+    }
+  },
+);
 
 test('every other status is refused with what to do next', { skip }, async () => {
   const tag = fixtures.testTag();

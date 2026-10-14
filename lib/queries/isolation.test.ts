@@ -1046,14 +1046,14 @@ test("another user's Ready application can't be applied to", { skip }, async () 
   const ready = await fixtures.insertReadyApplication(bob.id, `b-${tag}`);
   try {
     const bobRow = await getApplicationRow(bob.id, ready.app.id);
-    const letterFile = (await fixtures.listApplicationFileRows(ready.app.id))[0];
-    assert.ok(bobRow?.resumePdfId && letterFile);
+    // Both pins: the resume snapshot, and the letter file (D-050).
+    assert.ok(bobRow?.resumePdfId && bobRow.coverLetterPdfId);
 
     assert.equal(await loadApplyPacket(alice.id, ready.app.id), null);
     assert.equal(await findReadyApplicationPinning(alice.id, bobRow.resumePdfId), null);
     for (const [kind, id] of [
       ['resume-pdf', bobRow.resumePdfId],
-      ['application-file', letterFile.id],
+      ['application-file', bobRow.coverLetterPdfId],
     ] as const) {
       const response = await serveApplyFile(alice.id, kind, id);
       assert.equal(response.status, 404, kind);
@@ -1066,11 +1066,18 @@ test("another user's Ready application can't be applied to", { skip }, async () 
       NotFoundError,
     );
 
-    // Nothing was written: Bob's is still Ready, unsent, with no new question.
+    // Nothing was written: Bob's is still Ready, unsent, with no new question,
+    // and pinned to the same two PDFs, which Bob can still fetch.
     const after = await getApplicationRow(bob.id, ready.app.id);
     assert.equal(after?.status, 'ready');
     assert.equal(after?.appliedAt, null);
     assert.ok(after?.approvedAt);
+    assert.deepEqual(
+      [after?.resumePdfId, after?.coverLetterPdfId],
+      [bobRow.resumePdfId, bobRow.coverLetterPdfId],
+    );
+    const bobs = await serveApplyFile(bob.id, 'application-file', bobRow.coverLetterPdfId);
+    assert.equal(bobs.status, 200);
     assert.deepEqual(await listQuestions(bob.id, ready.app.id), []);
     assert.equal((await loadApplyPacket(bob.id, ready.app.id))?.ok, true);
   } finally {

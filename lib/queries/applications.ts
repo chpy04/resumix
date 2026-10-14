@@ -670,9 +670,10 @@ export async function submitForReview(userId: string, id: string): Promise<boole
  * left unapproved. An edit that landed in between has cleared an approval,
  * so the guard fails and the whole transaction rolls back.
  *
- * The approved letter is the application's one non-archived file with the
- * letter's download name; approving again archives the previous one, since
- * nothing is deleted (D-011).
+ * The letter's PDF is pinned by `cover_letter_pdf_id`, as the resume's is by
+ * `resume_pdf_id`, and is null when there is no letter (D-050). Approving
+ * again archives the earlier files of that name, for tidiness, since nothing
+ * is deleted (D-011); the pointer, not the name, says which one was approved.
  */
 export async function recordFinalApproval(
   userId: string,
@@ -691,9 +692,42 @@ export async function recordFinalApproval(
     await lockApplication(tx, userId, id);
     const saved = await saveResumePdfSnapshot(input.resumeId, input.snapshot, tx);
 
+    // Stored before the guarded UPDATE so that one statement pins both PDFs;
+    // if the guard fails, the rollback takes this file and the archive with it.
+    let letterFileId: string | null = null;
+    if (input.letter) {
+      await tx
+        .update(applicationFile)
+        .set({ isArchived: true })
+        .where(
+          and(
+            eq(applicationFile.applicationId, id),
+            eq(applicationFile.filename, input.letter.filename),
+            eq(applicationFile.isArchived, false),
+          ),
+        );
+      const [stored] = await tx
+        .insert(applicationFile)
+        .values({
+          applicationId: id,
+          filename: input.letter.filename,
+          contentType: 'application/pdf',
+          bytes: input.letter.bytes,
+          byteSize: input.letter.bytes.byteLength,
+        })
+        .returning({ id: applicationFile.id });
+      if (!stored) throw new Error('failed to store the approved cover letter PDF');
+      letterFileId = stored.id;
+    }
+
     const [approved] = await tx
       .update(application)
-      .set({ resumePdfId: saved.id, approvedAt: new Date(), status: 'ready' })
+      .set({
+        resumePdfId: saved.id,
+        coverLetterPdfId: letterFileId,
+        approvedAt: new Date(),
+        status: 'ready',
+      })
       .where(
         and(
           eq(application.id, id),
@@ -734,25 +768,6 @@ export async function recordFinalApproval(
       );
     }
 
-    if (input.letter) {
-      await tx
-        .update(applicationFile)
-        .set({ isArchived: true })
-        .where(
-          and(
-            eq(applicationFile.applicationId, id),
-            eq(applicationFile.filename, input.letter.filename),
-            eq(applicationFile.isArchived, false),
-          ),
-        );
-      await tx.insert(applicationFile).values({
-        applicationId: id,
-        filename: input.letter.filename,
-        contentType: 'application/pdf',
-        bytes: input.letter.bytes,
-        byteSize: input.letter.bytes.byteLength,
-      });
-    }
     return approved;
   });
 

@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyFilePath,
-  approvedLetterFile,
   buildApplyPacket,
   packetFileRefs,
   packetHasFile,
   packetRefusal,
   type ApplyPacket,
   type ApplyPacketSource,
+  type ApprovedPdfs,
 } from './apply-packet.ts';
 import { APPLICATION_STATUSES } from './status.ts';
 import type { ApplicationFile, ApplicationQuestion } from '../types.ts';
@@ -67,23 +67,34 @@ function source(overrides: Partial<ApplyPacketSource> = {}): ApplyPacketSource {
     approvedAt: STAMP,
     coverLetterId: 'c0000000-0000-4000-8000-000000000001',
     sentPdf: { filename: 'Chris_Pyle_Halcyon_Freight_Resume.pdf', createdAt: STAMP },
-    pdfFilenames: { resume: 'Chris_Pyle_Halcyon_Freight_Resume.pdf', coverLetter: LETTER_NAME },
     files: [LETTER, SAMPLE],
     questions: [question()],
     ...overrides,
   };
 }
 
-function packetOf(s: ApplyPacketSource): ApplyPacket {
-  const result = buildApplyPacket(s, PDF_ID);
+/** What final approval pinned: the resume snapshot and the letter's file. */
+const PINNED: ApprovedPdfs = { resumePdfId: PDF_ID, coverLetterPdfId: LETTER.id };
+
+function packetOf(s: ApplyPacketSource, pdfs: ApprovedPdfs = PINNED): ApplyPacket {
+  const result = buildApplyPacket(s, pdfs);
   assert.ok(result.ok, result.ok ? '' : result.refusal);
   return result.packet;
 }
 
-function refusalOf(s: ApplyPacketSource, resumePdfId: string | null = PDF_ID): string {
-  const result = buildApplyPacket(s, resumePdfId);
+function refusalOf(s: ApplyPacketSource, pdfs: ApprovedPdfs = PINNED): string {
+  const result = buildApplyPacket(s, pdfs);
   assert.equal(result.ok, false);
   return result.ok ? '' : result.refusal;
+}
+
+/** The broken-packet refusal, around what is wrong. */
+function broken(problems: string): string {
+  return (
+    `This application is Ready, but ${problems}. Nothing was changed. Stop and tell Chris it ` +
+    `changed after it was approved: any edit in its review at /applications/${APP_ID}/review ` +
+    'sends it back to Needs review, and then he can approve it again.'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -200,24 +211,56 @@ test('a file answer is the attachment it picked, never the id as an answer', () 
 });
 
 test('with no letter linked, there is no letter', () => {
-  const packet = packetOf(
-    source({ coverLetterId: null, pdfFilenames: { resume: 'r.pdf', coverLetter: null } }),
-  );
+  const packet = packetOf(source({ coverLetterId: null }), { ...PINNED, coverLetterPdfId: null });
   assert.equal(packet.coverLetter, null);
+});
+
+// ---------------------------------------------------------------------------
+// The pinned letter (D-050): by id, never by name
+// ---------------------------------------------------------------------------
+
+test('the letter is the pinned file, whatever else shares its name', () => {
+  // Approved once (OLD), reopened, approved again (PINNED): approval archived
+  // OLD, and Chris then took it out of the archive. The pin still says which.
+  const old = file({
+    id: 'f0000000-0000-4000-8000-00000000000a',
+    createdAt: '2026-10-01T10:00:00.000Z',
+  });
+  const uploaded = file({
+    id: 'f0000000-0000-4000-8000-00000000000b',
+    createdAt: '2026-10-14T10:00:00.000Z',
+  });
+  const packet = packetOf(source({ files: [uploaded, LETTER, old] }));
+  assert.equal(packet.coverLetter?.id, LETTER.id);
+});
+
+test('a renamed letter still sends the pinned file, under the name it was approved with', () => {
+  // The packet reads no letter name at all: the file keeps the name approval
+  // stored it under, whatever the letter is called now.
+  const packet = packetOf(source());
+  assert.equal(packet.coverLetter?.filename, LETTER_NAME);
+});
+
+test('a pinned letter is sent even once archived (D-011)', () => {
+  const packet = packetOf(source({ files: [{ ...LETTER, isArchived: true }, SAMPLE] }));
+  assert.deepEqual(packet.coverLetter, {
+    kind: 'application-file',
+    id: LETTER.id,
+    filename: LETTER_NAME,
+    url: applyFilePath('application-file', LETTER.id),
+  });
 });
 
 // ---------------------------------------------------------------------------
 // Problems
 // ---------------------------------------------------------------------------
 
-test('a linked letter whose approved PDF is gone is refused', () => {
-  for (const files of [[], [file({ isArchived: true })], [file({ filename: 'Other.pdf' })]]) {
-    assert.equal(
-      refusalOf(source({ files })),
-      `This application is Ready, but its approved cover letter PDF (${LETTER_NAME}) is missing ` +
-        'or archived. Nothing was changed. Stop and tell Chris to approve it again.',
-    );
-  }
+test('a linked letter with no pinned PDF is refused, with what to do', () => {
+  // An approval made before the pointer existed leaves none.
+  assert.equal(
+    refusalOf(source(), { ...PINNED, coverLetterPdfId: null }),
+    broken('its cover letter has no approved PDF'),
+  );
 });
 
 test('a file answer naming a missing or archived attachment is refused', () => {
@@ -229,18 +272,15 @@ test('a file answer naming a missing or archived attachment is refused', () => {
           questions: [question({ kind: 'file', prompt: 'Writing sample', answer: SAMPLE.id })],
         }),
       ),
-      'This application is Ready, but the attachment picked for "Writing sample" is missing or ' +
-        'archived. Nothing was changed. Stop and tell Chris to approve it again.',
+      broken('the attachment picked for "Writing sample" is missing or archived'),
     );
   }
 });
 
 test('a missing resume snapshot is refused, and every problem is named at once', () => {
   assert.equal(
-    refusalOf(source({ files: [] }), null),
-    'This application is Ready, but it has no approved resume PDF; its approved cover letter ' +
-      `PDF (${LETTER_NAME}) is missing or archived. Nothing was changed. Stop and tell Chris to ` +
-      'approve it again.',
+    refusalOf(source({ files: [] }), { resumePdfId: null, coverLetterPdfId: LETTER.id }),
+    broken('it has no approved resume PDF; its cover letter has no approved PDF'),
   );
   assert.match(refusalOf(source({ sentPdf: null })), /it has no approved resume PDF/);
 });
@@ -282,32 +322,15 @@ test('only a Ready application has a packet, and each refusal says what to do', 
     );
   }
   for (const status of APPLICATION_STATUSES) {
-    const result = buildApplyPacket(source({ status }), PDF_ID);
+    const result = buildApplyPacket(source({ status }), PINNED);
     assert.equal(result.ok, status === 'ready', status);
     if (!result.ok) assert.equal(result.refusal, packetRefusal(status, APP_ID), status);
   }
 });
 
 // ---------------------------------------------------------------------------
-// The approved letter, and the file set
+// The file set
 // ---------------------------------------------------------------------------
-
-test('the approved letter is the earliest live file of its name', () => {
-  const approved = file({ id: 'f0000000-0000-4000-8000-00000000000a', createdAt: STAMP });
-  const uploadedSince = file({
-    id: 'f0000000-0000-4000-8000-00000000000b',
-    createdAt: '2026-10-14T10:00:00.000Z',
-  });
-  const archived = file({
-    id: 'f0000000-0000-4000-8000-00000000000c',
-    createdAt: '2026-10-01T10:00:00.000Z',
-    isArchived: true,
-  });
-  // Newest first, as `listApplicationFiles` orders them.
-  assert.equal(approvedLetterFile([uploadedSince, approved, archived], LETTER_NAME), approved);
-  assert.equal(approvedLetterFile([archived], LETTER_NAME), null);
-  assert.equal(approvedLetterFile([SAMPLE], LETTER_NAME), null);
-});
 
 test('the file set is the resume, the letter and each picked attachment, and nothing else', () => {
   const packet = packetOf(

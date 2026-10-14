@@ -26,6 +26,20 @@ test('PATCH accepts every manual status', () => {
   }
 });
 
+test('a PATCH never carries a pinned PDF: only final approval writes those (D-050)', () => {
+  const pinned = '3f2a91c4-0b7d-4a55-9c1e-2d8e6a8f3c1e';
+  // Unknown keys are dropped, so neither pin reaches updateApplication.
+  const parsed = patchApplicationSchema.safeParse({
+    company: 'Halcyon',
+    resumePdfId: pinned,
+    coverLetterPdfId: pinned,
+  });
+  assert.ok(parsed.success);
+  assert.deepEqual(parsed.data, { company: 'Halcyon' });
+  // On their own, they are a PATCH with nothing in it.
+  assert.equal(patchApplicationSchema.safeParse({ coverLetterPdfId: pinned }).success, false);
+});
+
 test('PATCH accepts applied, which is how a ready application leaves the flow', () => {
   assert.deepEqual(patchApplicationSchema.parse({ status: 'applied' }), { status: 'applied' });
 });

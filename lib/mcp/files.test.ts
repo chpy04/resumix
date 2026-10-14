@@ -77,8 +77,8 @@ async function setup() {
     tex: '',
   });
   const row = await getApplicationRow(user.id, ready.app.id);
-  const letterFile = (await fixtures.listApplicationFileRows(ready.app.id)).find((f) =>
-    f.filename.endsWith('_Cover_Letter.pdf'),
+  const letterFile = (await fixtures.listApplicationFileRows(ready.app.id)).find(
+    (f) => f.id === row?.coverLetterPdfId,
   );
   assert.ok(row?.resumePdfId && letterFile && files.sample && files.notes);
   return {
@@ -187,17 +187,21 @@ test('nothing is served once the application is reopened, sent or archived', { s
 });
 
 test(
-  'an archived file is not served, and an archived letter breaks the packet',
+  'the pinned letter is served once archived, and an unpicked file is not',
   { skip },
   async () => {
     const s = await setup();
     try {
-      // Archiving the letter's PDF reopens nothing, so the application stays
-      // Ready with a packet that can't be built, and none of it is served.
+      // Archiving reopens nothing, and the pin is what was approved (D-011).
       await updateApplicationFile(s.user.id, s.letterFileId, { isArchived: true });
       assert.equal((await getApplicationRow(s.user.id, s.app.id))?.status, 'ready');
-      await expectNotFound(s.user.id, 'application-file', s.letterFileId, 'the archived letter');
-      await expectNotFound(s.user.id, 'resume-pdf', s.resumePdfId, 'the resume of a broken packet');
+      const letter = await serveApplyFile(s.user.id, 'application-file', s.letterFileId);
+      assert.equal(letter.status, 200);
+      assert.equal(Buffer.from(await letter.arrayBuffer()).toString('latin1'), STUB_PDF);
+
+      // An attachment nothing picked stays unservable, archived or not.
+      await updateApplicationFile(s.user.id, s.notesId, { isArchived: true });
+      await expectNotFound(s.user.id, 'application-file', s.notesId, 'an archived unpicked file');
     } finally {
       await s.cleanup();
     }

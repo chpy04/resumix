@@ -110,6 +110,7 @@ test(
 
       const files = await fixtures.listApplicationFileRows(s.app.id);
       assert.equal(files.length, 1);
+      assert.equal((await s.read())?.coverLetterPdfId, files[0]?.id, 'the letter PDF is pinned');
       assert.equal(files[0]?.filename, buildCoverLetterFilename(s.company));
       assert.match(files[0]?.filename ?? '', /_Cover_Letter\.pdf$/);
       assert.equal(files[0]?.contentType, 'application/pdf');
@@ -192,6 +193,7 @@ test('with no letter, approval needs only the resume and stores no file', { skip
     assert.equal(result.application.status, 'ready');
     assert.equal(latex.sent.length, 1);
     assert.deepEqual(await fixtures.listApplicationFileRows(s.app.id), []);
+    assert.equal((await s.read())?.coverLetterPdfId, null);
   } finally {
     latex.restore();
     await s.cleanup();
@@ -319,10 +321,14 @@ test(
     try {
       const first = await approveApplication(s.user.id, s.app.id);
       assert.ok(first.ok);
+      const firstPin = (await s.read())?.coverLetterPdfId;
+      assert.ok(firstPin);
 
       // The letter changes after approval, which reopens it; approve it again.
       await updateCoverLetter(s.user.id, s.letter!.id, { content: `${LETTER_MARKER} v2` });
       assert.equal((await s.read())?.status, 'needs_review');
+      // A reopen leaves the pin, as it leaves resume_pdf_id (D-050).
+      assert.equal((await s.read())?.coverLetterPdfId, firstPin);
       await approveSection(s.user.id, s.app.id, 'coverLetter');
       const second = await approveApplication(s.user.id, s.app.id);
       assert.ok(second.ok);
@@ -332,6 +338,11 @@ test(
       assert.deepEqual(
         files.map((f) => f.isArchived),
         [true, false],
+      );
+      assert.deepEqual(
+        [files[0]?.id, (await s.read())?.coverLetterPdfId],
+        [firstPin, files[1]?.id],
+        'the new letter file is pinned in place of the first',
       );
       assert.equal(
         second.application.files.filter((f) => !f.isArchived).length,
@@ -368,6 +379,7 @@ test('an edit that lands during approval rolls the whole approval back', { skip 
     );
     assert.deepEqual(await fixtures.listResumePdfIds(s.resume.id), [], 'the snapshot rolled back');
     assert.equal((await s.read())?.status, 'needs_review');
+    assert.equal((await s.read())?.coverLetterPdfId, null);
   } finally {
     await s.cleanup();
   }

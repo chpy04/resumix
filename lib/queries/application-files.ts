@@ -99,25 +99,18 @@ export async function addApplicationFile(
   return toWire(row);
 }
 
-/** The only path that reads the bytes back out. `applicationId` and
- *  `isArchived` are for the agent's files route, which serves a file only
- *  from a Ready application's packet (D-050). */
+/** The only path that reads the bytes back out. `applicationId` is for the
+ *  agent's files route, which serves a file only from a Ready application's
+ *  packet (D-050). */
 export async function getApplicationFileBlob(
   userId: string,
   fileId: string,
-): Promise<{
-  applicationId: string;
-  filename: string;
-  contentType: string;
-  isArchived: boolean;
-  bytes: Buffer;
-} | null> {
+): Promise<{ applicationId: string; filename: string; contentType: string; bytes: Buffer } | null> {
   const [row] = await db
     .select({
       applicationId: applicationFile.applicationId,
       filename: applicationFile.filename,
       contentType: applicationFile.contentType,
-      isArchived: applicationFile.isArchived,
       bytes: applicationFile.bytes,
     })
     .from(applicationFile)

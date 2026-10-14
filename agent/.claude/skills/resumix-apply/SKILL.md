@@ -249,8 +249,8 @@ the text tells you to fix the call and call again.
 - **`mcp__resumix__ping` fails, or any call fails to connect or
   authenticate:** stop and tell Chris.
 - **`mcp__resumix__get_apply_packet` says the application is proposing,
-  in Needs review, already sent, logged by hand, or Ready but missing an
-  approved file:** stop, and quote it to Chris.
+  in Needs review, already sent, logged by hand, or Ready but its packet
+  can't be built:** stop, and quote it to Chris.
 - **`./fetch-apply-files.sh` fails:** stop, and upload nothing.
 - **`mcp__resumix__report_question` says the field is already in the
   packet:** fill it from the entry it names, and go on.

@@ -487,9 +487,12 @@ already in `needs_review`, it re-checks the pages and leaves it there.
 exactly what Chris approved (C4, D-050). Refused, writing nothing, unless the
 application is `ready`; each refusal says what to do (still proposing, in
 Needs review with the path of its review page, already sent, or logged by
-hand). A Ready application whose approved files cannot all be found (an
-archived letter PDF, an archived attachment a `file` answer picked) is
-refused too, telling the agent to have Chris approve it again. Its
+hand). A Ready application whose packet cannot be built is refused too:
+with no pinned resume PDF, a linked letter with no pinned PDF (only an
+approval older than `cover_letter_pdf_id` leaves one), or a `file` answer
+naming an attachment that is missing or archived. The text says that any
+edit in its review sends it back to Needs review, after which Chris can
+approve it again: a Ready application cannot be approved as it stands. Its
 `questions` are `[{ question_id, field_ref, prompt, kind, options, required,
 is_eeo, approved, answer_mode, answer, file }]`.
 
@@ -499,11 +502,13 @@ is_eeo, approved, answer_mode, answer, file }]`.
   optional one can be, on a Ready application) has `answer_mode` and
   `answer` null, which means leave that field empty. It is still listed, so
   the apply pass knows the field and never reports it.
-- **Files are paths, not absolute URLs.** `resume` is the pinned snapshot,
-  `cover_letter` the PDF final approval stored, and an approved `file`
-  question's `file` the attachment it picked, each `{ filename, url }`. The
-  agent fetches `url` against the origin of its MCP URL, with the same token
-  (Files for the agent, below).
+- **Files are paths, not absolute URLs.** `resume` is the snapshot
+  `resume_pdf_id` pins, `cover_letter` the file `cover_letter_pdf_id` pins,
+  and an approved `file` question's `file` the attachment it picked, each
+  `{ filename, url }`. Both PDFs come from their pins, never from a name:
+  renaming the letter changes nothing sent, and a pinned file is sent even
+  once archived (D-011). The agent fetches `url` against the origin of its
+  MCP URL, with the same token (Files for the agent, below).
 
 **`report_question`** records a field the apply pass met that the packet
 does not have (R12). `question` takes exactly `add_questions`' shape, and is
@@ -538,12 +543,13 @@ which `get_application` must then show as pending, with the library unchanged
 and an unknown `bullet_id` refused, writes its cover letter with
 `set_cover_letter_body`, in text holding every character the escaper
 replaces, which must also compile to one page, twice into the same letter,
-and submits it for review, which
-`get_application` must then show as `needs_review`; submitting an unknown id
-must be `isError`. It then does Chris's part in-process: it rejects both
-suggestions, which leaves the library as it was, and approves the
-application, final approval compiling on the real sidecar. Then it applies: `get_apply_packet` must list the approved answer and leave the
-unapproved EEO one blank; both packet files must download over HTTP as PDFs
+and submits it for review, which `get_application` must then show as
+`needs_review`; submitting an unknown id must be `isError`. It then does
+Chris's part in-process: it rejects both suggestions, which leaves the
+library as it was, and approves the application, final approval compiling
+on the real sidecar. Then it applies: `get_apply_packet` must list the
+approved answer and leave the unapproved EEO one blank; both packet files
+must download over HTTP as PDFs
 with the token, and be `401` without it and `404` for an unknown id;
 `report_question` must send it back to `needs_review`, after which the packet
 and its files are refused; and, approved again, `mark_applied` must make it
@@ -566,13 +572,13 @@ reaches the agent: no tool returns bytes (C5, D-050).
   no live `rmx_` token it is the same `401 { "error": "unauthorized" }`.
 - **A live Ready application's packet, and nothing else.** A file is served
   while it is in the packet `get_apply_packet` would return now: the pinned
-  resume PDF, the attachment final approval stored as the letter's PDF, and
-  the attachments approved `file` questions picked. Everything else is
+  resume PDF, the pinned letter PDF, archived or not, and the attachments
+  approved `file` questions picked. Everything else is
   `404 { "error": "file <id> not found" }`: another user's file, an
-  attachment nothing picked, an archived one, a snapshot other than the
-  pinned one, an id that is not a uuid, and every file of an application
-  that has been reopened, sent or archived, or whose packet cannot be built.
-  So a path stops working once its application leaves Ready.
+  attachment nothing picked, a snapshot other than the pinned one, an id
+  that is not a uuid, and every file of an application that has been
+  reopened, sent or archived, or whose packet cannot be built. So a path
+  stops working once its application leaves Ready.
 - **Headers:** `Content-Disposition: attachment` with the file's name,
   `Content-Length`, `X-Content-Type-Options: nosniff` and
   `Cache-Control: no-store`. A resume is `application/pdf`; an attachment's
@@ -765,7 +771,9 @@ stores a `resume_pdf` snapshot named after the company and pins it as
 `sentPdf` (the path `POST /pdf` takes), stores the letter's PDF as an
 `application/pdf` attachment named like its download
 (`<prefix>_<Company>_Cover_Letter.pdf`), archiving any earlier one of that
-name, and sets `approvedAt` and `ready`. A LaTeX failure,
+name, pins it as the application's approved letter (`cover_letter_pdf_id`,
+D-050, which no PATCH can set), and sets `approvedAt` and `ready`. A LaTeX
+failure,
 or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
 with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
 If an edit lands while the documents compile, the transaction finds the

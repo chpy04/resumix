@@ -5,8 +5,9 @@
  * `Response`, like `http.ts`, so it runs under `node --test` without Next.
  *
  * Strict on purpose: a file is served only while it is in a live Ready
- * application's apply packet, which is the pinned resume PDF, the approved
- * letter's PDF, and the attachments its `file` questions picked. The token
+ * application's apply packet, which is the pinned resume PDF, the pinned
+ * letter PDF, archived or not, and the attachments its `file` questions
+ * picked. The token
  * sits with an agent that reads untrusted pages, so it can fetch only what
  * Chris approved to send, and a path stops working once the application is
  * reopened or sent. Every miss is the same 404, whoever's the file is.
@@ -42,12 +43,9 @@ async function findServable(
   if (!fileId.safeParse(id).success) return null;
 
   const blob = kind === 'application-file' ? await getApplicationFileBlob(userId, id) : null;
+  // An archived file may still be the pinned letter; the packet decides.
   const applicationId =
-    kind === 'resume-pdf'
-      ? await findReadyApplicationPinning(userId, id)
-      : blob && !blob.isArchived
-        ? blob.applicationId
-        : null;
+    kind === 'resume-pdf' ? await findReadyApplicationPinning(userId, id) : blob?.applicationId;
   if (!applicationId) return null;
 
   // Rebuilt, not trusted: a file is served only while the packet names it.

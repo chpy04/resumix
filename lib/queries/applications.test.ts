@@ -352,7 +352,7 @@ test('files attach, come back out byte for byte, and archive', { skip }, async (
 
     const blob = await getApplicationFileBlob(userId, stored.id);
     assert.equal(blob?.bytes.toString('utf8'), 'Dear hiring manager,\n');
-    assert.deepEqual([blob?.applicationId, blob?.isArchived], [created.id, false]);
+    assert.equal(blob?.applicationId, created.id);
 
     const detail = await getApplicationDetail(userId, created.id);
     assert.deepEqual(
@@ -362,7 +362,6 @@ test('files attach, come back out byte for byte, and archive', { skip }, async (
 
     const archived = await updateApplicationFile(userId, stored.id, { isArchived: true });
     assert.equal(archived.isArchived, true);
-    assert.equal((await getApplicationFileBlob(userId, stored.id))?.isArchived, true);
 
     // Archived, not gone (D-011).
     const files = await listApplicationFiles(userId, created.id);

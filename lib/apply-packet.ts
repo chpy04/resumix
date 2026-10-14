@@ -17,8 +17,11 @@ export async function loadApplyPacket(
   const row = await findLiveApplication(userId, id);
   if (!row) return null;
 
-  // The detail names the pinned PDF but does not identify it; the row does.
+  // The detail names the pinned PDFs but does not identify them; the row does.
   const detail = await getApplicationDetail(userId, id);
   if (!detail) return null;
-  return buildApplyPacket(detail, row.resumePdfId);
+  return buildApplyPacket(detail, {
+    resumePdfId: row.resumePdfId,
+    coverLetterPdfId: row.coverLetterPdfId,
+  });
 }
