@@ -420,6 +420,12 @@ export const application = pgTable(
     coverLetterId: uuid('cover_letter_id').references(() => coverLetter.id, {
       onDelete: 'set null',
     }),
+    /** The letter's PDF final approval stored, as `resumePdfId` pins the
+     *  resume's; written by final approval and nothing else (D-050). */
+    coverLetterPdfId: uuid('cover_letter_pdf_id').references(
+      (): AnyPgColumn => applicationFile.id,
+      { onDelete: 'restrict' },
+    ),
     // What the agent supplies. Null, not '', when it never supplied one.
     jobDescription: text('job_description'),
     /** The agent's evaluation of the posting, as plain text. */
@@ -442,6 +448,7 @@ export const application = pgTable(
     index('ix_application_resume_id').on(t.resumeId),
     index('ix_application_resume_pdf_id').on(t.resumePdfId),
     index('ix_application_cover_letter_id').on(t.coverLetterId),
+    index('ix_application_cover_letter_pdf_id').on(t.coverLetterPdfId),
     check('ck_application_fit_score', sql`${t.fitScore} between 0 and 5`),
   ],
 );

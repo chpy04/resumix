@@ -55,6 +55,12 @@ export const someTool = defineTool({
   `BadRequestError` becomes `isError` carrying its message. Any other throw
   becomes a generic internal error, so never put the useful part of a failure
   in a plain `Error`.
+- **A file reaches the agent as a path, never as bytes in a result** (C5).
+  A tool returns `applyFilePath(kind, id)`, a path under `/api/mcp/files/`
+  that the agent fetches with its own token, and `lib/mcp/files.ts` serves
+  only what a Ready application's apply packet names (D-050). A new kind of
+  file goes in the packet first, so the route never serves more than a tool
+  hands out.
 - **Never add the board's "NOT EXPOSED" tools:** `approve_*` (approval happens
   only in the UI), `update_bullet` and `create_bullet` (suggestions are applied
   in the UI), `update_template`, and any `delete_*`.
@@ -63,7 +69,8 @@ export const someTool = defineTool({
 
 `app/api/mcp/route.ts` checks the token (`requireMcpUserId`, D-039) and hands
 over to `handleMcpPost`, nothing more. Every handler under `/api/mcp/**`
-starts with that check, `GET` included.
+starts with that check, `GET` included, and the files routes under
+`app/api/mcp/files/` hand over to `serveApplyFile` the same way.
 
 `scripts/mcp-smoke.ts` is for the dev stack only (C8, C14). It reads
 `MCP_SMOKE_URL`, and refuses a non-loopback host and production's ports.

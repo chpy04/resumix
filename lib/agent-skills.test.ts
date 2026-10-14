@@ -2,18 +2,23 @@
 // statically (C8). No Claude that builds Resumix ever runs one, so a skill
 // naming a tool `/api/mcp` does not serve, or a routing block the installer
 // cannot parse, would otherwise first fail in production, in front of Chris.
-// Pure: git, the filesystem and bash, never the database or the network.
+// Pure: git, the filesystem and bash, never the database or a remote host;
+// the download script's tests talk to a server of their own on 127.0.0.1.
 // The conventions it enforces are in .claude/rules/agent-skills.md.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -30,6 +35,10 @@ const PROPOSE = `${SKILLS_DIR}resumix-propose/SKILL.md`;
 const ROUTING = 'agent/career-ops-custom.md';
 const INSTALLER = 'agent/install-career-ops-custom.sh';
 const EVAL = 'agent/evals/propose.md';
+const FETCHER = 'agent/fetch-apply-files.sh';
+const APPLY = `${SKILLS_DIR}resumix-apply/SKILL.md`;
+const APPLY_READY = `${SKILLS_DIR}resumix-apply-ready/SKILL.md`;
+const APPLY_EVAL = 'agent/evals/apply.md';
 
 const BEGIN = '<!-- resumix-routing:begin';
 const END = '<!-- resumix-routing:end';
@@ -164,7 +173,7 @@ function bullet(text: string, opening: string): string | null {
 test('every Resumix tool named in agent/ is one tools/list serves', () => {
   const files = agentFiles();
   // Without these, a scan that matched nothing would pass vacuously.
-  for (const file of [PROPOSE, ROUTING, INSTALLER, EVAL]) {
+  for (const file of [PROPOSE, ROUTING, INSTALLER, EVAL, APPLY, APPLY_READY, FETCHER, APPLY_EVAL]) {
     assert.ok(files.includes(file), `the scan missed ${file}`);
   }
 
@@ -183,7 +192,9 @@ test('every Resumix tool named in agent/ is one tools/list serves', () => {
 
 test('a skill writes Resumix tools fully qualified, never bare', () => {
   const skills = skillFiles();
-  assert.ok(skills.includes(PROPOSE), `the scan missed ${PROPOSE}`);
+  for (const skill of [PROPOSE, APPLY, APPLY_READY]) {
+    assert.ok(skills.includes(skill), `the scan missed ${skill}`);
+  }
 
   for (const file of skills) {
     const text = read(file);
@@ -297,6 +308,87 @@ test('resumix-propose never submits a form, and bans the tools that could in cod
   }
 });
 
+test('the apply skills carry the never-submit rule byte for byte', () => {
+  // One rule, so the propose skill's checks above pin it for all three:
+  // a skill that reworded it could weaken a ban without failing them.
+  const rule = (file: string) => {
+    const rules = section(read(file), '## Hard rules');
+    assert.ok(rules, `${file} has no "## Hard rules" section. ${RULES}`);
+    return bullet(rules, '- **Never submit');
+  };
+  const propose = rule(PROPOSE);
+  assert.ok(propose);
+  for (const file of [APPLY, APPLY_READY]) {
+    assert.equal(
+      rule(file),
+      propose,
+      `${file}'s "**Never submit" rule is not ${PROPOSE}'s, byte for byte. ${RULES}`,
+    );
+  }
+});
+
+test('resumix-apply runs only when typed, and fills from the packet', () => {
+  const text = read(APPLY);
+  const keys = frontmatter(text);
+  assert.equal(keys.get('disable-model-invocation'), 'true');
+  assert.ok(!keys.has('arguments'), 'it reads one id from $ARGUMENTS whole');
+  assert.match(text, /\$ARGUMENTS/);
+  for (const tool of ['ping', 'get_apply_packet', 'report_question', 'mark_applied']) {
+    assert.ok(text.includes(`mcp__resumix__${tool}`), `resumix-apply never calls ${tool}`);
+  }
+
+  const lines = text.split('\n');
+  const order = [
+    '## 0. Check the connection',
+    '## 1. Fetch the packet',
+    '## 2. Download the files',
+    '## 3. Open the form',
+    '## 4. Fill each page',
+    '## 5. Stop before Submit',
+    '## 6. Mark it applied',
+    '## 7. Report',
+  ];
+  let previous = -1;
+  for (const heading of order) {
+    const at = lines.findIndex((line) => line.startsWith(heading));
+    assert.ok(at >= 0, `${APPLY} has no "${heading}" step. ${RULES}`);
+    assert.ok(at > previous, `${APPLY}: "${heading}" is out of order. ${RULES}`);
+    previous = at;
+  }
+
+  assert.ok(
+    section(text, '## 2. Download the files')?.includes('./fetch-apply-files.sh'),
+    'step 2 never runs the download script',
+  );
+  // Only Chris's "submitted" leads to it, and that comes after the stop.
+  assert.ok(
+    text.indexOf('mcp__resumix__mark_applied') > text.indexOf('## 5. Stop before Submit'),
+    `${APPLY} names mark_applied before it stops before Submit. ${RULES}`,
+  );
+  assert.ok(
+    section(text, "## A field the packet doesn't have")?.includes('mcp__resumix__report_question'),
+    'an unseen field is never reported',
+  );
+  // Discovery's placeholders may sit in a saved draft: the fill step must
+  // overwrite the approved and clear the rest.
+  const fill = section(text, '## 4. Fill each page') ?? '';
+  assert.match(fill, /overwriting whatever the field holds/);
+  assert.match(fill, /`answer: null` is cleared/);
+  assert.match(fill, /No placeholder ever survives/);
+});
+
+test('resumix-apply-ready lists what is Ready and follows resumix-apply for each', () => {
+  const text = read(APPLY_READY);
+  const keys = frontmatter(text);
+  assert.equal(keys.get('disable-model-invocation'), 'true');
+  assert.ok(!keys.has('arguments'));
+  assert.ok(text.includes('mcp__resumix__list_applications'), 'it never lists applications');
+  assert.match(text, /\{ "status": "ready" \}/);
+  assert.ok(text.includes('.claude/skills/resumix-apply/SKILL.md'), 'it never reads resumix-apply');
+  assert.ok(existsSync(join(ROOT, APPLY)), `${APPLY} is missing`);
+  assert.match(text, /Never start the next application on your own/);
+});
+
 test('every Playwright tool named in agent/ is one the pinned version serves', () => {
   assert.ok(
     read('agent/.mcp.json').includes(`"${PLAYWRIGHT_VERSION}"`),
@@ -362,6 +454,27 @@ test('the eval has four cases, each a posting and a checklist, and a discovery c
   const discovery = section(text, '## Discovery checklist');
   assert.ok(discovery, `${EVAL} has no "## Discovery checklist" section. ${RULES}`);
   assert.match(discovery, /^- \[ \] /m, `the discovery checklist has no "- [ ]" items`);
+});
+
+test('the apply eval has two cases, each with a checklist', () => {
+  const text = read(APPLY_EVAL);
+  const cases = text.split(/^## Case /m).slice(1);
+  assert.equal(cases.length, 2, `${APPLY_EVAL} must hold two "## Case" sections. ${RULES}`);
+  for (const one of cases) {
+    const title = one.split('\n', 1)[0];
+    assert.match(one, /^- \[ \] /m, `case "${title}" has no "- [ ]" checklist`);
+  }
+});
+
+test('every career-ops mode is routed, and the routing is read from the data directory', () => {
+  // career-ops' router may resolve modes/ against the submodule; the
+  // workspace's CLAUDE.md, loaded in every session, says where it is.
+  assert.ok(read('agent/CLAUDE.md').includes('$CAREER_OPS_DATA_DIR/modes/_custom.md'));
+  const text = read(ROUTING);
+  // A job in Resumix is looked up before any tracker step, and its apply
+  // goes through Resumix rather than career-ops' apply mode (D10).
+  assert.ok(text.includes('mcp__resumix__list_applications'));
+  assert.ok(text.includes('/resumix-apply'));
 });
 
 // The installer, run the way claude.sh runs it, against a throwaway data
@@ -472,4 +585,246 @@ test('the installer refuses a begin marker with no end, and writes nothing', () 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Nothing was written/);
   assert.equal(readFileSync(customFile(dir), 'utf8'), broken);
+});
+
+// The download script, run the way /resumix-apply runs it, against a
+// node:http server on 127.0.0.1 standing in for Resumix. It runs from a copy
+// in a scratch directory, so its .apply-files/ lands there and never in the
+// worktree. Its environment is built here, never inherited, so a real
+// RESUMIX_MCP_TOKEN in the calling shell can never be sent anywhere.
+
+const TOKEN = 'rmx_agent-skills-test-token';
+const RESUME_ID = '91c00000-0000-4000-8000-000000000001';
+const LETTER_ID = 'f1e00000-0000-4000-8000-000000000002';
+const SAMPLE_ID = 'f1e00000-0000-4000-8000-000000000003';
+const NOT_PDF_ID = 'f1e00000-0000-4000-8000-000000000004';
+const APPLICATION_ID = '5b7e0000-0000-4000-8000-000000000005';
+const UNKNOWN_ID = '00000000-0000-4000-8000-0000000000ff';
+const REDIRECTED_ID = 'f1e00000-0000-4000-8000-000000000006';
+
+const SERVED: Record<string, string> = {
+  [`/api/mcp/files/resume-pdf/${RESUME_ID}`]: '%PDF-1.5 resume',
+  [`/api/mcp/files/application-file/${LETTER_ID}`]: '%PDF-1.5 letter',
+  [`/api/mcp/files/application-file/${SAMPLE_ID}`]: 'a take-home, as text',
+  [`/api/mcp/files/application-file/${NOT_PDF_ID}`]: '<html>not a pdf</html>',
+};
+
+/** Somewhere else on the same machine: where a redirect would send the
+ *  token. Every request it sees is one the script should never have made. */
+const elsewhereRequests: string[] = [];
+const elsewhere = createServer((request, response) => {
+  elsewhereRequests.push(request.url ?? '');
+  response.writeHead(200, { 'content-type': 'application/octet-stream' });
+  response.end('%PDF-1.5 from elsewhere');
+});
+const elsewhereListening = new Promise<number>((resolve) => {
+  elsewhere.listen(0, '127.0.0.1', () => resolve((elsewhere.address() as AddressInfo).port));
+});
+after(() => elsewhere.close());
+
+/** Every request the stand-in saw: its path and its Authorization header. */
+const requests: { url: string; authorization: string | undefined }[] = [];
+const resumix = createServer((request, response) => {
+  requests.push({ url: request.url ?? '', authorization: request.headers.authorization });
+  if (request.url === `/api/mcp/files/application-file/${REDIRECTED_ID}`) {
+    void elsewhereListening.then((port) => {
+      response.writeHead(302, { location: `http://127.0.0.1:${port}${request.url}` });
+      response.end();
+    });
+    return;
+  }
+  const body = request.method === 'GET' ? SERVED[request.url ?? ''] : undefined;
+  if (body === undefined) {
+    response.writeHead(404, { 'content-type': 'application/json' });
+    response.end('{"error":"file not found"}');
+    return;
+  }
+  response.writeHead(200, { 'content-type': 'application/octet-stream' });
+  response.end(body);
+});
+const listening = new Promise<number>((resolve) => {
+  resumix.listen(0, '127.0.0.1', () => resolve((resumix.address() as AddressInfo).port));
+});
+after(() => resumix.close());
+
+let copies = 0;
+/** A fresh agent/ holding only the script, as claude.sh's directory would. */
+function agentCopy(): string {
+  const dir = join(scratch, `agent-${++copies}`);
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(join(ROOT, FETCHER), join(dir, 'fetch-apply-files.sh'));
+  return dir;
+}
+
+interface Fetched {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/** Async, not spawnSync: the stand-in server answers on this process's event loop. */
+async function fetchFiles(
+  agentDir: string,
+  args: string[],
+  env: Record<string, string | undefined> = {},
+): Promise<Fetched> {
+  const port = await listening;
+  const base: Record<string, string> = {
+    PATH: process.env.PATH ?? '/usr/bin:/bin',
+    RESUMIX_MCP_URL: `http://127.0.0.1:${port}/api/mcp`,
+    RESUMIX_MCP_TOKEN: TOKEN,
+  };
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete base[key];
+    else base[key] = value;
+  }
+  const child = spawn('bash', [join(agentDir, 'fetch-apply-files.sh'), ...args], {
+    cwd: agentDir,
+    // Built from nothing on purpose; the app's ProcessEnv type requires a
+    // NODE_ENV the script has no use for.
+    env: base as NodeJS.ProcessEnv,
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+  child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+  const status = await new Promise<number | null>((resolve) => child.on('close', resolve));
+  return { status, stdout, stderr };
+}
+
+function filesDir(agentDir: string): string {
+  return join(agentDir, '.apply-files', APPLICATION_ID);
+}
+
+test('the download script is tracked as executable, and its folder is gitignored', () => {
+  assert.match(
+    git('ls-files', '-s', FETCHER),
+    /^100755 /,
+    `${FETCHER} is not tracked with mode 100755. ${RULES}`,
+  );
+  // Playwright reads uploads only from under agent/, so the PDFs live there,
+  // and must never be committed.
+  assert.equal(git('check-ignore', 'agent/.apply-files/x.pdf').trim(), 'agent/.apply-files/x.pdf');
+});
+
+test('the download script writes each file, prints its path, and sends the bearer', async () => {
+  const agentDir = agentCopy();
+  // A file from an earlier run must never be uploaded by mistake.
+  mkdirSync(filesDir(agentDir), { recursive: true });
+  writeFileSync(join(filesDir(agentDir), 'stale.pdf'), '%PDF stale');
+  const before = requests.length;
+
+  const result = await fetchFiles(agentDir, [
+    APPLICATION_ID,
+    `/api/mcp/files/resume-pdf/${RESUME_ID}`,
+    'Chris_Pyle_Halcyon_Resume.pdf',
+    `/api/mcp/files/application-file/${LETTER_ID}`,
+    'Chris_Pyle_Halcyon_Cover_Letter.pdf',
+    `/api/mcp/files/application-file/${SAMPLE_ID}`,
+    'take-home notes.txt',
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+
+  const dir = filesDir(agentDir);
+  assert.equal(
+    result.stdout,
+    [
+      join(dir, 'Chris_Pyle_Halcyon_Resume.pdf'),
+      join(dir, 'Chris_Pyle_Halcyon_Cover_Letter.pdf'),
+      join(dir, 'take-home notes.txt'),
+    ].join('\n') + '\n',
+  );
+  assert.deepEqual(readdirSync(dir).sort(), [
+    'Chris_Pyle_Halcyon_Cover_Letter.pdf',
+    'Chris_Pyle_Halcyon_Resume.pdf',
+    'take-home notes.txt',
+  ]);
+  assert.equal(readFileSync(join(dir, 'Chris_Pyle_Halcyon_Resume.pdf'), 'utf8'), '%PDF-1.5 resume');
+  assert.equal(readFileSync(join(dir, 'take-home notes.txt'), 'utf8'), 'a take-home, as text');
+
+  const sent = requests.slice(before);
+  assert.deepEqual(
+    sent.map((r) => r.url),
+    [
+      `/api/mcp/files/resume-pdf/${RESUME_ID}`,
+      `/api/mcp/files/application-file/${LETTER_ID}`,
+      `/api/mcp/files/application-file/${SAMPLE_ID}`,
+    ],
+  );
+  for (const request of sent) assert.equal(request.authorization, `Bearer ${TOKEN}`);
+  assert.ok(!result.stdout.includes(TOKEN) && !result.stderr.includes(TOKEN));
+});
+
+test('a file Resumix will not send fails the run, and leaves no folder', async () => {
+  for (const [path, name] of [
+    [`/api/mcp/files/application-file/${UNKNOWN_ID}`, 'missing.pdf'],
+    // Served, but not a PDF: never uploaded as one.
+    [`/api/mcp/files/application-file/${NOT_PDF_ID}`, 'letter.pdf'],
+  ] as const) {
+    const agentDir = agentCopy();
+    const result = await fetchFiles(agentDir, [
+      APPLICATION_ID,
+      `/api/mcp/files/resume-pdf/${RESUME_ID}`,
+      'resume.pdf',
+      path,
+      name,
+    ]);
+    assert.notEqual(result.status, 0, name);
+    assert.equal(result.stdout, '', name);
+    assert.match(result.stderr, /Nothing was downloaded/, name);
+    assert.ok(!existsSync(filesDir(agentDir)), `${name}: the folder was left behind`);
+  }
+});
+
+test('the download script never follows a redirect, so the token stays put', async () => {
+  await elsewhereListening;
+  const agentDir = agentCopy();
+  const result = await fetchFiles(agentDir, [
+    APPLICATION_ID,
+    `/api/mcp/files/resume-pdf/${RESUME_ID}`,
+    'resume.pdf',
+    `/api/mcp/files/application-file/${REDIRECTED_ID}`,
+    'letter.pdf',
+  ]);
+  assert.notEqual(result.status, 0, 'a redirect was accepted');
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /Nothing was downloaded/);
+  assert.ok(!existsSync(filesDir(agentDir)), 'the folder was left behind');
+  assert.deepEqual(elsewhereRequests, [], 'a request followed the redirect');
+});
+
+test('the download script refuses anything but packet paths and plain names', async () => {
+  const resume = `/api/mcp/files/resume-pdf/${RESUME_ID}`;
+  const refused: [string, string[], Record<string, string | undefined>][] = [
+    ['the MCP endpoint itself', [APPLICATION_ID, '/api/mcp', 'x.pdf'], {}],
+    ['another API path', [APPLICATION_ID, `/api/applications/${RESUME_ID}/pdf`, 'x.pdf'], {}],
+    ['an absolute URL', [APPLICATION_ID, `http://example.test${resume}`, 'x.pdf'], {}],
+    ['a slash in a name', [APPLICATION_ID, resume, '../escape.pdf'], {}],
+    ['a hidden name', [APPLICATION_ID, resume, '.profile'], {}],
+    ['a control character', [APPLICATION_ID, resume, 'a\tb.pdf'], {}],
+    ['a name twice', [APPLICATION_ID, resume, 'a.pdf', resume, 'a.pdf'], {}],
+    ['no application id', ['not-a-uuid', resume, 'x.pdf'], {}],
+    ['a path with no name', [APPLICATION_ID, resume], {}],
+    ['no token', [APPLICATION_ID, resume, 'x.pdf'], { RESUMIX_MCP_TOKEN: undefined }],
+    ['no URL', [APPLICATION_ID, resume, 'x.pdf'], { RESUMIX_MCP_URL: undefined }],
+    [
+      'a URL that is not the MCP endpoint',
+      [APPLICATION_ID, resume, 'x.pdf'],
+      { RESUMIX_MCP_URL: 'http://127.0.0.1:9/api/other' },
+    ],
+  ];
+  for (const [why, args, env] of refused) {
+    const agentDir = agentCopy();
+    const before = requests.length;
+    const result = await fetchFiles(agentDir, args, env);
+    assert.notEqual(result.status, 0, `ran with ${why}`);
+    assert.equal(result.stdout, '', why);
+    assert.equal(requests.length, before, `${why}: a request was sent`);
+    assert.ok(!existsSync(filesDir(agentDir)), `${why}: a folder was made`);
+  }
+
+  const unset = await fetchFiles(agentCopy(), [APPLICATION_ID, resume, 'x.pdf'], {
+    RESUMIX_MCP_TOKEN: undefined,
+  });
+  assert.match(unset.stderr, /start the session with \.\/claude\.sh/i);
 });

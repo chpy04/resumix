@@ -90,7 +90,8 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   selection with `@dnd-kit` reordering and per-slice autosave on the left, a
   live PDF preview and a LaTeX template tab on the right.
   `/resume/[id]?application=<id>` is the same editor in **application mode**,
-  where back returns to the application and saving writes the PDF to it.
+  where back returns to the application and saving writes the PDF to it,
+  except on a Ready application, whose PDF is the one approved (D-044).
 - **Database** — Postgres, 23 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
@@ -129,8 +130,14 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   answers with text telling the agent what to do next, never a protocol
   error. It takes only an API token (below). `submit_for_review` moves an
   application from Proposing to Needs review, and refuses while its resume
-  or its letter runs past one page. `npm run mcp:smoke` drives it
-  over real HTTP, and the gate runs that from the e2e suite.
+  or its letter runs past one page. Ready applications are applied to from
+  `agent/` with `/resumix-apply`: the agent fetches the approved packet
+  (`get_apply_packet`), downloads the approved PDFs from `/api/mcp/files/…`
+  with the same token, fills the form in a visible browser and stops before
+  Submit. Chris submits; `mark_applied` then moves the application to
+  Applied, and a field nobody saw (`report_question`) sends it back to
+  Needs review (D-050). `npm run mcp:smoke` drives it over real HTTP, and
+  the gate runs that from the e2e suite.
 
 ## Users and isolation
 

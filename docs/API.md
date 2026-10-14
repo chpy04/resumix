@@ -316,12 +316,15 @@ stored content stays raw (D-008).
 | `get_saved_answers`     | none                                                                                                                                                                    | `[{ saved_answer_id, prompt, kind, answer_mode, answer }]`: Chris's saved answers that are not archived, oldest first; `[]` when there are none. `answer` is a `string[]` for a multi value                                                                                              |
 | `list_applications`     | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
 | `get_application`       | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, bullet_suggestions, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null |
+| `get_apply_packet`      | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "ready", company, role_title, posting_url, approved_at, resume, cover_letter, questions }`: Ready only. `resume` and `cover_letter` (null with no letter) are `{ filename, url }`, `url` a path under `/api/mcp/files/`; `questions` below                    |
 | `create_application`    | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
 | `add_questions`         | `{ application_id, questions: [{ field_ref, prompt, kind, options?, required, is_eeo?, source?, answer_mode?, proposed_answer?, saved_answer_id? }] }`                  | `{ questions: [{ question_id, outcome, note? }] }`, in input order: `outcome` is `added`, `unchanged` or `redrafted`, and `note: "eeo_answer_dropped"` means a proposed EEO answer was dropped (C10)                                                                                     |
 | `set_resume_selection`  | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
 | `suggest_bullet`        | `{ application_id, kind, bullet_id?, parent_id?, position?, proposed_text, rationale }`: an edit names `bullet_id`; an add, `parent_id` and `position` (0 is first)     | `{ suggestion_id, kind, replaced, ok, pages }`. Records a pending suggestion and writes no library row; `pages` counts the resume with every pending suggestion applied                                                                                                                  |
 | `set_cover_letter_body` | `{ application_id, text }`: the whole letter as plain text, date line to sign-off, non-empty after trimming                                                             | `{ ok, pages }`; `ok` is `pages === 1`. `text` replaces the letter's `body`; an application with no letter is first given a copy of Default                                                                                                                                              |
 | `submit_for_review`     | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
+| `report_question`       | `{ application_id, question }`: `question` in the shape `add_questions` takes                                                                                           | `{ question_id, outcome, note?, status: "needs_review" }`: the question is added, and a `ready` application goes back to `needs_review`                                                                                                                                                  |
+| `mark_applied`          | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "applied", applied_at, resume_filename }`: `ready` only; the PDF final approval pinned stays pinned                                                                                                                                                           |
 
 An archived application reads exactly like a missing one, or another
 user's: `No application <id>. Call list_applications to find its
@@ -480,6 +483,50 @@ one, one with no resume, a document that does not compile (its first three
 errors), and an unreachable sidecar (call again in a minute). Called on one
 already in `needs_review`, it re-checks the pages and leaves it there.
 
+**`get_apply_packet`** is what the apply pass fills into the real form:
+exactly what Chris approved (C4, D-050). Refused, writing nothing, unless the
+application is `ready`; each refusal says what to do (still proposing, in
+Needs review with the path of its review page, already sent, or logged by
+hand). A Ready application whose packet cannot be built is refused too:
+with no pinned resume PDF, a linked letter with no pinned PDF (only an
+approval older than `cover_letter_pdf_id` leaves one), or a `file` answer
+naming an attachment that is missing or archived. The text says that any
+edit in its review sends it back to Needs review, after which Chris can
+approve it again: a Ready application cannot be approved as it stands. Its
+`questions` are `[{ question_id, field_ref, prompt, kind, options, required,
+is_eeo, approved, answer_mode, answer, file }]`.
+
+- **Every question is listed**, in order. An approved one has its
+  `answer_mode` and its decoded `answer`, as in `ApplicationQuestion`: an
+  instruction's words, or a multi value's picks. An unapproved one (only an
+  optional one can be, on a Ready application) has `answer_mode` and
+  `answer` null, which means leave that field empty. It is still listed, so
+  the apply pass knows the field and never reports it.
+- **Files are paths, not absolute URLs.** `resume` is the snapshot
+  `resume_pdf_id` pins, `cover_letter` the file `cover_letter_pdf_id` pins,
+  and an approved `file` question's `file` the attachment it picked, each
+  `{ filename, url }`. Both PDFs come from their pins, never from a name:
+  renaming the letter changes nothing sent, and a pinned file is sent even
+  once archived (D-011). The agent fetches `url` against the origin of its
+  MCP URL, with the same token (Files for the agent, below).
+
+**`report_question`** records a field the apply pass met that the packet
+does not have (R12). `question` takes exactly `add_questions`' shape, and is
+checked and recorded the same way, EEO included. Allowed while the
+application is `ready` or `needs_review`, so every new field on a page is
+reported before the agent stops: a `ready` application goes back to
+`needs_review` with `approvedAt` cleared and its section approvals kept
+(see "What reopens an approval"). A `field_ref` already recorded is refused,
+writing nothing, since the packet has it; so are a proposing application
+(which records with `add_questions`), a draft and a sent one.
+
+**`mark_applied`** is called once Chris says he submitted the form himself:
+`ready` becomes `applied` and `applied_at` is stamped, as `POST
+/api/applications/:id/apply` does, keeping the PDF final approval pinned and
+the letter's PDF. Any other status is refused, writing nothing: a sent one is
+already done, and anything else changed after the packet was fetched, so the
+agent tells Chris to mark it applied himself.
+
 `npm run mcp:smoke` drives `initialize`, `tools/list` and the `ping` tool over
 real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
 token it mints and revokes itself. It then reads the library, creates an
@@ -496,11 +543,45 @@ which `get_application` must then show as pending, with the library unchanged
 and an unknown `bullet_id` refused, writes its cover letter with
 `set_cover_letter_body`, in text holding every character the escaper
 replaces, which must also compile to one page, twice into the same letter,
-and submits it for review, which
-`get_application` must then show as `needs_review`; submitting an unknown id
-must be `isError`. The application and its letter are archived, its resume
-deleted and the saved answer archived when it ends. `npm run verify` runs it
-from `e2e/mcp.spec.ts`.
+and submits it for review, which `get_application` must then show as
+`needs_review`; submitting an unknown id must be `isError`. It then does
+Chris's part in-process: it rejects both suggestions, which leaves the
+library as it was, and approves the application, final approval compiling
+on the real sidecar. Then it applies: `get_apply_packet` must list the
+approved answer and leave the unapproved EEO one blank; both packet files
+must download over HTTP as PDFs with the token, and be `401` without it and
+`404` for an unknown id; `report_question` must send it back to
+`needs_review`, after which the packet and its files are refused; and,
+approved again, `mark_applied` must make it `applied`, once. The application and its letter are archived and the saved
+answer archived when it ends; its resume is deleted only if no snapshot of it
+was pinned, since a pinned one is the record of what was sent.
+`npm run verify` runs it from `e2e/mcp.spec.ts`.
+
+### Files for the agent (`/api/mcp/files/…`)
+
+| method | path                                  | returns                                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------------------- |
+| GET    | `/api/mcp/files/resume-pdf/:id`       | the bytes of a Ready application's pinned `resume_pdf` snapshot  |
+| GET    | `/api/mcp/files/application-file/:id` | the bytes of an attachment in a Ready application's apply packet |
+
+These are the paths `get_apply_packet` returns, and the only way a file
+reaches the agent: no tool returns bytes (C5, D-050).
+
+- **The same token as `/api/mcp`**, checked first, in every auth mode. With
+  no live `rmx_` token it is the same `401 { "error": "unauthorized" }`.
+- **A live Ready application's packet, and nothing else.** A file is served
+  while it is in the packet `get_apply_packet` would return now: the pinned
+  resume PDF, the pinned letter PDF, archived or not, and the attachments
+  approved `file` questions picked. Everything else is
+  `404 { "error": "file <id> not found" }`: another user's file, an
+  attachment nothing picked, a snapshot other than the pinned one, an id
+  that is not a uuid, and every file of an application that has been
+  reopened, sent or archived, or whose packet cannot be built. So a path
+  stops working once its application leaves Ready.
+- **Headers:** `Content-Disposition: attachment` with the file's name,
+  `Content-Length`, `X-Content-Type-Options: nosniff` and
+  `Cache-Control: no-store`. A resume is `application/pdf`; an attachment's
+  type comes from the attachment route's fixed list (Attachments, below).
 
 ## Resumes
 
@@ -689,7 +770,8 @@ stores a `resume_pdf` snapshot named after the company and pins it as
 `sentPdf` (the path `POST /pdf` takes), stores the letter's PDF as an
 `application/pdf` attachment named like its download
 (`<prefix>_<Company>_Cover_Letter.pdf`), archiving any earlier one of that
-name, and sets `approvedAt` and `ready`. A LaTeX failure,
+name, pins it as the approved letter (`cover_letter_pdf_id`, which no PATCH
+can set, D-050), and sets `approvedAt` and `ready`. A LaTeX failure,
 or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
 with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
 If an edit lands while the documents compile, the transaction finds the

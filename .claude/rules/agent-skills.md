@@ -64,8 +64,31 @@ carry a `**Never submit` rule that bans clicking "Submit", pressing Enter
 (`browser_press_key`), setting `submit` on `browser_type`, and
 `browser_evaluate` and `browser_run_code_unsafe`, either of which can
 submit in code. No skill may contain `submit: true`. The test pins each of
-these against deletion; only the eval's live-form case can show the skill
-obeys them.
+these against deletion; only the evals' live-form cases can show a skill
+obeys them. `/resumix-apply` and `/resumix-apply-ready` carry the same
+bullet **byte for byte**, and the test compares them, so a change to the
+rule is made once, in all three, in one commit.
+
+## Applying
+
+`/resumix-apply <application_id>` fills a Ready application's form from
+`mcp__resumix__get_apply_packet` and stops before Submit (D-050).
+`/resumix-apply-ready` reads that skill and follows it for each Ready
+application in turn, asking Chris between them; it never restates it.
+
+- The fill step overwrites every field the packet answers and clears every
+  field it leaves unapproved: discovery's placeholders may survive in an
+  ATS's saved draft. A field the packet lacks goes to
+  `mcp__resumix__report_question`, never into the form.
+- `mcp__resumix__mark_applied` is named only after the stop before Submit,
+  and called only on Chris's "submitted". The test pins the order.
+- The approved PDFs come down through `agent/fetch-apply-files.sh`, the
+  second script here, never through `curl` in a skill. It keeps the token
+  out of argv and sends it only to `RESUMIX_MCP_URL`'s origin, and only for
+  `/api/mcp/files/` paths. It writes to `agent/.apply-files/`, gitignored,
+  because Playwright MCP uploads only from under its workspace, `agent/`.
+  Keep it bash 3.2 and BSD tools, tracked as mode 100755; its tests run it
+  against a `node:http` server on 127.0.0.1, never a remote host.
 
 ## The career-ops routing
 
@@ -81,7 +104,14 @@ lines between the markers. `./claude.sh` runs it at every launch and
 mode 100755. Never point it at the submodule: career-ops reads user files
 from its data root, and `agent/career-ops/` stays untouched.
 
-## The eval
+The block routes every mode, not one skill's run: before any tracker step,
+a job is looked up with `mcp__resumix__list_applications`, and one in
+Resumix gets no career-ops tracker write and never career-ops' `apply` mode
+(D10). career-ops' router may resolve `modes/` against its checkout, so
+`agent/CLAUDE.md`, which every session loads, names the data directory's
+`_custom.md` as the file to read.
+
+## The evals
 
 `agent/evals/propose.md` is how Chris accepts `/resumix-propose`, by hand,
 after a deploy: four `## Case` sections, each a fenced posting and a
@@ -89,3 +119,8 @@ after a deploy: four `## Case` sections, each a fenced posting and a
 run that finds a form. Cases 1–3 are pasted postings with no form behind
 them; Case 4 is a live multi-page form. Change it in the same commit as the
 skill.
+
+`agent/evals/apply.md` is the same for `/resumix-apply` and
+`/resumix-apply-ready`: two `## Case` sections on a live form Chris means
+to apply to, answered "submitted" and "not sent", each with a `- [ ]`
+checklist. Change it in the same commit as either skill.

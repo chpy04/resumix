@@ -249,6 +249,7 @@ it.
 | `resume_id`                | uuid → `resume(id)` on delete set null               | the **live** resume being tailored                                                                            |
 | `resume_pdf_id`            | uuid → `resume_pdf(id)` on delete restrict           | the **frozen** snapshot that was sent                                                                         |
 | `cover_letter_id`          | uuid → `cover_letter(id)` on delete set null         | this application's own letter                                                                                 |
+| `cover_letter_pdf_id`      | uuid → `application_file(id)` on delete restrict     | the letter PDF final approval stored, pinned as `resume_pdf_id` is (D-050)                                    |
 | `job_description`          | text                                                 | the posting's text, from the agent; null when it supplied none                                                |
 | `agent_summary`            | text                                                 | the agent's evaluation, plain text; null when it supplied none                                                |
 | `fit_score`                | numeric(2,1), CHECK 0–5 (`ck_application_fit_score`) | the agent's 0.0–5.0 estimate of fit (C13); null when unscored                                                 |
@@ -271,12 +272,16 @@ that makes deleting a resume an application was sent with impossible.
 `deleteResume` checks first and answers `400`, rather than letting Postgres
 raise a foreign-key error as a 500.
 
-**The cover letter needs only one column where the resume needed two.** The
-second resume column exists because the live resume keeps changing after it
-is sent and the snapshot is the only evidence of what went out. A cover
-letter is a private copy that nothing else can edit, so the link _is_ the
-record (D-035). `set null` for the same reason `resume_id` is: an application
-that has lost its letter is still a true row about a job.
+**The cover letter's text needs only one column where the resume needed
+two.** The second resume column exists because the live resume keeps
+changing after it is sent and the snapshot is the only evidence of what went
+out. A cover letter is a private copy that nothing else can edit, so the link
+_is_ the record of its text (D-035). `set null` for the same reason
+`resume_id` is: an application that has lost its letter is still a true row
+about a job. The PDF final approval made of it is pinned beside the link, by
+`cover_letter_pdf_id`, so that what the apply packet sends cannot move once
+approved (D-050); `restrict`, like `resume_pdf_id`, since files are never
+deleted (D-011).
 
 **The statuses split in two (D-041).** `proposing`, `needs_review` and
 `ready` belong to the agent's review flow and are written only by it — the
@@ -312,17 +317,22 @@ application sends do that: its resume's selection, its letter's `content` or
 questions' answers (see `application_question`, which has no stamp column
 here). Library and
 template edits do not (C6). Rows that have been sent keep their stamps as
-history. A reopened row keeps its `resume_pdf_id` until a new one is pinned.
-While `ready`, nothing but final approval writes `resume_pdf_id`: saving the
-resume to the application, or sending it with a new snapshot, is refused.
+history. A reopened row keeps its `resume_pdf_id` and `cover_letter_pdf_id`
+until a new final approval pins new ones. While `ready`, nothing but final
+approval writes `resume_pdf_id`: saving the resume to the application, or
+sending it with a new snapshot, is refused. Nothing but final approval ever
+writes `cover_letter_pdf_id`.
 
-**The approved letter's PDF is an `application_file`.** Final approval
-compiles the letter and stores it as an attachment named like the letter's
-download (`<prefix>_<Company>_Cover_Letter.pdf`, `application/pdf`). The
-approved letter is the application's one non-archived file with that name:
-approving again archives the earlier one rather than deleting it (D-011).
-There is no pointer column to it, because the board's data model has none
-(D-032).
+**The approved letter's PDF is an `application_file`, pinned by
+`cover_letter_pdf_id` (D-050).** Final approval compiles the letter, stores
+it as an attachment named like the letter's download
+(`<prefix>_<Company>_Cover_Letter.pdf`, `application/pdf`), and points
+`cover_letter_pdf_id` at it in the same transaction, or sets it null when
+there is no letter. The pointer, not the name, says which file was approved:
+renaming the letter, or taking an earlier copy out of the archive, changes
+nothing that is sent, and the pinned file is sent even once archived
+(D-011). Approving again archives the earlier files of that name, for
+tidiness, and re-points the column.
 
 ### `application_file`
 

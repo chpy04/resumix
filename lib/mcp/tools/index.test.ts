@@ -24,7 +24,7 @@ test('every input schema is an object schema without $schema', () => {
   }
 });
 
-test('the registry serves the library and application tools, in this order', () => {
+test('the registry serves the library, application and apply tools, in this order', () => {
   assert.deepEqual(
     TOOLS.map((t) => t.name),
     [
@@ -33,12 +33,15 @@ test('the registry serves the library and application tools, in this order', () 
       'get_saved_answers',
       'list_applications',
       'get_application',
+      'get_apply_packet',
       'create_application',
       'add_questions',
       'set_resume_selection',
       'suggest_bullet',
       'set_cover_letter_body',
       'submit_for_review',
+      'report_question',
+      'mark_applied',
     ],
   );
 });

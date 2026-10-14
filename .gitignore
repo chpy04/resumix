@@ -34,3 +34,6 @@ scripts/.scratch/
 # personal files career-ops would otherwise write into its submodule.
 agent/.browser-profile/
 agent/career-ops-data/
+# The PDFs /resumix-apply downloads to upload. They live inside agent/
+# because Playwright MCP 0.0.83 reads files only under its workspace root.
+agent/.apply-files/

@@ -437,6 +437,15 @@ async function repinFailure(userId: string, id: string): Promise<Error> {
   );
 }
 
+/** What marking an application sent writes, however it is marked: the
+ *  status, and `applied_at` the first time it is sent. */
+function appliedFields(existing: Pick<ApplicationRow, 'appliedAt'>) {
+  return {
+    status: 'applied' as const,
+    appliedAt: nextAppliedAt(existing.appliedAt, 'applied', new Date()),
+  };
+}
+
 /**
  * Marks an application as sent, pinning it to the snapshot that went out.
  *
@@ -460,8 +469,7 @@ export async function recordApplied(
   const [row] = await db
     .update(application)
     .set({
-      status: 'applied',
-      appliedAt: nextAppliedAt(existing.appliedAt, 'applied', new Date()),
+      ...appliedFields(existing),
       // A re-send replaces the snapshot; not sending one leaves the last in place.
       ...(resumePdfId === null ? {} : { resumePdfId }),
     })
@@ -476,6 +484,61 @@ export async function recordApplied(
   if (row) return detailFor(row);
 
   throw await repinFailure(userId, id);
+}
+
+/**
+ * The agent's `mark_applied`: Chris has submitted a Ready application's
+ * form, so it becomes `applied`, keeping the PDF final approval pinned
+ * (C3, C4). Only from `ready`, and only while it is not archived: the test
+ * is in the WHERE clause, so an edit that reopened it while the form was
+ * being filled wins. Null when no row matched.
+ */
+export async function recordReadyApplied(
+  userId: string,
+  id: string,
+): Promise<ApplicationDetail | null> {
+  const existing = await getApplicationRow(userId, id);
+  if (!existing) return null;
+
+  const [row] = await db
+    .update(application)
+    .set(appliedFields(existing))
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        eq(application.status, 'ready'),
+        eq(application.isArchived, false),
+      ),
+    )
+    .returning();
+  return row ? detailFor(row) : null;
+}
+
+/**
+ * The id of the caller's live Ready application whose pinned PDF is
+ * `resumePdfId`, or null. A snapshot has no owner of its own, so this is how
+ * the files route learns whose packet a resume PDF is in (D-050). Final
+ * approval stores a fresh snapshot for each application, so there is at
+ * most one.
+ */
+export async function findReadyApplicationPinning(
+  userId: string,
+  resumePdfId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: application.id })
+    .from(application)
+    .where(
+      and(
+        eq(application.resumePdfId, resumePdfId),
+        eq(application.userId, userId),
+        eq(application.status, 'ready'),
+        eq(application.isArchived, false),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
 }
 
 /**
@@ -607,9 +670,10 @@ export async function submitForReview(userId: string, id: string): Promise<boole
  * left unapproved. An edit that landed in between has cleared an approval,
  * so the guard fails and the whole transaction rolls back.
  *
- * The approved letter is the application's one non-archived file with the
- * letter's download name; approving again archives the previous one, since
- * nothing is deleted (D-011).
+ * The letter's PDF is pinned by `cover_letter_pdf_id`, as the resume's is by
+ * `resume_pdf_id`, and is null when there is no letter (D-050). Approving
+ * again archives the earlier files of that name, for tidiness, since nothing
+ * is deleted (D-011); the pointer, not the name, says which one was approved.
  */
 export async function recordFinalApproval(
   userId: string,
@@ -628,9 +692,42 @@ export async function recordFinalApproval(
     await lockApplication(tx, userId, id);
     const saved = await saveResumePdfSnapshot(input.resumeId, input.snapshot, tx);
 
+    // Stored before the guarded UPDATE so that one statement pins both PDFs;
+    // if the guard fails, the rollback takes this file and the archive with it.
+    let letterFileId: string | null = null;
+    if (input.letter) {
+      await tx
+        .update(applicationFile)
+        .set({ isArchived: true })
+        .where(
+          and(
+            eq(applicationFile.applicationId, id),
+            eq(applicationFile.filename, input.letter.filename),
+            eq(applicationFile.isArchived, false),
+          ),
+        );
+      const [stored] = await tx
+        .insert(applicationFile)
+        .values({
+          applicationId: id,
+          filename: input.letter.filename,
+          contentType: 'application/pdf',
+          bytes: input.letter.bytes,
+          byteSize: input.letter.bytes.byteLength,
+        })
+        .returning({ id: applicationFile.id });
+      if (!stored) throw new Error('failed to store the approved cover letter PDF');
+      letterFileId = stored.id;
+    }
+
     const [approved] = await tx
       .update(application)
-      .set({ resumePdfId: saved.id, approvedAt: new Date(), status: 'ready' })
+      .set({
+        resumePdfId: saved.id,
+        coverLetterPdfId: letterFileId,
+        approvedAt: new Date(),
+        status: 'ready',
+      })
       .where(
         and(
           eq(application.id, id),
@@ -671,25 +768,6 @@ export async function recordFinalApproval(
       );
     }
 
-    if (input.letter) {
-      await tx
-        .update(applicationFile)
-        .set({ isArchived: true })
-        .where(
-          and(
-            eq(applicationFile.applicationId, id),
-            eq(applicationFile.filename, input.letter.filename),
-            eq(applicationFile.isArchived, false),
-          ),
-        );
-      await tx.insert(applicationFile).values({
-        applicationId: id,
-        filename: input.letter.filename,
-        contentType: 'application/pdf',
-        bytes: input.letter.bytes,
-        byteSize: input.letter.bytes.byteLength,
-      });
-    }
     return approved;
   });
 

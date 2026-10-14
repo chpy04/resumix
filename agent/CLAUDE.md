@@ -19,7 +19,8 @@ this file wins.
   `npm test`, `npm run build`, `npm run dev`. Never deploy, commit or push.
 - Never run `/implement`, or any skill, command or agent from the parent
   repo's `.claude/`. They belong to the Claude that builds Resumix.
-- Never read `.env`. Its values reach you only as the MCP connection.
+- Never read `.env`, and never print what the scripts here read from the
+  environment. Its values reach you only as the MCP connection.
 - **Never submit an application form.** Chris does, after review and at
   apply (D-049).
 
@@ -27,8 +28,10 @@ this file wins.
 
 Two MCP servers, and nothing else:
 
-- **`resumix`** is the only way you reach Resumix. No `curl`, no `psql`, no
-  repo scripts, no database.
+- **`resumix`** is the only way you reach Resumix. No `curl` of your own:
+  `./fetch-apply-files.sh` is the one other way to Resumix, it only
+  downloads an approved application's files, and only `/resumix-apply` runs
+  it. No `psql`, no repo scripts, no database.
 - **`playwright`** is the only way you use a browser. It runs headed, with a
   saved profile in `.browser-profile/`, so an ATS login made while finding a
   job is still there when you apply to it.
@@ -49,6 +52,14 @@ was not started through `./claude.sh`, and both are his to fix.
   `./install-career-ops-custom.sh` rewrites it from `career-ops-custom.md`
   at every launch and every `/resumix-propose`, so a house rule goes outside
   it.
+- **career-ops' house rules are `$CAREER_OPS_DATA_DIR/modes/_custom.md`**,
+  as its own `_shared.md` and DATA_CONTRACT say. `career-ops/modes/` holds
+  only the template, whatever its router resolves `modes/` against. Read
+  the data directory's file before running any career-ops mode, so the
+  Resumix routing applies to a bare `/career-ops <mode>` too.
+- `.apply-files/` holds the PDFs `/resumix-apply` downloads to upload. The
+  browser can upload only from under this directory, and the folder is
+  emptied on every run.
 - `CAREER_OPS_ROOT` must stay unset. career-ops reads it before
   `$CAREER_OPS_DATA_DIR`, so it would take its whole user layer, the routing
   included, from somewhere else. `./claude.sh` drops any shell export of it,
@@ -62,4 +73,13 @@ was not started through `./claude.sh`, and both are his to fix.
   questions, picks library content until the resume fits on one page,
   drafts a cover letter when the form asks for one, and hands the
   application to Chris for review. Its first step runs
-  `./install-career-ops-custom.sh`, the one script here you run.
+  `./install-career-ops-custom.sh`, one of the two scripts here you run.
+- **`/resumix-apply <application_id>`** fills a Ready application's real
+  form with exactly what Chris approved. It downloads the approved PDFs
+  with `./fetch-apply-files.sh`, the other script, fills each page in the
+  browser, and stops before Submit. Chris submits; then it marks the
+  application applied. A field nobody has seen goes back to him for
+  review, never into the form. It replaces career-ops' `apply` mode for
+  every job in Resumix.
+- **`/resumix-apply-ready`** runs `/resumix-apply` on every Ready
+  application, best fit first, asking Chris before each one.
