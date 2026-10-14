@@ -12,7 +12,7 @@
  * a library or template edit made elsewhere reopens nothing (C6).
  */
 import { statusLabel } from './status.ts';
-import type { ApplicationStatus } from '../types.ts';
+import type { ApplicationDetail, ApplicationStatus } from '../types.ts';
 
 /** A part of the application Chris approves on its own. */
 export type ReviewSection = 'resume' | 'coverLetter';
@@ -25,15 +25,34 @@ export interface FinalApprovalState {
   resumeApprovedAt: Date | string | null;
   coverLetterId: string | null;
   coverLetterApprovedAt: Date | string | null;
+  /** Bullet suggestions still waiting on Chris (D-045): counted by the query
+   *  layer on the server, from `bulletSuggestions` on the page. */
+  pendingSuggestions: number;
 }
 
 export interface ReviewState extends FinalApprovalState {
   approvedAt: Date | string | null;
 }
 
+/** What the review page's rules read, from the detail it holds. */
+export function reviewStateOf(detail: ApplicationDetail): ReviewState {
+  return {
+    ...detail,
+    pendingSuggestions: detail.bulletSuggestions.filter((s) => s.status === 'pending').length,
+  };
+}
+
 function notInReview(status: ApplicationStatus): string | null {
   if (status === 'needs_review') return null;
   return `Only an application in Needs review can be approved; this one is ${statusLabel(status)}.`;
+}
+
+/** A pending suggestion is laid over the resume's preview, so approving the
+ *  resume with one would approve text it may never send (D-045). */
+function suggestionsPending(count: number): string | null {
+  if (count === 0) return null;
+  if (count === 1) return 'Apply or reject the bullet suggestion first.';
+  return `Apply or reject the ${count} bullet suggestions first.`;
 }
 
 /**
@@ -49,6 +68,7 @@ export const FINAL_APPROVAL_CHECKS: readonly ((s: FinalApprovalState) => string 
   // Step 1: the resume.
   (s) => (s.resumeId ? null : 'This application has no resume; link one first.'),
   (s) => (s.resumeId === null || s.resumeApprovedAt !== null ? null : 'Approve the resume first.'),
+  (s) => suggestionsPending(s.pendingSuggestions),
   // Step 2: the cover letter, which exists only when one is linked (C12).
   (s) =>
     s.coverLetterId === null || s.coverLetterApprovedAt !== null
@@ -70,6 +90,10 @@ export function sectionApprovalProblem(
   if (status) return status;
   if (section === 'resume' && s.resumeId === null) {
     return 'This application has no resume to approve.';
+  }
+  if (section === 'resume') {
+    const pending = suggestionsPending(s.pendingSuggestions);
+    if (pending) return pending;
   }
   if (section === 'coverLetter' && s.coverLetterId === null) {
     return 'This application has no cover letter to approve.';

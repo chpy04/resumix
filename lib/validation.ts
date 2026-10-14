@@ -71,6 +71,9 @@ export const selectionsPatchSchema = z
 
 export const renderBodySchema = z.object({
   templateOverride: z.string().optional(),
+  /** Lay this application's pending bullet suggestions over the preview
+   *  (D-045). The application must send this resume. */
+  suggestionsFor: uuid.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -261,6 +264,46 @@ export const patchApplicationFileSchema = z.object({
  *  because it compiles and snapshots where this only stamps (D-044). */
 export const approveSectionSchema = z.object({
   section: z.enum(['resume', 'coverLetter'], { error: 'must be resume or coverLetter' }),
+});
+
+// ---------------------------------------------------------------------------
+// Bullet suggestions (D-045)
+//
+// The text rules are one schema, shared by `suggest_bullet` and the PATCH
+// Chris's edits go through, so the agent and the page cannot disagree about
+// what a suggestion may say.
+// ---------------------------------------------------------------------------
+
+/** One line of plain text, as the bullet should read. Resumix escapes it on
+ *  its way into LaTeX, so a backslash can only mean the writer reached for
+ *  LaTeX, which would print as a literal backslash. ASCII whitespace
+ *  collapses as `escapeLatex` collapses it, so what is stored is what
+ *  prints, and a non-breaking space typed on purpose survives. */
+export const bulletSuggestionText = z
+  .string()
+  .transform((text) => text.replace(/[ \t\n\r\f\v]+/g, ' ').replace(/^ | $/g, ''))
+  .pipe(
+    z
+      .string()
+      .min(1, 'is required')
+      .max(500, 'must be at most 500 characters')
+      .refine((text) => !text.includes('\\'), {
+        message: 'plain text: write it as it should read, without LaTeX',
+      }),
+  );
+
+/** Why the agent suggests it, shown beside the card. */
+export const bulletSuggestionRationale = z
+  .string()
+  .trim()
+  .min(1, 'is required')
+  .max(300, 'must be at most 300 characters');
+
+export const patchBulletSuggestionSchema = z.object({ proposedText: bulletSuggestionText });
+
+/** Apply to bullet (Add bullet, on an addition), Save as new, Reject. */
+export const resolveBulletSuggestionSchema = z.object({
+  action: z.enum(['apply', 'copy', 'reject'], { error: 'must be apply, copy or reject' }),
 });
 
 // ---------------------------------------------------------------------------

@@ -216,6 +216,48 @@ test('an unapproved section is refused before anything compiles', { skip }, asyn
   }
 });
 
+test(
+  'a pending bullet suggestion refuses approval before anything compiles',
+  { skip },
+  async () => {
+    // No letter, so the pending suggestion is the only thing in the way.
+    const s = await approvable(false);
+    const latex = fixtures.stubLatex(() => 1);
+    try {
+      await fixtures.insertBulletSuggestion(s.app.id, {
+        kind: 'add',
+        parentId: (await fixtures.insertExperience(s.user.id, 'sugg')).id,
+        position: 0,
+      });
+      await assert.rejects(
+        () => approveApplication(s.user.id, s.app.id),
+        (err: Error) =>
+          err instanceof BadRequestError &&
+          err.message === 'Apply or reject the bullet suggestion first.',
+      );
+      assert.equal(latex.sent.length, 0);
+
+      // The transaction's own guard refuses one that arrives after the gate.
+      await assert.rejects(
+        () =>
+          recordFinalApproval(s.user.id, s.app.id, {
+            resumeId: s.resume.id,
+            snapshot: { filename: 'r.pdf', bytes: Buffer.from('%PDF'), tex: '' },
+            letter: null,
+          }),
+        BadRequestError,
+      );
+      const row = await s.read();
+      assert.equal(row?.status, 'needs_review');
+      assert.equal(row?.approvedAt, null);
+      assert.deepEqual(await fixtures.listResumePdfIds(s.resume.id), []);
+    } finally {
+      latex.restore();
+      await s.cleanup();
+    }
+  },
+);
+
 test('a letter that does not compile writes nothing at all', { skip }, async () => {
   const s = await approvable();
   const latex = fixtures.stubLatex((tex) => (isLetter(tex) ? 'error' : 1));

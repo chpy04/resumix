@@ -23,6 +23,7 @@ import {
   apiToken,
   application,
   applicationFile,
+  bulletSuggestion,
   coverLetter,
   experience,
   experienceBullet,
@@ -182,6 +183,29 @@ export async function insertTestApplication(
   return row;
 }
 
+/** A suggestion written straight to the table, past every check the tool
+ *  makes: how a test sets one up in review, where the tool refuses to make
+ *  one, or points one at something the tool would never accept. Defaults to
+ *  a pending edit. Deleted with its application (`on delete cascade`). */
+export async function insertBulletSuggestion(
+  applicationId: string,
+  values: Partial<typeof bulletSuggestion.$inferInsert>,
+) {
+  const [row] = await db
+    .insert(bulletSuggestion)
+    .values({
+      applicationId,
+      kind: 'edit',
+      bulletKind: 'experience',
+      proposedText: 'A suggested bullet',
+      rationale: 'The posting asks for it',
+      ...values,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test bullet suggestion');
+  return row;
+}
+
 export async function deleteApplicationRow(id: string): Promise<void> {
   await db.delete(application).where(eq(application.id, id));
 }
@@ -324,6 +348,18 @@ export async function listResumePdfIds(resumeId: string): Promise<string[]> {
     .where(eq(resumePdf.resumeId, resumeId))
     .orderBy(desc(resumePdf.createdAt), desc(resumePdf.id));
   return rows.map((row) => row.id);
+}
+
+/** The `.tex` a resume's newest snapshot was compiled from: what it stored,
+ *  as against what a preview showed. */
+export async function getLatestResumePdfTex(resumeId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ tex: resumePdf.tex })
+    .from(resumePdf)
+    .where(eq(resumePdf.resumeId, resumeId))
+    .orderBy(desc(resumePdf.createdAt), desc(resumePdf.id))
+    .limit(1);
+  return row?.tex ?? null;
 }
 
 /** Every file on an application, archived ones included, bytes included. */

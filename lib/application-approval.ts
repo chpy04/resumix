@@ -21,6 +21,7 @@ import { finalApprovalProblems } from './applications/review.ts';
 import { compileCoverLetterPdf } from './cover-letter-pdf.ts';
 import { LatexServiceError } from './latex.ts';
 import { getApplicationRow, recordFinalApproval } from './queries/applications.ts';
+import { countPendingSuggestions } from './queries/bullet-suggestions.ts';
 import { getCoverLetterRow } from './queries/cover-letters.ts';
 import { BadRequestError, NotFoundError } from './queries/errors.ts';
 import type { ApplicationPdfResult } from './types.ts';
@@ -50,7 +51,8 @@ export async function approveApplication(
   const row = await getApplicationRow(userId, id);
   if (!row) throw new NotFoundError(`application ${id} not found`);
 
-  const problems = finalApprovalProblems(row);
+  const pendingSuggestions = await countPendingSuggestions(userId, id);
+  const problems = finalApprovalProblems({ ...row, pendingSuggestions });
   // The gate guarantees a resume; the narrowing below is for the compiler.
   if (problems.length > 0 || !row.resumeId) throw new BadRequestError(problems.join(' '));
 

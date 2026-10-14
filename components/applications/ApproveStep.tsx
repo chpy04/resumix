@@ -5,6 +5,7 @@ import { ApiError, approveApplication, renderCoverLetter, renderResume } from '@
 import {
   applyCommand,
   finalApprovalProblems,
+  reviewStateOf,
   type ReviewStep,
   type ReviewStepKey,
 } from '@/lib/applications/review';
@@ -68,7 +69,7 @@ export default function ApproveStep({
 
   const { id, resumeId, coverLetterId } = application;
   const command = applyCommand(id);
-  const problems = finalApprovalProblems(application);
+  const problems = finalApprovalProblems(reviewStateOf(application));
   const unsaved = unsavedReason(resumeSaveStatus);
   const isReady = application.status === 'ready';
 

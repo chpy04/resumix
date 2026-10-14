@@ -464,6 +464,62 @@ export const applicationFile = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Bullet suggestions
+//
+// What the agent would change about the bullets, held beside the application
+// until Chris applies or rejects it in review; the agent never writes to the
+// library itself (D-045). Owned through `application_id`, like
+// `application_file`. `bulletId` and `parentId` point into one of two tables
+// each, by `bulletKind`, so neither has a foreign key.
+// ---------------------------------------------------------------------------
+
+export const bulletSuggestionKind = pgEnum('bullet_suggestion_kind', ['edit', 'add']);
+export const bulletKind = pgEnum('bullet_kind', ['experience', 'project']);
+export const bulletSuggestionStatus = pgEnum('bullet_suggestion_status', [
+  'pending',
+  'applied',
+  'copied',
+  'rejected',
+]);
+
+export const bulletSuggestion = pgTable(
+  'bullet_suggestion',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicationId: uuid('application_id')
+      .notNull()
+      .references(() => application.id, { onDelete: 'cascade' }),
+    kind: bulletSuggestionKind('kind').notNull(),
+    bulletKind: bulletKind('bullet_kind').notNull(),
+    /** An edit's bullet: an `experience_bullet` or `project_bullet`. */
+    bulletId: uuid('bullet_id'),
+    /** An addition's parent: an `experience` or `project`. */
+    parentId: uuid('parent_id'),
+    /** An addition's slot among the parent's bullets this resume shows. */
+    position: integer('position'),
+    /** Plain text, one line; escaped only on its way into LaTeX. */
+    proposedText: text('proposed_text').notNull(),
+    rationale: text('rationale').notNull(),
+    status: bulletSuggestionStatus('status').notNull().default('pending'),
+    ...timestamps,
+  },
+  (t) => [
+    index('ix_bullet_suggestion_application_id').on(t.applicationId, t.createdAt),
+    uniqueIndex('ux_bullet_suggestion_pending_edit')
+      .on(t.applicationId, t.bulletId)
+      .where(sql`${t.status} = 'pending'`),
+    check(
+      'ck_bullet_suggestion_target',
+      sql`(${t.kind} = 'edit' and ${t.bulletId} is not null and ${t.parentId} is null and ${t.position} is null) or (${t.kind} = 'add' and ${t.bulletId} is null and ${t.parentId} is not null and ${t.position} is not null and ${t.position} >= 0)`,
+    ),
+    check(
+      'ck_bullet_suggestion_text',
+      sql`btrim(${t.proposedText}) <> '' and btrim(${t.rationale}) <> ''`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Relations (used by the query API; harmless if unused by callers)
 // ---------------------------------------------------------------------------
 
@@ -527,11 +583,19 @@ export const applicationRelations = relations(application, ({ one, many }) => ({
     references: [coverLetter.id],
   }),
   files: many(applicationFile),
+  bulletSuggestions: many(bulletSuggestion),
 }));
 
 export const applicationFileRelations = relations(applicationFile, ({ one }) => ({
   application: one(application, {
     fields: [applicationFile.applicationId],
+    references: [application.id],
+  }),
+}));
+
+export const bulletSuggestionRelations = relations(bulletSuggestion, ({ one }) => ({
+  application: one(application, {
+    fields: [bulletSuggestion.applicationId],
     references: [application.id],
   }),
 }));

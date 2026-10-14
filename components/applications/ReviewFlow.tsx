@@ -12,6 +12,7 @@ import { ApiError, approveApplicationSection, getApplication } from '@/lib/api-c
 import {
   initialStep,
   reopenedSections,
+  reviewStateOf,
   reviewSteps,
   sectionApprovalProblem,
   type ReviewSection,
@@ -66,7 +67,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       .then((loaded) => {
         if (cancelled || request !== latestRequest.current) return;
         accept(loaded);
-        setActive(initialStep(reviewSteps(loaded)));
+        setActive(initialStep(reviewSteps(reviewStateOf(loaded))));
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -98,7 +99,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       latestRequest.current++;
       accept(next);
       setReopened((prev) => new Set([...prev].filter((s) => s !== section)));
-      const steps = reviewSteps(next);
+      const steps = reviewSteps(reviewStateOf(next));
       const index = steps.findIndex((step) => step.key === section);
       setActive(steps[index + 1]?.key ?? 'approve');
     },
@@ -135,7 +136,8 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
     );
   }
 
-  const steps = reviewSteps(application);
+  const state = reviewStateOf(application);
+  const steps = reviewSteps(state);
   // A letter unlinked elsewhere takes its step with it.
   const shown = steps.some((step) => step.key === active) ? active : 'approve';
 
@@ -166,7 +168,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
       <div className={shown === 'resume' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
         <ResumeReviewStep
           application={application}
-          blockedBy={sectionApprovalProblem(application, 'resume')}
+          blockedBy={sectionApprovalProblem(state, 'resume')}
           reopened={reopened.has('resume')}
           onApprove={() => approveSection('resume')}
           onSelectionsSaved={refresh}
@@ -178,7 +180,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
         <div className={shown === 'coverLetter' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
           <CoverLetterReviewStep
             application={{ ...application, coverLetterId: application.coverLetterId }}
-            blockedBy={sectionApprovalProblem(application, 'coverLetter')}
+            blockedBy={sectionApprovalProblem(state, 'coverLetter')}
             reopened={reopened.has('coverLetter')}
             onApprove={() => approveSection('coverLetter')}
             onBodySaved={refresh}

@@ -273,6 +273,9 @@ export interface ApplicationDetail extends ApplicationSummary {
    *  them; null for a document that is not linked. */
   pdfFilenames: { resume: string | null; coverLetter: string | null };
   files: ApplicationFile[];
+  /** Every suggestion the agent made for this application, resolved ones
+   *  included, oldest first. */
+  bulletSuggestions: BulletSuggestion[];
 }
 
 /** What both `POST /api/applications/:id/pdf` (save the resume to the

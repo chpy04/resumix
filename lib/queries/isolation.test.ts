@@ -61,6 +61,12 @@ let updateTemplate: typeof import('./templates.ts').updateTemplate;
 let getDefaultTemplate: typeof import('./templates.ts').getDefaultTemplate;
 let replaceSelections: typeof import('./selections.ts').replaceSelections;
 let getSelections: typeof import('./selections.ts').getSelections;
+let createBulletSuggestion: typeof import('./bullet-suggestions.ts').createBulletSuggestion;
+let countPendingSuggestions: typeof import('./bullet-suggestions.ts').countPendingSuggestions;
+let listBulletSuggestions: typeof import('./bullet-suggestions.ts').listBulletSuggestions;
+let previewSuggestions: typeof import('./bullet-suggestions.ts').previewSuggestions;
+let resolveBulletSuggestion: typeof import('./bullet-suggestions.ts').resolveBulletSuggestion;
+let updateBulletSuggestionText: typeof import('./bullet-suggestions.ts').updateBulletSuggestionText;
 let fixtures: typeof import('./test-fixtures.ts');
 
 if (!skip) {
@@ -104,6 +110,14 @@ if (!skip) {
   ({ createSkill, updateSkill } = await import('./skills.ts'));
   ({ getDefaultTemplate, getTemplateById, updateTemplate } = await import('./templates.ts'));
   ({ getSelections, replaceSelections } = await import('./selections.ts'));
+  ({
+    countPendingSuggestions,
+    createBulletSuggestion,
+    listBulletSuggestions,
+    previewSuggestions,
+    resolveBulletSuggestion,
+    updateBulletSuggestionText,
+  } = await import('./bullet-suggestions.ts'));
   fixtures = await import('./test-fixtures.ts');
 }
 
@@ -608,6 +622,155 @@ test("an application cannot be pointed at another user's cover letter", { skip }
     await fixtures.deleteCoverLetterRow(bobLetter.id);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Bullet suggestions (D-045). Owned through their application, and pointing
+// at a bullet or a parent with no foreign key, so every use re-checks both.
+// ---------------------------------------------------------------------------
+
+test("another user's suggestions are unreachable, by application or by id", { skip }, async () => {
+  const { alice, bob, bobExp, bobBullet, tag } = await twoUsers();
+  const bobResume = await fixtures.insertTestResume(bob.id, tag);
+  await replaceSelections(bob.id, bobResume.id, {
+    experiences: [bobExp.id],
+    experienceBullets: { [bobExp.id]: [bobBullet.id] },
+  });
+  const bobsApp = await fixtures.insertTestApplication(bob.id, tag, {
+    status: 'needs_review',
+    resumeId: bobResume.id,
+  });
+  const bobsProposing = await fixtures.insertTestApplication(bob.id, `${tag}-p`, {
+    status: 'proposing',
+    resumeId: bobResume.id,
+  });
+  const edit = await fixtures.insertBulletSuggestion(bobsApp.id, { bulletId: bobBullet.id });
+  const add = await fixtures.insertBulletSuggestion(bobsApp.id, {
+    kind: 'add',
+    parentId: bobExp.id,
+    position: 0,
+  });
+  try {
+    const libraryBefore = await assembleLibrary(bob.id, true);
+    const selectionsBefore = await getSelections(bobResume.id);
+
+    assert.deepEqual(await listBulletSuggestions(alice.id, bobsApp.id), []);
+    assert.equal(await countPendingSuggestions(alice.id, bobsApp.id), 0);
+    await assert.rejects(
+      () => previewSuggestions(alice.id, bobsApp.id, bobResume.id),
+      NotFoundError,
+    );
+    await assert.rejects(
+      () =>
+        createBulletSuggestion(alice.id, bobsProposing.id, {
+          kind: 'edit',
+          bulletKind: 'experience',
+          bulletId: bobBullet.id,
+          proposedText: 'x',
+          rationale: 'y',
+        }),
+      NotFoundError,
+    );
+    await assert.rejects(() => updateBulletSuggestionText(alice.id, edit.id, 'x'), NotFoundError);
+    for (const [row, action] of [
+      [edit, 'apply'],
+      [edit, 'copy'],
+      [edit, 'reject'],
+      [add, 'apply'],
+    ] as const) {
+      await assert.rejects(() => resolveBulletSuggestion(alice.id, row.id, action), NotFoundError);
+    }
+
+    assert.deepEqual(await assembleLibrary(bob.id, true), libraryBefore);
+    assert.deepEqual(await getSelections(bobResume.id), selectionsBefore);
+    const bobs = await listBulletSuggestions(bob.id, bobsApp.id);
+    assert.deepEqual(
+      bobs.map((x) => [x.status, x.proposedText]),
+      [
+        ['pending', edit.proposedText],
+        ['pending', add.proposedText],
+      ],
+    );
+    assert.deepEqual(await listBulletSuggestions(bob.id, bobsProposing.id), []);
+  } finally {
+    await fixtures.deleteApplicationRow(bobsApp.id);
+    await fixtures.deleteApplicationRow(bobsProposing.id);
+    await fixtures.deleteResumeRow(bobResume.id);
+  }
+});
+
+test(
+  "a suggestion pointing at another user's bullet or experience fails on resolve and writes nothing",
+  { skip },
+  async () => {
+    const { alice, bob, aliceExp, bobExp, bobBullet, tag } = await twoUsers();
+    const aliceResume = await fixtures.insertTestResume(alice.id, tag);
+    await replaceSelections(alice.id, aliceResume.id, { experiences: [aliceExp.id] });
+    const app = await fixtures.insertTestApplication(alice.id, tag, {
+      status: 'needs_review',
+      resumeId: aliceResume.id,
+    });
+    // Impossible through the tool, which checks Alice's library; written
+    // directly, to prove the resolve re-checks ownership itself.
+    const edit = await fixtures.insertBulletSuggestion(app.id, { bulletId: bobBullet.id });
+    const add = await fixtures.insertBulletSuggestion(app.id, {
+      kind: 'add',
+      parentId: bobExp.id,
+      position: 0,
+    });
+    try {
+      const bobsBefore = await assembleLibrary(bob.id, true);
+      const alicesBefore = await assembleLibrary(alice.id, true);
+      const selectionsBefore = await getSelections(aliceResume.id);
+      for (const [row, action] of [
+        [edit, 'apply'],
+        [edit, 'copy'],
+        [add, 'apply'],
+      ] as const) {
+        await assert.rejects(
+          () => resolveBulletSuggestion(alice.id, row.id, action),
+          NotFoundError,
+        );
+      }
+      assert.deepEqual(await assembleLibrary(bob.id, true), bobsBefore);
+      assert.deepEqual(await assembleLibrary(alice.id, true), alicesBefore);
+      assert.deepEqual(await getSelections(aliceResume.id), selectionsBefore);
+      const statuses = (await listBulletSuggestions(alice.id, app.id)).map((x) => x.status);
+      assert.deepEqual(statuses, ['pending', 'pending']);
+    } finally {
+      await fixtures.deleteApplicationRow(app.id);
+      await fixtures.deleteResumeRow(aliceResume.id);
+    }
+  },
+);
+
+test(
+  "a preview cannot borrow another user's suggestions for your own resume",
+  { skip },
+  async () => {
+    const { alice, bob, aliceExp, tag } = await twoUsers();
+    const aliceResume = await fixtures.insertTestResume(alice.id, tag);
+    // Bob's application pointing at Alice's resume is impossible through the
+    // API; written directly so only the owner check stands in the way.
+    const bobsApp = await fixtures.insertTestApplication(bob.id, tag, {
+      status: 'needs_review',
+      resumeId: aliceResume.id,
+    });
+    await fixtures.insertBulletSuggestion(bobsApp.id, {
+      kind: 'add',
+      parentId: aliceExp.id,
+      position: 0,
+    });
+    try {
+      await assert.rejects(
+        () => previewSuggestions(alice.id, bobsApp.id, aliceResume.id),
+        NotFoundError,
+      );
+    } finally {
+      await fixtures.deleteApplicationRow(bobsApp.id);
+      await fixtures.deleteResumeRow(aliceResume.id);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // API tokens. An eighth root table, and the one whose rows are credentials:
