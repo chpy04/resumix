@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { ANSWER_MODES } from './applications/questions.ts';
 import { MANUAL_STATUSES } from './applications/status.ts';
+import { normalizeSuggestionText, suggestionTextProblem } from './applications/suggestions.ts';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -296,23 +297,15 @@ export const approveQuestionsSchema = z.object({
 // what a suggestion may say.
 // ---------------------------------------------------------------------------
 
-/** One line of plain text, as the bullet should read. Resumix escapes it on
- *  its way into LaTeX, so a backslash can only mean the writer reached for
- *  LaTeX, which would print as a literal backslash. ASCII whitespace
- *  collapses as `escapeLatex` collapses it, so what is stored is what
- *  prints, and a non-breaking space typed on purpose survives. */
+/** One line of plain text, as the bullet should read; the rules are in
+ *  `lib/applications/suggestions.ts`, which the review page checks too. */
 export const bulletSuggestionText = z
   .string()
-  .transform((text) => text.replace(/[ \t\n\r\f\v]+/g, ' ').replace(/^ | $/g, ''))
-  .pipe(
-    z
-      .string()
-      .min(1, 'is required')
-      .max(500, 'must be at most 500 characters')
-      .refine((text) => !text.includes('\\'), {
-        message: 'plain text: write it as it should read, without LaTeX',
-      }),
-  );
+  .transform(normalizeSuggestionText)
+  .superRefine((text, ctx) => {
+    const problem = suggestionTextProblem(text);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  });
 
 /** Why the agent suggests it, shown beside the card. */
 export const bulletSuggestionRationale = z

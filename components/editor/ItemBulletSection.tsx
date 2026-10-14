@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import type { Bullet } from '@/lib/types';
+import { Fragment, useState } from 'react';
+import type { Bullet, BulletSuggestion } from '@/lib/types';
+import { placeSuggestions } from '@/lib/editor/suggestions';
 import { extractSelectedOrder, orderForDisplay, visibleItems } from '@/lib/editor/visibility';
 import {
   AgentPickBadge,
@@ -13,6 +14,7 @@ import {
 } from './atoms';
 import SortableList from './SortableList';
 import SortableRow from './SortableRow';
+import SuggestionCard, { type SuggestionHandlers } from './SuggestionCard';
 
 export interface FieldSpec<TParent> {
   key: string;
@@ -36,6 +38,10 @@ interface ItemBulletSectionProps<TParent extends ParentWithBullets> {
   showArchived: boolean;
   /** Items and bullets the agent picked, badged in review (C7). */
   agentPicks: ReadonlySet<string>;
+  /** The agent's pending bullet suggestions, by the parent whose list shows
+   *  them (D-045); empty outside review. */
+  suggestions: ReadonlyMap<string, BulletSuggestion[]>;
+  suggestionHandlers: SuggestionHandlers | null;
   onToggleItem: (id: string) => void;
   onReorderItems: (order: string[]) => void;
   onToggleBullet: (parentId: string, bulletId: string) => void;
@@ -61,6 +67,8 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(
     bulletSelections,
     showArchived,
     agentPicks,
+    suggestions,
+    suggestionHandlers,
     onToggleItem,
     onReorderItems,
     onToggleBullet,
@@ -74,10 +82,14 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(
   } = props;
 
   const [adding, setAdding] = useState(false);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // A parent with a suggestion opens with its bullets showing, so the card
+  // is in view without a click.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(suggestions.keys()));
   const selectedSet = new Set(selectedOrder);
 
-  const visible = visibleItems(items, selectedOrder, showArchived);
+  // A pending suggestion blocks approval, so its parent never hides behind
+  // "show archived".
+  const visible = visibleItems(items, [...selectedOrder, ...suggestions.keys()], showArchived);
   const ordered = orderForDisplay(visible, selectedOrder);
   const orderedIds = ordered.map((item) => item.id);
 
@@ -140,6 +152,8 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(
                 expanded={expanded.has(item.id)}
                 showArchived={showArchived}
                 agentPicks={agentPicks}
+                suggestions={suggestions.get(item.id) ?? NO_SUGGESTIONS}
+                suggestionHandlers={suggestionHandlers}
                 bulletOrder={bulletSelections[item.id] ?? []}
                 onToggleSelected={() => onToggleItem(item.id)}
                 onToggleExpanded={() => toggleExpanded(item.id)}
@@ -159,6 +173,8 @@ export default function ItemBulletSection<TParent extends ParentWithBullets>(
   );
 }
 
+const NO_SUGGESTIONS: BulletSuggestion[] = [];
+
 // ---------------------------------------------------------------------------
 
 interface ItemRowProps<TParent extends ParentWithBullets> {
@@ -169,6 +185,8 @@ interface ItemRowProps<TParent extends ParentWithBullets> {
   expanded: boolean;
   showArchived: boolean;
   agentPicks: ReadonlySet<string>;
+  suggestions: BulletSuggestion[];
+  suggestionHandlers: SuggestionHandlers | null;
   bulletOrder: string[];
   onToggleSelected: () => void;
   onToggleExpanded: () => void;
@@ -189,6 +207,8 @@ function ItemRow<TParent extends ParentWithBullets>({
   expanded,
   showArchived,
   agentPicks,
+  suggestions,
+  suggestionHandlers,
   bulletOrder,
   onToggleSelected,
   onToggleExpanded,
@@ -250,6 +270,8 @@ function ItemRow<TParent extends ParentWithBullets>({
             selectedOrder={bulletOrder}
             showArchived={showArchived}
             agentPicks={agentPicks}
+            suggestions={suggestions}
+            suggestionHandlers={suggestionHandlers}
             bulletNoun={bulletNoun}
             onToggle={onToggleBullet}
             onReorder={onReorderBullets}
@@ -287,6 +309,9 @@ interface BulletListProps {
   selectedOrder: string[];
   showArchived: boolean;
   agentPicks: ReadonlySet<string>;
+  /** This parent's pending suggestions, shown in place (D-045). */
+  suggestions: BulletSuggestion[];
+  suggestionHandlers: SuggestionHandlers | null;
   bulletNoun: string;
   onToggle: (bulletId: string) => void;
   onReorder: (order: string[]) => void;
@@ -299,6 +324,8 @@ function BulletList({
   selectedOrder,
   showArchived,
   agentPicks,
+  suggestions,
+  suggestionHandlers,
   bulletNoun,
   onToggle,
   onReorder,
@@ -309,47 +336,79 @@ function BulletList({
   const visible = visibleItems(bullets, selectedOrder, showArchived);
   const ordered = orderForDisplay(visible, selectedOrder);
   const orderedIds = ordered.map((b) => b.id);
+  const placed = placeSuggestions(orderedIds, selectedOrder, suggestions);
+  const contentOf = new Map(bullets.map((b) => [b.id, b.content]));
 
   function handleReorder(newIds: string[]): void {
     onReorder(extractSelectedOrder(newIds, selectedOrder));
   }
 
+  function card(suggestion: BulletSuggestion) {
+    if (!suggestionHandlers) return null;
+    return (
+      <SuggestionCard
+        key={suggestion.id}
+        suggestion={suggestion}
+        current={suggestion.bulletId ? (contentOf.get(suggestion.bulletId) ?? null) : null}
+        handlers={suggestionHandlers}
+      />
+    );
+  }
+
   if (orderedIds.length === 0) {
-    return <p className="text-[11px] text-ink-dim">No {bulletNoun}s yet.</p>;
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-[11px] text-ink-dim">No {bulletNoun}s yet.</p>
+        {placed.after.map(card)}
+      </div>
+    );
   }
 
   return (
     <SortableList ids={orderedIds} onReorder={handleReorder} className="flex flex-col gap-1">
-      {ordered.map((bullet) => (
-        <SortableRow key={bullet.id} id={bullet.id}>
-          <div
-            data-testid={`bullet-row-${bullet.id}`}
-            className={`flex items-start gap-2 rounded border px-1.5 py-1 ${
-              selectedSet.has(bullet.id) ? 'border-accent/30 bg-surface-2' : 'border-line'
-            } ${bullet.isArchived ? 'opacity-70' : ''}`}
-          >
-            <SelectToggle
-              checked={selectedSet.has(bullet.id)}
-              onChange={() => onToggle(bullet.id)}
-              label="Include this bullet on this resume"
-            />
-            <textarea
-              value={bullet.content}
-              onChange={(event) => onContentChange(bullet.id, event.target.value)}
-              rows={2}
-              spellCheck={false}
-              className="min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs whitespace-pre-wrap text-ink outline-none hover:border-line focus:border-accent"
-            />
-            {agentPicks.has(bullet.id) ? <AgentPickBadge /> : null}
-            <GlobalEditBadge />
-            {bullet.isArchived ? <ArchivedBadge /> : null}
-            <ArchiveButton
-              isArchived={bullet.isArchived}
-              onClick={() => onArchive(bullet.id, !bullet.isArchived)}
-            />
-          </div>
-        </SortableRow>
-      ))}
+      {ordered.map((bullet) => {
+        const edit = placed.edits.get(bullet.id);
+        const tone = edit
+          ? 'border-warning-line bg-warning-surface/20'
+          : selectedSet.has(bullet.id)
+            ? 'border-accent/30 bg-surface-2'
+            : 'border-line';
+        return (
+          <Fragment key={bullet.id}>
+            {(placed.before.get(bullet.id) ?? []).map(card)}
+            <SortableRow id={bullet.id}>
+              <div
+                data-testid={`bullet-row-${bullet.id}`}
+                className={`rounded border px-1.5 py-1 ${tone} ${bullet.isArchived ? 'opacity-70' : ''}`}
+              >
+                <div className="flex items-start gap-2">
+                  <SelectToggle
+                    checked={selectedSet.has(bullet.id)}
+                    onChange={() => onToggle(bullet.id)}
+                    label="Include this bullet on this resume"
+                  />
+                  <textarea
+                    value={bullet.content}
+                    onChange={(event) => onContentChange(bullet.id, event.target.value)}
+                    rows={2}
+                    spellCheck={false}
+                    className="min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs whitespace-pre-wrap text-ink outline-none hover:border-line focus:border-accent"
+                  />
+                  {agentPicks.has(bullet.id) ? <AgentPickBadge /> : null}
+                  <GlobalEditBadge />
+                  {bullet.isArchived ? <ArchivedBadge /> : null}
+                  <ArchiveButton
+                    isArchived={bullet.isArchived}
+                    onClick={() => onArchive(bullet.id, !bullet.isArchived)}
+                  />
+                </div>
+                {edit ? card(edit) : null}
+              </div>
+            </SortableRow>
+          </Fragment>
+        );
+      })}
+      {placed.after.map(card)}
     </SortableList>
   );
 }

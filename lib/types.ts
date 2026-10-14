@@ -301,6 +301,10 @@ export interface ApplicationQuestion {
   approvedAt: string | null;
 }
 
+/** What Chris does with a suggestion: `apply` (Apply to bullet, or Add
+ *  bullet on an addition), `copy` (Save as new) or `reject`. */
+export type BulletSuggestionAction = 'apply' | 'copy' | 'reject';
+
 /** `GET /api/applications/:id` — the summary plus what the list view has no
  *  use for. */
 export interface ApplicationDetail extends ApplicationSummary {

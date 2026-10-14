@@ -13,7 +13,7 @@
  * back through the user-scoped bullet queries, which re-check ownership.
  */
 import { and, asc, count, eq, inArray } from 'drizzle-orm';
-import { statusLabel } from '../applications/status.ts';
+import { suggestionsLocked } from '../applications/suggestions.ts';
 import { db, type Executor } from '../db/index.ts';
 import {
   application,
@@ -25,7 +25,7 @@ import {
 } from '../db/schema.ts';
 import { escapeLatex } from '../render/escape.ts';
 import { insertAt, swapIn } from '../render/suggestions.ts';
-import type { BulletSuggestion } from '../types.ts';
+import type { BulletSuggestion, BulletSuggestionAction } from '../types.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
 import { createExperienceBullet, updateExperienceBullet } from './experience-bullets.ts';
 import { createProjectBullet, updateProjectBullet } from './project-bullets.ts';
@@ -52,14 +52,11 @@ export type NewBulletSuggestion =
       rationale: string;
     };
 
-/** Apply to bullet (or, on an addition, Add bullet), Save as new, Reject. */
-export type SuggestionAction = 'apply' | 'copy' | 'reject';
-
 const RESOLVED_STATUS = {
   apply: 'applied',
   copy: 'copied',
   reject: 'rejected',
-} as const satisfies Record<SuggestionAction, BulletSuggestion['status']>;
+} as const satisfies Record<BulletSuggestionAction, BulletSuggestion['status']>;
 
 function toWire(row: SuggestionRow): BulletSuggestion {
   return {
@@ -250,7 +247,7 @@ function alreadyResolved(status: Exclude<BulletSuggestion['status'], 'pending'>)
 }
 
 function notInReview(status: ApplicationStatus): string {
-  return `Suggestions are resolved in Needs review; this application is ${statusLabel(status)}.`;
+  return suggestionsLocked(status) ?? `This application changed; try again.`;
 }
 
 /**
@@ -344,7 +341,7 @@ async function writeBulletOrder(
 export async function resolveBulletSuggestion(
   userId: string,
   id: string,
-  action: SuggestionAction,
+  action: BulletSuggestionAction,
 ): Promise<BulletSuggestion> {
   return db.transaction(async (tx) => {
     const [row] = await tx

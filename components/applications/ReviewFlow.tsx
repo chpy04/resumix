@@ -38,10 +38,11 @@ interface ReviewFlowProps {
  * (D-047), then final approval.
  *
  * This component owns the application and re-reads it after every approval,
- * every selection write and every letter body write, because a write can
- * clear an approval on the server (C3) and the stepper, the header's status
- * and the buttons all follow from what the server says. Responses that
- * arrive out of order are dropped: only the latest request counts.
+ * every selection write, every resolved bullet suggestion and every letter
+ * body write, because a write can clear an approval on the server (C3) and
+ * the stepper, the header's status and the buttons all follow from what the
+ * server says. Responses that arrive out of order are dropped: only the
+ * latest request counts.
  *
  * The resume, letter and questions steps stay mounted while hidden, so
  * switching steps never cuts off an autosave in flight.
@@ -215,6 +216,7 @@ export default function ReviewFlow({ applicationId }: ReviewFlowProps) {
           reopened={reopened.has('resume')}
           onApprove={() => approveSection('resume')}
           onSelectionsSaved={refresh}
+          onSuggestionsChanged={refresh}
           onSaveStatusChange={setResumeSaveStatus}
           visible={shown === 'resume'}
         />

@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import type { Experience, Library, Project, Selections } from '@/lib/types';
+import type { BulletSuggestion, Experience, Library, Project, Selections } from '@/lib/types';
 import ItemBulletSection, { type FieldSpec } from './ItemBulletSection';
 import SkillsSection from './SkillsSection';
+import type { SuggestionHandlers } from './SuggestionCard';
 
 const experienceFields: FieldSpec<Experience>[] = [
   {
@@ -83,9 +84,17 @@ interface ContentPaneProps {
   /** Experiences, projects and bullets to badge as the agent's pick (C7);
    *  empty outside review. */
   agentPicks?: ReadonlySet<string>;
+  /** The agent's pending bullet suggestions, by the experience or project
+   *  whose list shows them (D-045); none outside review. */
+  suggestions?: {
+    experiences: ReadonlyMap<string, BulletSuggestion[]>;
+    projects: ReadonlyMap<string, BulletSuggestion[]>;
+  };
+  suggestionHandlers?: SuggestionHandlers;
 }
 
 const NO_PICKS: ReadonlySet<string> = new Set();
+const NO_SUGGESTIONS: ReadonlyMap<string, BulletSuggestion[]> = new Map();
 
 /**
  * Left-pane body for the Content tab: Experiences, Projects, and Technical
@@ -98,6 +107,8 @@ export default function ContentPane({
   selections,
   callbacks,
   agentPicks = NO_PICKS,
+  suggestions,
+  suggestionHandlers,
 }: ContentPaneProps) {
   const [showArchived, setShowArchived] = useState(false);
 
@@ -130,6 +141,8 @@ export default function ContentPane({
         bulletSelections={selections.experienceBullets}
         showArchived={showArchived}
         agentPicks={agentPicks}
+        suggestions={suggestions?.experiences ?? NO_SUGGESTIONS}
+        suggestionHandlers={suggestionHandlers ?? null}
         onToggleItem={(id) => callbacks.onToggleTop('experiences', id)}
         onReorderItems={(order) => callbacks.onReorderTop('experiences', order)}
         onToggleBullet={(parentId, id) =>
@@ -156,6 +169,8 @@ export default function ContentPane({
         bulletSelections={selections.projectBullets}
         showArchived={showArchived}
         agentPicks={agentPicks}
+        suggestions={suggestions?.projects ?? NO_SUGGESTIONS}
+        suggestionHandlers={suggestionHandlers ?? null}
         onToggleItem={(id) => callbacks.onToggleTop('projects', id)}
         onReorderItems={(order) => callbacks.onReorderTop('projects', order)}
         onToggleBullet={(parentId, id) => callbacks.onToggleNested('projectBullets', parentId, id)}

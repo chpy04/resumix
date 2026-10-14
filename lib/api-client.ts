@@ -21,6 +21,7 @@ import type {
   ApplicationSummary,
   Bullet,
   BulletSuggestion,
+  BulletSuggestionAction,
   CoverLetter,
   CoverLetterSummary,
   Experience,
@@ -496,7 +497,7 @@ export function updateBulletSuggestion(
  *  cannot be, and nothing is written. */
 export function resolveBulletSuggestion(
   id: string,
-  action: 'apply' | 'copy' | 'reject',
+  action: BulletSuggestionAction,
 ): Promise<BulletSuggestion> {
   return requestJson<BulletSuggestion>(`/api/bullet-suggestions/${id}/resolve`, {
     method: 'POST',
