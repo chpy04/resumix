@@ -361,7 +361,7 @@ Chris edits and approves them in the review's Questions step.
 | `proposed_answer` | text                                       | what was proposed, encoded like `answer`, kept beside Chris's edits         |
 | `answer`          | text                                       | what gets typed into the form; null until there is one                      |
 | `redraft_note`    | text                                       | non-null while Chris has asked the agent for a new draft                    |
-| `saved_answer_id` | uuid                                       | a plain uuid; the saved answers table adds the foreign key                  |
+| `saved_answer_id` | uuid                                       | a plain uuid with no foreign key; nothing writes it yet                     |
 | `approved_at`     | timestamptz                                | null until Chris approves this question; cleared by any change to it        |
 
 **`field_ref` is the question's identity.** `page` is the 0-based form page,
