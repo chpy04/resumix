@@ -156,6 +156,49 @@ test('a field already in the packet is refused, and it stays Ready', { skip }, a
   }
 });
 
+test('a field with a pending redraft request is refused, not redrafted', { skip }, async () => {
+  const s = await ready();
+  // An optional text question Chris sent back for a redraft and never
+  // approved: final approval does not wait for it, so it can sit on a Ready
+  // application. `add_questions` would redraft it; a report must not.
+  const pending = await fixtures.insertTestQuestion(s.app.id, {
+    sortOrder: 1,
+    prompt: 'Anything else?',
+    fieldRef: { page: 1, label: 'Anything else?', selector: null },
+    source: 'agent',
+    proposedAnswer: 'A first draft.',
+    answer: 'A first draft.',
+    redraftNote: 'Shorter, please.',
+  });
+  try {
+    const result = await call(s.user.id, s.app.id, {
+      field_ref: { page: 1, label: 'Anything else?' },
+      prompt: 'Anything else?',
+      kind: 'text',
+      required: false,
+      source: 'agent',
+      proposed_answer: 'A new draft.',
+    });
+    assert.equal(result.isError, true);
+    assert.equal(
+      text(result),
+      `That field is already question ${pending.id} ("Anything else?") in the apply packet. ` +
+        'Nothing was changed. Fill it from the packet entry with that field_ref.',
+    );
+
+    const row = await fixtures.getQuestionRow(pending.id);
+    assert.deepEqual(
+      [row.answer, row.redraftNote, row.approvedAt],
+      ['A first draft.', 'Shorter, please.', null],
+    );
+    const after = await s.read();
+    assert.equal(after?.status, 'ready');
+    assert.ok(after?.approvedAt);
+  } finally {
+    await s.cleanup();
+  }
+});
+
 test(
   'an EEO answer is dropped, with its note, and the question still reaches Chris',
   { skip },
