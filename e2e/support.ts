@@ -410,6 +410,30 @@ export async function createExperienceViaApi(
   return { experienceId: created.id, bulletIds };
 }
 
+/** Archives an experience a test created, so later specs see the library
+ *  as seeded: content is archived, never deleted (D-011), and an archived
+ *  item is hidden from the editor. */
+export async function archiveExperienceViaApi(page: Page, experienceId: string): Promise<void> {
+  await apiRequest(page, `/api/experiences/${experienceId}`, {
+    method: 'PATCH',
+    body: { isArchived: true },
+  });
+}
+
+/** Takes an application a test created off the board. */
+export async function archiveApplicationViaApi(page: Page, applicationId: string): Promise<void> {
+  await apiRequest(page, `/api/applications/${applicationId}`, {
+    method: 'PATCH',
+    body: { isArchived: true },
+  });
+}
+
+/** Deletes a resume a test created, which the library would otherwise
+ *  show. Refused for one an application was sent with. */
+export async function deleteResumeViaApi(page: Page, resumeId: string): Promise<void> {
+  await apiRequest(page, `/api/resumes/${resumeId}`, { method: 'DELETE' });
+}
+
 /** `PUT /api/resumes/:id/selections`, for setup. */
 export async function setSelectionsViaApi(
   page: Page,
