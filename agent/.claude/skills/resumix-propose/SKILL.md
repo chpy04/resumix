@@ -188,8 +188,8 @@ Resumix. The apply pass types the approved answer over each.
   email, phone and links, from `config/profile.yml`.
 - A number: `0`. A date: today.
 - Prose, and the letter text box: `Placeholder`.
-- A choice, bool or multi: its proposed option, otherwise the first real
-  option (never "Select…").
+- A choice, bool or multi that is not EEO: its proposed option, otherwise
+  the first real option (never "Select…").
 - EEO: the decline option ("I do not wish to answer"). If there is none,
   ask Chris.
 - An upload: never. A required one means asking Chris to attach any file
