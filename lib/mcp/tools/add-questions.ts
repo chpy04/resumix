@@ -14,125 +14,16 @@
  * (D15). The query checks the link fits, under the lock; this checks only
  * that it comes alone.
  *
- * The status rule is here rather than in `addQuestions`, so a later tool
- * that may add to a Ready application can reuse the query.
+ * The status rule is here rather than in `addQuestions`, so
+ * `report_question`, which adds to a Ready application, reuses the query;
+ * the question's shape and checks are shared with it too (`question.ts`).
  */
 import { z } from 'zod';
-import {
-  ANSWER_MODES,
-  answerProblem,
-  encodeAnswer,
-  fieldKey,
-  hasOptions,
-  looksLikeEeo,
-  QUESTION_KINDS,
-} from '../../applications/questions.ts';
 import { hasBeenSent } from '../../applications/status.ts';
 import { addQuestions as recordQuestions } from '../../queries/application-questions.ts';
 import { findLiveApplication, noSuchApplication } from '../application.ts';
+import { findQuestionProblems, questionInput, toQuestionInput } from '../question.ts';
 import { defineTool, toolError, toolJson } from '../tool.ts';
-
-const text = z.string().trim().min(1, 'is required');
-
-const fieldRef = z.strictObject({
-  page: z.number().int().min(0).describe('The form page the field is on, counting from 0.'),
-  label: text.describe("The field's visible label, as the form shows it."),
-  selector: z
-    .string()
-    .nullable()
-    .optional()
-    .describe('A CSS selector hint for the field, when you have one.'),
-});
-
-const questionInput = z.strictObject({
-  field_ref: fieldRef,
-  prompt: text.describe('The question as the form words it.'),
-  kind: z.enum(QUESTION_KINDS),
-  options: z
-    .array(z.string().min(1, 'is empty'))
-    .min(1, 'is empty')
-    .optional()
-    .describe('The choices a choice or multi question offers, exactly as the form lists them.'),
-  required: z.boolean(),
-  is_eeo: z
-    .boolean()
-    .optional()
-    .describe('True for an EEO or demographic question. Propose no answer to one.'),
-  source: z
-    .enum(['profile', 'agent'])
-    .optional()
-    .describe("Where proposed_answer came from: Chris's profile, or written by you."),
-  answer_mode: z.enum(ANSWER_MODES).optional(),
-  proposed_answer: z.union([z.string(), z.array(z.string())]).optional(),
-  saved_answer_id: z
-    .uuid()
-    .optional()
-    .describe(
-      'A saved answer from get_saved_answers that plainly answers this question. Send it ' +
-        'instead of source, answer_mode and proposed_answer.',
-    ),
-});
-
-type QuestionArgs = z.output<typeof questionInput>;
-
-/** Everything wrong with these inputs, each naming the question. */
-function findQuestionProblems(questions: readonly QuestionArgs[]): string[] {
-  const problems: string[] = [];
-  const seen = new Map<string, number>();
-
-  questions.forEach((q, index) => {
-    const name = `questions.${index} ("${q.field_ref.label.trim()}")`;
-    const say = (problem: string) => problems.push(`${name}: ${problem}`);
-
-    const key = fieldKey(q.field_ref);
-    const first = seen.get(key);
-    if (first !== undefined) say(`has the same field_ref as questions.${first}`);
-    else seen.set(key, index);
-
-    if (hasOptions(q.kind) && q.options === undefined) say(`a ${q.kind} question needs options`);
-    if (!hasOptions(q.kind) && q.options !== undefined) {
-      say('only a choice or multi question takes options');
-    }
-    if (q.options && new Set(q.options).size !== q.options.length) say('lists an option twice');
-
-    if (q.saved_answer_id !== undefined) {
-      if (
-        q.source !== undefined ||
-        q.answer_mode !== undefined ||
-        q.proposed_answer !== undefined
-      ) {
-        say('send saved_answer_id alone; its answer, mode and source come from the saved answer');
-      }
-      // Whether it fits is the query's check, against the saved answer.
-      return;
-    }
-
-    // Dropped, not checked: an EEO question keeps no proposal whatever it is,
-    // source or none, and the outcome's note says one was dropped.
-    if (q.is_eeo || looksLikeEeo(q.prompt)) return;
-
-    const mode = q.answer_mode ?? 'value';
-    if (mode === 'instruction' && !hasOptions(q.kind)) {
-      say('answer_mode instruction is only for a choice or multi question');
-    }
-    const proposed = q.proposed_answer ?? null;
-    if (q.kind === 'file' && proposed !== null) {
-      say('a file question takes no proposed_answer; Chris picks the attachment');
-      return;
-    }
-    if (proposed !== null && q.source === undefined) say('proposed_answer needs a source');
-    if (proposed === null && q.source !== undefined) say('source needs a proposed_answer');
-    if (proposed === null) return;
-    if (encodeAnswer(proposed) === null) {
-      say('proposed_answer is empty; leave it out to propose nothing');
-      return;
-    }
-    const problem = answerProblem({ kind: q.kind, options: q.options ?? null }, proposed, mode);
-    if (problem) say(`proposed_answer: ${problem}`);
-  });
-
-  return problems;
-}
 
 export const addQuestions = defineTool({
   name: 'add_questions',
@@ -192,18 +83,7 @@ export const addQuestions = defineTool({
     const recorded = await recordQuestions(
       ctx.userId,
       app.id,
-      args.questions.map((q) => ({
-        fieldRef: q.field_ref,
-        prompt: q.prompt,
-        kind: q.kind,
-        options: q.options ?? null,
-        required: q.required,
-        isEeo: q.is_eeo ?? false,
-        source: q.source ?? null,
-        answerMode: q.answer_mode ?? 'value',
-        proposedAnswer: q.proposed_answer ?? null,
-        savedAnswerId: q.saved_answer_id,
-      })),
+      args.questions.map(toQuestionInput),
       ['proposing', 'needs_review'],
     );
 
