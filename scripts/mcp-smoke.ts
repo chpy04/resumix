@@ -198,9 +198,11 @@ interface LibraryJson {
 }
 
 /**
- * The agent's first moves, one call to each library and application tool.
- * The application it logs is archived, its resume deleted and the answer it
- * remembers archived, however this ends.
+ * The agent's first moves, one call to each library and application tool,
+ * then the apply pass (`smokeApply`). The application it logs, its letter and
+ * the answer it remembers are archived, however this ends. Its resume is
+ * deleted only if no snapshot of it was pinned: once one is, it is the
+ * record of what was sent (D-032).
  */
 async function smokeTools(mcp: Mcp, userId: string, url: URL, secret: string): Promise<void> {
   const library = await callJson<LibraryJson>(mcp, 'get_library', {});
