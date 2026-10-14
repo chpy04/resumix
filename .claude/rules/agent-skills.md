@@ -51,8 +51,8 @@ the apply pass fills it. Both read a question's `field_ref` the same way
 - `page` counts the form's pages from 0, as `add_questions` does. Sign-in
   screens and "how do you want to apply" choices are not pages.
 - `label` is the visible label exactly, minus required markers, and scoped
-  to its block in a repeated "Add another" block (`Work experience 1: Job
-  title`), so two blocks never share a `field_ref`.
+  to its block in a repeated "Add another" block, as in
+  `Work experience 1: Job title`, so two blocks never share a `field_ref`.
 - `selector` is a Playwright role selector built from the snapshot
   (`role=textbox[name="…"]`), which a tool's `target` accepts, or null.
   Never a snapshot ref such as `e23`: refs change with every snapshot.
