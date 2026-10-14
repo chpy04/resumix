@@ -453,7 +453,8 @@ answers, unticking is the only way to retire one.
 **While a question is remembered, its answer edits write through** to the
 saved answer: the answer and its mode, never the prompt, and a cleared answer
 writes nothing. It is a global edit, like a bullet's, and the checkbox's hint
-says so.
+says so. An agent's redraft is not Chris's edit: it unlinks the
+question instead, and the saved answer stays as it was, live for other forms.
 
 **Duplicate prompts are allowed.** The same words can need different answers
 on two forms ("Which office?"); choosing between them is the agent's call

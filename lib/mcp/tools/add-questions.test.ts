@@ -16,14 +16,18 @@ let getApplication: typeof import('./get-application.ts').getApplication;
 let listQuestions: typeof import('../../queries/application-questions.ts').listQuestions;
 let updateApplicationQuestion: typeof import('../../queries/application-questions.ts').updateApplicationQuestion;
 let approveApplicationQuestions: typeof import('../../queries/application-questions.ts').approveApplicationQuestions;
+let setQuestionRemembered: typeof import('../../queries/application-questions.ts').setQuestionRemembered;
 let fixtures: typeof import('../../queries/test-fixtures.ts');
 
 if (!skip) {
   ({ addQuestions } = await import('./add-questions.ts'));
   ({ getApplication } = await import('./get-application.ts'));
-  ({ approveApplicationQuestions, listQuestions, updateApplicationQuestion } = await import(
-    '../../queries/application-questions.ts'
-  ));
+  ({
+    approveApplicationQuestions,
+    listQuestions,
+    setQuestionRemembered,
+    updateApplicationQuestion,
+  } = await import('../../queries/application-questions.ts'));
   fixtures = await import('../../queries/test-fixtures.ts');
 }
 
@@ -466,6 +470,34 @@ test('a redraft linked to a saved answer takes it, and stays unapproved', { skip
     await s.cleanup();
   }
 });
+
+test(
+  "an agent's redraft of a remembered question unlinks it, and leaves the saved answer",
+  { skip },
+  async () => {
+    const s = await setup('needs_review');
+    try {
+      const [why] = await recorded(s.user.id, s.app.id, [WHY]);
+      const { savedAnswerId } = await setQuestionRemembered(s.user.id, why!.question_id, true);
+      assert.ok(savedAnswerId);
+      await updateApplicationQuestion(s.user.id, why!.question_id, { redraftNote: 'Shorter' });
+
+      const redraft = 'I build next to the people who use it.';
+      const [again] = await recorded(s.user.id, s.app.id, [{ ...WHY, proposed_answer: redraft }]);
+      assert.deepEqual(again, { question_id: why!.question_id, outcome: 'redrafted' });
+
+      // The box unticks: the agent's words are not the saved answer.
+      const [q] = await listQuestions(s.user.id, s.app.id);
+      assert.deepEqual([q?.answer, q?.source, q?.savedAnswerId], [redraft, 'agent', null]);
+      assert.equal((await fixtures.getQuestionRow(why!.question_id)).savedAnswerId, null);
+      // And the saved answer is untouched, and still live for other forms.
+      const saved = await fixtures.getSavedAnswerRow(savedAnswerId);
+      assert.deepEqual([saved.answer, saved.isArchived], [WHY.proposed_answer, false]);
+    } finally {
+      await s.cleanup();
+    }
+  },
+);
 
 test('a link that is unknown, archived or does not fit writes nothing', { skip }, async () => {
   const s = await setup();

@@ -359,7 +359,10 @@ question's choices exactly as the form does. A `proposed_answer` comes with a
   way an EEO question arrives answered, since the answer is Chris's own
   (C10), so no note is added. A question already recorded ignores the link,
   except one with a `redraft_note`, which takes the saved answer and is
-  `redrafted` but left unapproved, since Chris asked to see it again.
+  `redrafted` but left unapproved, since Chris asked to see it again. An
+  ordinary redraft of a question Chris remembered unlinks it
+  (`savedAnswerId` becomes `null`): the agent's new words are not the saved
+  answer, which stays as it was and live for other forms.
   `get_application` shows a linked question only by its `source`.
 - **Refused, writing nothing, every problem listed, for a link:** an id that
   is not one of Chris's live saved answers (unknown, archived and another
