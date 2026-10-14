@@ -498,8 +498,8 @@ with the token, and be `401` without it and `404` for an unknown id;
 and its files are refused; and, approved again, `mark_applied` must make it
 `applied`, once. The application and its letter are archived and the saved
 answer archived when it ends; its resume is deleted only if no snapshot of it
-was pinned, since a pinned one is the record of what was sent. `npm run
-verify` runs it from `e2e/mcp.spec.ts`.
+was pinned, since a pinned one is the record of what was sent.
+`npm run verify` runs it from `e2e/mcp.spec.ts`.
 
 ### Files for the agent (`/api/mcp/files/…`)
 
