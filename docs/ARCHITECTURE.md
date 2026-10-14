@@ -62,12 +62,13 @@ app/                     Next.js App Router
                          ?application=<id> -> saves back to that application
   api/...                route handlers (see docs/API.md)
 lib/
-  applications/          status, board, review and question rules, attachments (pure)
+  applications/          status, board, review, question and suggestion rules, attachments (pure)
   db/schema.ts           Drizzle table definitions
   db/index.ts            connection singleton
   render/                template token substitution -> .tex  (pure, unit-tested)
                          + default-cover-letter.ts, which no token ever touches
                          + escape.ts, cover-letter.ts: a letter's plain body -> its .tex
+                         + suggestions.ts: pending bullet suggestions laid over a preview
   latex.ts               client for the latex service
   storage.ts             PDF snapshot adapter
   auth.ts                password token mint/verify (Edge-safe)
