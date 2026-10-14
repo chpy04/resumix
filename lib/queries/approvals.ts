@@ -4,9 +4,10 @@
  * Called from the writers that change what an application sends, and from
  * nowhere else: `replaceSelections` (the resume's selection: editor autosave,
  * cloning, and the agent's `set_resume_selection`), `updateCoverLetter` when
- * the letter's text changes, and the relinks in `applications.ts`. Library
- * and template edits never come through here, because a global edit made
- * elsewhere must not reopen anything (C6).
+ * the letter's text changes, the relinks in `applications.ts`, and the
+ * answer writes in `application-questions.ts` and `application-files.ts`
+ * (D-047). Library and template edits never come through here, because a
+ * global edit made elsewhere must not reopen anything (C6).
  *
  * There is no diffing: any write reopens, even one that restores what was
  * there. Each function takes the caller's executor, so the reopen commits or
@@ -19,6 +20,7 @@ import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import {
   REOPENABLE_STATUSES,
   reopenedApproval,
+  type ApprovalSection,
   type ReviewSection,
 } from '../applications/review.ts';
 import type { Executor } from '../db/index.ts';
@@ -30,7 +32,7 @@ async function reopenWhere(
   executor: Executor,
   userId: string,
   where: SQL | undefined,
-  section: ReviewSection,
+  section: ApprovalSection,
 ): Promise<void> {
   const rows = await executor
     .select({
@@ -79,6 +81,16 @@ export function reopenForCoverLetter(
   coverLetterId: string,
 ): Promise<void> {
   return reopenWhere(executor, userId, eq(application.coverLetterId, coverLetterId), 'coverLetter');
+}
+
+/** A write to one of this application's answers. The question's own stamp
+ *  is the caller's to clear; this clears the application's. */
+export function reopenForQuestions(
+  executor: Executor,
+  userId: string,
+  applicationId: string,
+): Promise<void> {
+  return reopenWhere(executor, userId, eq(application.id, applicationId), 'questions');
 }
 
 /**

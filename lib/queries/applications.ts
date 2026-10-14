@@ -10,7 +10,7 @@
  * two nullable references instead — the live resume it is being tailored
  * from, and the immutable snapshot that was actually sent (D-032).
  */
-import { and, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, notExists } from 'drizzle-orm';
 import {
   repinRefusal,
   sectionApprovalProblem,
@@ -19,15 +19,24 @@ import {
 import { nextAppliedAt, type ManualStatus } from '../applications/status.ts';
 import { db, type Executor } from '../db/index.ts';
 import { buildCoverLetterFilename, buildResumeFilename } from '../filename.ts';
-import { application, applicationFile, coverLetter, resume, resumePdf } from '../db/schema.ts';
+import {
+  application,
+  applicationFile,
+  applicationQuestion,
+  coverLetter,
+  resume,
+  resumePdf,
+} from '../db/schema.ts';
 import { saveResumePdfSnapshot, type NewPdfSnapshot } from '../storage.ts';
 import type {
   ApplicationDetail,
   ApplicationFile,
+  ApplicationQuestion,
   ApplicationSummary,
   Selections,
 } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
+import { listQuestions, lockApplication } from './application-questions.ts';
 import { reopenRelinked } from './approvals.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
@@ -79,6 +88,7 @@ function toDetail(
   sentPdf: SentPdfMeta | null,
   files: ApplicationFile[],
   coverLetterName: string | null,
+  questions: ApplicationQuestion[],
 ): ApplicationDetail {
   return {
     ...toSummary(row, sentPdf),
@@ -95,6 +105,7 @@ function toDetail(
       coverLetter: coverLetterName === null ? null : buildCoverLetterFilename(coverLetterName),
     },
     files,
+    questions,
   };
 }
 
@@ -167,12 +178,13 @@ async function coverLetterName(
 }
 
 async function detailFor(row: ApplicationRow): Promise<ApplicationDetail> {
-  const [sentPdf, files, letterName] = await Promise.all([
+  const [sentPdf, files, letterName, questions] = await Promise.all([
     sentPdfMeta(row.resumePdfId),
     listApplicationFiles(row.userId, row.id),
     coverLetterName(row.userId, row.coverLetterId),
+    listQuestions(row.userId, row.id),
   ]);
-  return toDetail(row, sentPdf, files, letterName);
+  return toDetail(row, sentPdf, files, letterName, questions);
 }
 
 export async function getApplicationDetail(
@@ -569,8 +581,9 @@ export async function submitForReview(userId: string, id: string): Promise<boole
  * Everything was compiled before this is called, so no sidecar call holds
  * the transaction open. The guarded UPDATE re-checks what the compile was
  * based on: still in review, both approvals still set, the same resume and
- * letter. An edit that landed in between has cleared an approval, so the
- * guard fails and the whole transaction rolls back.
+ * letter, and no required question left unapproved. An edit that landed in
+ * between has cleared an approval, so the guard fails and the whole
+ * transaction rolls back.
  *
  * The approved letter is the application's one non-archived file with the
  * letter's download name; approving again archives the previous one, since
@@ -586,6 +599,11 @@ export async function recordFinalApproval(
   },
 ): Promise<ApplicationDetail> {
   const row = await db.transaction(async (tx) => {
+    // First, so the guarded UPDATE runs on a snapshot taken after any answer
+    // write in flight has committed: those hold this lock until they do. The
+    // questions live in another table, which the UPDATE's own re-check of a
+    // changed row would not re-read (D-047).
+    await lockApplication(tx, userId, id);
     const saved = await saveResumePdfSnapshot(input.resumeId, input.snapshot, tx);
 
     const [approved] = await tx
@@ -604,6 +622,18 @@ export async function recordFinalApproval(
                 isNotNull(application.coverLetterApprovedAt),
               )
             : isNull(application.coverLetterId),
+          notExists(
+            tx
+              .select({ id: applicationQuestion.id })
+              .from(applicationQuestion)
+              .where(
+                and(
+                  eq(applicationQuestion.applicationId, application.id),
+                  eq(applicationQuestion.required, true),
+                  isNull(applicationQuestion.approvedAt),
+                ),
+              ),
+          ),
         ),
       )
       .returning();

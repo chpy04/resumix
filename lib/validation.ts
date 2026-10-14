@@ -3,6 +3,7 @@
  * of these and returns `400 { error }` on failure — see docs/API.md.
  */
 import { z } from 'zod';
+import { ANSWER_MODES } from './applications/questions.ts';
 import { MANUAL_STATUSES } from './applications/status.ts';
 
 const uuid = z.string().uuid();
@@ -261,6 +262,27 @@ export const patchApplicationFileSchema = z.object({
  *  because it compiles and snapshots where this only stamps (D-044). */
 export const approveSectionSchema = z.object({
   section: z.enum(['resume', 'coverLetter'], { error: 'must be resume or coverLetter' }),
+});
+
+/** One answer, its mode, or a redraft request. Whether the answer fits the
+ *  question's kind is the query layer's check, which knows the kind
+ *  (`answerProblem`, D-047). */
+export const patchApplicationQuestionSchema = z
+  .object({
+    /** A string, or a multi question's picks; null clears it. */
+    answer: z
+      .union([z.string(), z.array(z.string())], { error: 'must be a string or a list of strings' })
+      .nullable()
+      .optional(),
+    answerMode: z.enum(ANSWER_MODES, { error: 'must be value or instruction' }).optional(),
+    /** Null, or only whitespace, cancels the request. */
+    redraftNote: z.string().nullable().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
+
+/** The ids Chris saw, never "all of them" (D-047). */
+export const approveQuestionsSchema = z.object({
+  questionIds: z.array(uuid, { error: 'must be a list of question ids' }).min(1, 'is empty'),
 });
 
 // ---------------------------------------------------------------------------

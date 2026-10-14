@@ -27,6 +27,7 @@ Everything else infers its owner through its parent and carries **no**
 | every `resume_*` bridge table | its resume's owner      | `resume_id`              |
 | `resume_pdf`                  | its resume's owner      | `resume_id`              |
 | `application_file`            | its application's owner | `application_id`         |
+| `application_question`        | its application's owner | `application_id`         |
 
 This is deliberate. A second `user_id` on a bullet would be a second,
 independently-writable copy of a fact the parent already records, and the two
@@ -226,10 +227,10 @@ letters are copied from it.
 
 ## Applications
 
-Two tables, and deliberately only two: no company table, no event log, no
-tasks, no contacts. An application is one row of mostly-optional text plus a
-status, because applications differ from each other enough that structure gets
-in the way (D-032).
+Three tables, and deliberately only three: no company table, no event log,
+no tasks, no contacts. An application is one row of mostly-optional text plus
+a status, because applications differ from each other enough that structure
+gets in the way (D-032). Its attachments and its form's questions hang off it.
 
 ### `application`
 
@@ -251,7 +252,7 @@ in the way (D-032).
 | `proposed_selection`       | jsonb                                                | the agent's pick (C7), as API `Selections`; each `set_resume_selection` while `proposing` overwrites it       |
 | `resume_approved_at`       | timestamptz                                          | null until the resume is approved in review (C11); cleared when it changes                                    |
 | `cover_letter_approved_at` | timestamptz                                          | null until the cover letter is approved in review (C11); cleared when it changes                              |
-| `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11); cleared when either section reopens                |
+| `approved_at`              | timestamptz                                          | null until the final approval that makes it `ready` (C11); cleared when any section reopens                   |
 | `is_archived`              | boolean not null default false                       |                                                                                                               |
 
 **The two resume references are not redundant.** `resume_id` is the mutable
@@ -304,7 +305,9 @@ stores a fresh `resume_pdf` snapshot and points `resume_pdf_id` at it. So
 Changing a section afterwards clears its stamp and `approved_at` with it, and
 a `ready` row goes back to `needs_review`. Only writes that change what this
 application sends do that: its resume's selection, its letter's `content` or
-`body`, and relinking or unlinking `resume_id` or `cover_letter_id`. Library and
+`body`, relinking or unlinking `resume_id` or `cover_letter_id`, and its
+questions' answers (see `application_question`, which has no stamp column
+here). Library and
 template edits do not (C6). Rows that have been sent keep their stamps as
 history. A reopened row keeps its `resume_pdf_id` until a new one is pinned.
 While `ready`, nothing but final approval writes `resume_pdf_id`: saving the
@@ -336,3 +339,71 @@ still perfectly normal.) Uploads are capped at 4 MB
 (`lib/applications/attachments.ts`), and what comes back out is typed from a
 fixed list rather than echoed from the upload, so a stored `.html` cannot come
 back as a live page on this origin.
+
+### `application_question`
+
+What the application's form asks, the answer proposed for each question, and
+Chris's approval of each one (D-047). The agent records them (`add_questions`);
+Chris edits and approves them in the review's Questions step.
+
+| column            | type                                       | notes                                                                       |
+| ----------------- | ------------------------------------------ | --------------------------------------------------------------------------- |
+| `application_id`  | uuid → `application(id)` on delete cascade | owner inherited through this                                                |
+| `sort_order`      | integer not null                           | dense, in the order the questions were added                                |
+| `prompt`          | text not null                              | the question as the form words it                                           |
+| `kind`            | `application_question_kind` not null       | `text` \| `choice` \| `multi` \| `bool` \| `file` \| `letter`               |
+| `options`         | jsonb                                      | a JSON array of option strings; choice and multi only                       |
+| `field_ref`       | jsonb not null                             | `{ page, label, selector }`: where the field is on the form                 |
+| `required`        | boolean not null                           | the form requires it; only required questions gate final approval           |
+| `is_eeo`          | boolean not null default false             | an EEO or demographic question, answered only by Chris (C10)                |
+| `source`          | `application_question_source`              | `profile` \| `agent` \| `saved`: who proposed the answer; null when nothing |
+| `answer_mode`     | `answer_mode` not null default `'value'`   | `value` \| `instruction` (R8)                                               |
+| `proposed_answer` | text                                       | what was proposed, encoded like `answer`, kept beside Chris's edits         |
+| `answer`          | text                                       | what gets typed into the form; null until there is one                      |
+| `redraft_note`    | text                                       | non-null while Chris has asked the agent for a new draft                    |
+| `saved_answer_id` | uuid                                       | a plain uuid with no foreign key; nothing writes it yet                     |
+| `approved_at`     | timestamptz                                | null until Chris approves this question; cleared by any change to it        |
+
+**`field_ref` is the question's identity.** `page` is the 0-based form page,
+`label` the field's visible label (trimmed, whitespace collapsed) and
+`selector` a hint for the applying agent, or null. Two questions are the same
+field when they share a page and a label with case and whitespace folded;
+`ux_application_question_field` enforces that key, which `fieldKey` in
+`lib/applications/questions.ts` computes the same way. The selector is left
+out of it, because a form's generated ids change between visits. The index
+also serves every lookup by application.
+
+**One text column holds every kind of answer.** `text` and `letter` store the
+prose, `choice` the option exactly as listed, `multi` a JSON array of
+options, `bool` `yes` or `no`, and `file` an `application_file` id of the same
+application. In `instruction` mode the column holds the instruction's words
+("Boston if listed, otherwise Remote"), for the applying agent to act on. The
+API carries the decoded value: a `string[]` for a multi question's picks, a
+string for everything else.
+
+The CHECKs are the rules no write may get past:
+
+- `ck_application_question_options`: options exist exactly for choice and
+  multi.
+- `ck_application_question_instruction`: only choice and multi take an
+  instruction; prose has no choice to describe.
+- `ck_application_question_proposal`: a source and a proposed answer come
+  together, or not at all.
+- `ck_application_question_eeo`: an EEO question's answer is typed by Chris or
+  comes from a saved answer he made, never from the agent or his profile
+  (C10). The query layer drops a proposed EEO answer before it gets here; this
+  is the backstop.
+- `ck_application_question_approved_answer`: nothing unanswered is approved.
+- `ck_application_question_redraft`: a redraft request and an approval
+  exclude each other, since the request rejects the current answer.
+
+**Approval is per question (C11).** Any write to an answer, its mode or its
+redraft note clears that question's `approved_at`, and on an application in
+`needs_review` or `ready` it clears `approved_at` on the application too, so a
+`ready` one goes back to `needs_review` (C3). So does archiving the attachment
+an approved file answer names. Final approval requires every **required**
+question to be approved; an optional one left unapproved is left blank.
+
+Questions are never deleted or archived. Recording one again with the same
+`field_ref` changes nothing, unless Chris asked for a redraft, in which case
+the new proposal replaces the answer and clears the request.

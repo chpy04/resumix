@@ -5,10 +5,11 @@
  * this proves the route, the token check and the database behind it.
  *
  * Then it does what the agent does first (D-042): reads the library, logs an
- * application, finds it again, selects a small resume into it, which the
- * real sidecar compiles, writes its cover letter in plain text (D-046), and
- * submits it for review (D-044). That application and its letter are
- * archived and its resume deleted when the script ends, so later specs'
+ * application, finds it again, records two of its form's questions (D-047),
+ * selects a small resume into it, which the real sidecar compiles, writes
+ * its cover letter in plain text (D-046), and submits it for review
+ * (D-044). That application and its letter are archived and its resume
+ * deleted when the script ends, so later specs'
  * boards stay as they were.
  *
  * It needs a running server. `npm run verify` runs it from
@@ -50,6 +51,7 @@ const TOOL_NAMES = [
   'list_applications',
   'get_application',
   'create_application',
+  'add_questions',
   'set_resume_selection',
   'set_cover_letter_body',
   'submit_for_review',
@@ -213,6 +215,56 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     });
     assert.equal(got.status, 'proposing');
     check('list_applications finds it by posting_url, and get_application reads it back');
+
+    type Recorded = { questions: { question_id: string; outcome: string; note?: string }[] };
+    const questions = [
+      {
+        field_ref: { page: 0, label: 'Full name' },
+        prompt: 'Full name',
+        kind: 'text',
+        required: true,
+        source: 'profile',
+        proposed_answer: 'Smoke Tester',
+      },
+      {
+        field_ref: { page: 0, label: 'Gender' },
+        prompt: 'Gender',
+        kind: 'choice',
+        options: ['Female', 'Male', 'Decline to answer'],
+        required: false,
+        source: 'agent',
+        proposed_answer: 'Decline to answer',
+      },
+    ];
+    const added = await callJson<Recorded>(mcp, 'add_questions', {
+      application_id: applicationId,
+      questions,
+    });
+    assert.deepEqual(
+      added.questions.map((q) => [q.outcome, q.note]),
+      [
+        ['added', undefined],
+        ['added', 'eeo_answer_dropped'],
+      ],
+    );
+    const [name, gender] = added.questions;
+    assert.ok(name && gender);
+    const resent = await callJson<Recorded>(mcp, 'add_questions', {
+      application_id: applicationId,
+      questions: [questions[0]],
+    });
+    assert.deepEqual(resent.questions, [{ question_id: name.question_id, outcome: 'unchanged' }]);
+    const asked = await callJson<{
+      questions: { question_id: string; answer: unknown; is_eeo: boolean }[];
+    }>(mcp, 'get_application', { application_id: applicationId });
+    assert.deepEqual(
+      asked.questions.map((q) => [q.question_id, q.answer, q.is_eeo]),
+      [
+        [name.question_id, 'Smoke Tester', false],
+        [gender.question_id, null, true],
+      ],
+    );
+    check('add_questions drops the EEO answer, a re-send is unchanged, get_application lists both');
 
     // Built from the live library, not from Default's selection: earlier
     // specs may have archived some of what Default selects.

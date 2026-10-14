@@ -4,6 +4,7 @@
  * a test (.claude/rules/mcp.md).
  */
 import type { McpTool } from '../tool.ts';
+import { addQuestions } from './add-questions.ts';
 import { createApplication } from './create-application.ts';
 import { getApplication } from './get-application.ts';
 import { getLibrary } from './get-library.ts';
@@ -19,6 +20,7 @@ export const TOOLS: readonly McpTool[] = [
   listApplications,
   getApplication,
   createApplication,
+  addQuestions,
   setResumeSelection,
   setCoverLetterBody,
   submitForReview,

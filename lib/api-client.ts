@@ -12,9 +12,12 @@ import type { ManualStatus } from './applications/status.ts';
 import { authedFetch } from './auth-client.ts';
 import type { FeedbackKind } from './feedback/issue.ts';
 import type {
+  AnswerMode,
+  AnswerValue,
   ApplicationDetail,
   ApplicationFile,
   ApplicationPdfResult,
+  ApplicationQuestion,
   ApplicationSummary,
   Bullet,
   CoverLetter,
@@ -466,6 +469,36 @@ export function approveApplicationSection(
  *  a thrown `400`; a LaTeX failure is the usual `200 { ok: false, ... }`. */
 export function approveApplication(id: string): Promise<ApplicationPdfResult> {
   return requestJson<ApplicationPdfResult>(`/api/applications/${id}/approve`, { method: 'POST' });
+}
+
+/** `PATCH /api/application-questions/:id` — the questions step's autosave
+ *  target: an answer, its mode, or a redraft note (`null` cancels one).
+ *  Any write unapproves the question and reopens a Ready application. */
+export function updateApplicationQuestion(
+  id: string,
+  patch: Partial<{
+    answer: AnswerValue | null;
+    answerMode: AnswerMode;
+    redraftNote: string | null;
+  }>,
+): Promise<ApplicationQuestion> {
+  return requestJson<ApplicationQuestion>(`/api/application-questions/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/** `POST /api/applications/:id/questions/approve` — all of `questionIds` or
+ *  none; a `400` (thrown as `ApiError`) lists every one that cannot be. */
+export function approveApplicationQuestions(
+  applicationId: string,
+  questionIds: string[],
+): Promise<ApplicationQuestion[]> {
+  return requestJson<ApplicationQuestion[]>(
+    `/api/applications/${applicationId}/questions/approve`,
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ questionIds }) },
+  );
 }
 
 /** `GET /api/applications/:id/pdf` — the bytes that were actually sent, not

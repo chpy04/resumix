@@ -20,6 +20,7 @@ import { compileResumeForApplication } from './application-pdf.ts';
 import { finalApprovalProblems } from './applications/review.ts';
 import { compileCoverLetterPdf } from './cover-letter-pdf.ts';
 import { LatexServiceError } from './latex.ts';
+import { listQuestionRows } from './queries/application-questions.ts';
 import { getApplicationRow, recordFinalApproval } from './queries/applications.ts';
 import { getCoverLetterRow } from './queries/cover-letters.ts';
 import { BadRequestError, NotFoundError } from './queries/errors.ts';
@@ -50,7 +51,10 @@ export async function approveApplication(
   const row = await getApplicationRow(userId, id);
   if (!row) throw new NotFoundError(`application ${id} not found`);
 
-  const problems = finalApprovalProblems(row);
+  const problems = finalApprovalProblems({
+    ...row,
+    questions: await listQuestionRows(userId, id),
+  });
   // The gate guarantees a resume; the narrowing below is for the compiler.
   if (problems.length > 0 || !row.resumeId) throw new BadRequestError(problems.join(' '));
 
