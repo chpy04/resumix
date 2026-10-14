@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import type { SaveStatus } from '@/lib/editor/autosave';
+import { TabButton } from './atoms';
 import SaveStatusBadge from './SaveStatusBadge';
 
 export type EditorTab = 'content' | 'template';
@@ -108,29 +109,5 @@ export default function EditorHeader({
         </TabButton>
       </nav>
     </header>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={`rounded-t-md border-b-2 px-3 py-1.5 text-sm transition-colors ${
-        active ? 'border-accent text-ink' : 'border-transparent text-ink-dim hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
   );
 }

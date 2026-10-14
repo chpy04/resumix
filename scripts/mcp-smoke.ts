@@ -8,8 +8,9 @@
  * application, finds it again, records two of its form's questions (D-047),
  * remembers one in-process, as the review page's checkbox would, and links
  * that saved answer to a third (D-048), selects a small resume into it,
- * which the real sidecar compiles, and submits it for review (D-044). That
- * application is archived, its resume deleted and its saved answer archived
+ * which the real sidecar compiles, writes its cover letter in plain text
+ * (D-046), and submits it for review (D-044). That application and its
+ * letter are archived, its resume deleted and its saved answer archived
  * when the script ends, so later specs' boards stay as they were.
  *
  * It needs a running server. `npm run verify` runs it from
@@ -36,6 +37,7 @@ import { db, sql } from '../lib/db/index.ts';
 import { createApiToken, revokeApiToken } from '../lib/queries/api-tokens.ts';
 import { setQuestionRemembered } from '../lib/queries/application-questions.ts';
 import { getApplicationRow, updateApplication } from '../lib/queries/applications.ts';
+import { updateCoverLetter } from '../lib/queries/cover-letters.ts';
 import { deleteResume } from '../lib/queries/resumes.ts';
 import { archiveSavedAnswer } from '../lib/queries/saved-answers.ts';
 import { getFirstUser } from '../lib/queries/users.ts';
@@ -55,6 +57,7 @@ const TOOL_NAMES = [
   'create_application',
   'add_questions',
   'set_resume_selection',
+  'set_cover_letter_body',
   'submit_for_review',
 ];
 
@@ -298,10 +301,10 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
       })
     ).questions;
     assert.equal(preferred?.outcome, 'added');
-    const linked = await callJson<{
+    const withLink = await callJson<{
       questions: { question_id: string; source: string; answer: unknown; approved_at: unknown }[];
     }>(mcp, 'get_application', { application_id: applicationId });
-    const filled = linked.questions.find((q) => q.question_id === preferred?.question_id);
+    const filled = withLink.questions.find((q) => q.question_id === preferred?.question_id);
     assert.equal(filled?.source, 'saved');
     assert.equal(filled?.answer, 'Smoke Tester');
     assert.ok(filled?.approved_at, 'a linked question arrives approved');
@@ -353,13 +356,35 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     assert.deepEqual(after.selection, selection);
     check('an unknown id is refused, and the selection is unchanged');
 
-    // The real sidecar counts the pages here too; there is no letter.
+    // All thirteen characters the escaper replaces, so the real sidecar
+    // proves each replacement exists in its TeX Live.
+    const letterText =
+      'October 13, 2026\n\nDear Hiring Team,\n\nEvery special as text: \\ { } $ & # ^ _ % ~ < > |.' +
+      '\n\nBest,\nChris';
+    const letter = await callJson(mcp, 'set_cover_letter_body', {
+      application_id: applicationId,
+      text: letterText,
+    });
+    assert.deepEqual(letter, { ok: true, pages: 1 });
+    const linked = (await getApplicationRow(userId, applicationId))?.coverLetterId;
+    assert.ok(linked, 'set_cover_letter_body linked no letter');
+    const again = await callJson(mcp, 'set_cover_letter_body', {
+      application_id: applicationId,
+      text: letterText,
+    });
+    assert.deepEqual(again, { ok: true, pages: 1 });
+    assert.equal((await getApplicationRow(userId, applicationId))?.coverLetterId, linked);
+    check(
+      'set_cover_letter_body compiles every special to one page, and writes the same letter twice',
+    );
+
+    // The real sidecar counts both documents' pages here too.
     const submitted = await callJson(mcp, 'submit_for_review', { application_id: applicationId });
     assert.deepEqual(submitted, {
       application_id: applicationId,
       status: 'needs_review',
       resume_pages: 1,
-      cover_letter_pages: null,
+      cover_letter_pages: 1,
     });
     const inReview = await callJson<{ status: string }>(mcp, 'get_application', {
       application_id: applicationId,
@@ -381,6 +406,10 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     const row = await getApplicationRow(userId, applicationId);
     await updateApplication(userId, applicationId, { isArchived: true });
     if (row?.resumeId) await deleteResume(userId, row.resumeId);
+    // Archived, never deleted (D-011), so the letter library stays as it was.
+    if (row?.coverLetterId) {
+      await updateCoverLetter(userId, row.coverLetterId, { isArchived: true });
+    }
   }
 }
 

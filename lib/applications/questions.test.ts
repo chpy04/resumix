@@ -77,7 +77,14 @@ test('looksLikeEeo catches the demographic questions forms ask', () => {
     'Protected veteran',
     'Disability status',
     'Do you have a disability?',
+    'Are you disabled?',
+    'Do you have a disability accommodation request?',
     'Do you identify as transgender?',
+    'Do you identify as non-binary?',
+    'Two or more races',
+    'What are your pronouns?',
+    'Are you a member of the LGBTQ+ community?',
+    'Voluntary self-identification',
   ]) {
     assert.equal(looksLikeEeo(prompt), true, prompt);
   }
@@ -91,6 +98,13 @@ test('looksLikeEeo leaves ordinary questions alone', () => {
     'How do you embrace ambiguity?',
     'Work authorization',
     'Latin America experience',
+    'Tell us about a time you raced a deadline.',
+    'Do you have veterinary experience?',
+    'Do you require visa sponsorship?',
+    'What are your salary expectations?',
+    'Are you willing to relocate?',
+    'Describe a project you are proud of.',
+    'How did you hear about us?',
   ]) {
     assert.equal(looksLikeEeo(prompt), false, prompt);
   }

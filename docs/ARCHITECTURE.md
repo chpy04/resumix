@@ -8,11 +8,11 @@ globally within that user's account, never shared between accounts. A
 **Resume** is a named selection + ordering of that content, bound to a **Template**
 (raw LaTeX with substitution tokens). An **Application** records one job
 applied to, and holds the live resume it was tailored from, the PDF snapshot
-it was sent with (D-032), and its own **Cover Letter** — a single column of
-raw LaTeX, stored per letter precisely because nothing about a cover letter
-is shared (D-035). Rendering substitutes selected content into
-the template and POSTs the resulting `.tex` to a sidecar TeX Live container, which
-returns a PDF. Saved PDFs are snapshotted into Postgres so the home page can always
+it was sent with (D-032), and its own **Cover Letter** — raw LaTeX, plus
+optional plain-text prose escaped into it, stored per letter precisely
+because nothing about a cover letter is shared (D-035, D-046). Rendering
+substitutes selected content into the template and POSTs the resulting `.tex`
+to a sidecar TeX Live container, which returns a PDF. Saved PDFs are snapshotted into Postgres so the home page can always
 hand back the exact bytes a resume was last saved with.
 
 ## Components
@@ -57,7 +57,7 @@ app/                     Next.js App Router
     review/              the review flow: resume, letter, questions, final approve
   resumes/page.tsx       the resume library: grid + fuzzy search
   cover-letters/         the cover letter library, same shape
-  cover-letter/[id]/     editor: one LaTeX textarea + live PDF
+  cover-letter/[id]/     editor: body|LaTeX tabs + live PDF
   resume/[id]/page.tsx   editor: content|template tabs + live PDF
                          ?application=<id> -> saves back to that application
   api/...                route handlers (see docs/API.md)
@@ -67,6 +67,7 @@ lib/
   db/index.ts            connection singleton
   render/                template token substitution -> .tex  (pure, unit-tested)
                          + default-cover-letter.ts, which no token ever touches
+                         + escape.ts, cover-letter.ts: a letter's plain body -> its .tex
   latex.ts               client for the latex service
   storage.ts             PDF snapshot adapter
   auth.ts                password token mint/verify (Edge-safe)

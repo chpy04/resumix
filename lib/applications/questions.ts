@@ -90,10 +90,14 @@ export function fieldKey(ref: Pick<FieldRef, 'page' | 'label'>): string {
 // EEO (C10)
 // ---------------------------------------------------------------------------
 
-/** "sex" also covers sexual orientation. Word-initial, so "Essex" and
- *  "embrace" do not match. */
+/**
+ * Word-initial stems, so "ethnic" covers ethnicity, "disab" disabled and
+ * disability, "veteran" protected veteran, "gender" gender identity and
+ * "sex" sexual orientation, while "Essex" and "embrace" do not match. Race
+ * is whole words, so "raced a deadline" does not match either.
+ */
 const EEO_PATTERN =
-  /\b(?:gender|sex|race|racial|ethnic|hispanic|latin[aox]|veteran|disabilit|transgender)/i;
+  /\b(?:gender|sex|rac(?:es?|ial)\b|ethnic|hispanic|latin[aox]|veteran|disab|transgender|non-?binary|pronoun|lgbt|self[- ]?identif)/i;
 
 /**
  * A backstop for the agent's own `is_eeo` flag. It can only ever turn the

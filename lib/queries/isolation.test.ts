@@ -553,11 +553,6 @@ test("another user's attachments are unreachable by id", { skip }, async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cover letters. A seventh root table, so the shape is the plainest one here:
-// `user_id` on the row, one WHERE clause, no join to reason about (D-035).
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Application questions: owned through their application, like its files
 // (D-047). Each way of naming one by id, from the wrong account.
 // ---------------------------------------------------------------------------
@@ -657,6 +652,11 @@ test("a file answer cannot name another user's attachment", { skip }, async () =
   }
 });
 
+// ---------------------------------------------------------------------------
+// Cover letters. A seventh root table, so the shape is the plainest one here:
+// `user_id` on the row, one WHERE clause, no join to reason about (D-035).
+// ---------------------------------------------------------------------------
+
 test("another user's cover letter is unreachable by id", { skip }, async () => {
   const { alice, bob, tag } = await twoUsers();
   const bobLetter = await createCoverLetter(bob.id, `Bob Letter ${tag}`);
@@ -664,6 +664,14 @@ test("another user's cover letter is unreachable by id", { skip }, async () => {
     assert.equal(await getCoverLetter(alice.id, bobLetter.id), null);
     await assert.rejects(
       () => updateCoverLetter(alice.id, bobLetter.id, { content: 'overwritten' }),
+      NotFoundError,
+    );
+    // Not found, never the 400 a body would get against Bob's content, which
+    // has no marker: the check must not run on a row the caller cannot see
+    // (D-046).
+    await updateCoverLetter(bob.id, bobLetter.id, { content: '\\documentclass{article}' });
+    await assert.rejects(
+      () => updateCoverLetter(alice.id, bobLetter.id, { body: 'overwritten' }),
       NotFoundError,
     );
     assert.ok(!(await listCoverLetters(alice.id, true)).some((l) => l.id === bobLetter.id));
@@ -677,6 +685,7 @@ test("another user's cover letter is unreachable by id", { skip }, async () => {
 
     const untouched = await getCoverLetter(bob.id, bobLetter.id);
     assert.notEqual(untouched?.content, 'overwritten');
+    assert.equal(untouched?.body, null);
   } finally {
     await fixtures.deleteCoverLetterRow(bobLetter.id);
   }

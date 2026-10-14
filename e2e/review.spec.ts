@@ -108,7 +108,7 @@ test('review → approve → ready, then an edit reopens the resume', async ({ p
   await page.getByRole('button', { name: 'Approve resume' }).click();
   await expect(page.getByTestId('review-step-resume')).toHaveText('1 Resume – ok');
 
-  // Step 2 opens on its own: the compiled letter, approved the same way.
+  // Step 2 opens on its own: the letter's text beside its PDF, approved the same way.
   await page.getByRole('button', { name: 'Approve letter' }).click();
   await expect(page.getByTestId('review-step-coverLetter')).toHaveText('2 Cover letter – ok');
 

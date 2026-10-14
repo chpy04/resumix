@@ -11,6 +11,7 @@ import { getLibrary } from './get-library.ts';
 import { getSavedAnswers } from './get-saved-answers.ts';
 import { listApplications } from './list-applications.ts';
 import { ping } from './ping.ts';
+import { setCoverLetterBody } from './set-cover-letter-body.ts';
 import { setResumeSelection } from './set-resume-selection.ts';
 import { submitForReview } from './submit-for-review.ts';
 
@@ -23,5 +24,6 @@ export const TOOLS: readonly McpTool[] = [
   createApplication,
   addQuestions,
   setResumeSelection,
+  setCoverLetterBody,
   submitForReview,
 ];

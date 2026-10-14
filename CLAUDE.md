@@ -31,8 +31,10 @@ because most applications are sent and never touched again (D-033).
 
 A **Cover letter** is the deliberate inversion of all that, and the fastest
 way to get this wrong is to make it symmetrical. It has no reuse, so it
-stores its entire LaTeX document in one `content` column: no template, no
-selections, no tokens, no snapshot table. Creating one copies the default
+stores its own text: `content` is the letter's LaTeX, and an optional
+plain-text `body`, which the agent drafts and the review edits, is escaped
+and placed at its one `%%BODY%%` line (D-046). No template, no selections,
+no tokens, no snapshot table. Creating one copies both columns
 **verbatim**; downloading one compiles the stored text on demand. Which is
 also why `GET /api/cover-letters/:id/pdf` is the single endpoint in this app
 where a LaTeX error is an HTTP error — there is no JSON envelope on a binary
@@ -51,7 +53,9 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    forever (D-011).
 2. **Content is raw, unescaped LaTeX.** Bullets legitimately contain
    `\textbf{}`, `\href{}{}`, `\$`, `\&`. Never add auto-escaping — it would
-   corrupt every existing bullet (D-008).
+   corrupt every existing bullet (D-008). Plain text arriving from outside
+   LaTeX (a letter's `body`) is escaped by `lib/render/escape.ts`; library
+   content never is (D-046).
 3. **The DB client stays lazy.** Never hoist `postgres(...)`/`drizzle(...)`
    to module scope; `next build` evaluates every route module and would fail
    on any machine without a live `DATABASE_URL` (D-014).

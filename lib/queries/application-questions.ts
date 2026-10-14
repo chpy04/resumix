@@ -265,9 +265,12 @@ export async function addQuestions(
         looksLikeEeo(input.prompt) ||
         (found !== undefined && (found.isEeo || looksLikeEeo(found.prompt)));
       const saved = input.savedAnswerId ? savedById.get(input.savedAnswerId) : undefined;
-      const offered = saved || input.source === null ? null : encodeAnswer(input.proposedAnswer);
-      const proposal = eeo ? null : offered;
-      const note = eeo && offered !== null ? { note: 'eeo_answer_dropped' as const } : {};
+      // A link stands in for a proposal: the saved answer supplies it.
+      const sent = saved ? null : encodeAnswer(input.proposedAnswer);
+      const proposal = eeo || input.source === null ? null : sent;
+      // Said whenever an answer was sent, with a source or without: the tool
+      // checks neither on an EEO question, since nothing of it is kept.
+      const note = eeo && sent !== null ? { note: 'eeo_answer_dropped' as const } : {};
       // A saved answer is Chris's own, so EEO does not drop it (C10).
       const fromSaved = saved
         ? {

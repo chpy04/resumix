@@ -580,7 +580,7 @@ export function getCoverLetter(id: string): Promise<CoverLetter> {
 
 export function updateCoverLetter(
   id: string,
-  patch: Partial<{ name: string; content: string; isArchived: boolean }>,
+  patch: Partial<{ name: string; content: string; body: string; isArchived: boolean }>,
 ): Promise<CoverLetter> {
   return requestJson<CoverLetter>(`/api/cover-letters/${id}`, {
     method: 'PATCH',
@@ -590,12 +590,16 @@ export function updateCoverLetter(
 }
 
 /** `POST /api/cover-letters/:id/render` — preview only, saves nothing.
- *  `contentOverride` is the editor's unsaved draft. */
-export function renderCoverLetter(id: string, contentOverride?: string): Promise<RenderResult> {
+ *  `content` and `body` are the editor's unsaved drafts; either left out
+ *  is read from the stored letter. */
+export function renderCoverLetter(
+  id: string,
+  draft: { content?: string; body?: string } = {},
+): Promise<RenderResult> {
   return requestJson<RenderResult>(`/api/cover-letters/${id}/render`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify(contentOverride === undefined ? {} : { contentOverride }),
+    body: JSON.stringify({ contentOverride: draft.content, bodyOverride: draft.body }),
   });
 }
 
