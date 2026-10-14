@@ -5,6 +5,9 @@ import QuestionAnswerInput, {
   type AnswerDraft,
 } from '@/components/applications/QuestionAnswerInput';
 import QuestionApproveButton from '@/components/applications/QuestionApproveButton';
+import RememberAnswerCheckbox, {
+  type RememberState,
+} from '@/components/applications/RememberAnswerCheckbox';
 import { ApiError } from '@/lib/api-client';
 import type { ApplicationFile, ApplicationQuestion } from '@/lib/types';
 
@@ -17,6 +20,7 @@ export interface ProfileRow {
   problem: string | null;
   /** Saving, or changed on screen and not saved yet. */
   unsaved: boolean;
+  remember: RememberState;
 }
 
 interface ProfileAnswersGroupProps {
@@ -26,6 +30,7 @@ interface ProfileAnswersGroupProps {
   /** Why nothing can be approved in this status, or null in Needs review. */
   blockedBy: string | null;
   onChange: (question: ApplicationQuestion, next: AnswerDraft, immediate: boolean) => void;
+  onRemember: (question: ApplicationQuestion, remember: boolean) => void;
   /** Approves exactly these ids. Throws `ApiError` listing every problem. */
   onApprove: (ids: string[]) => Promise<void>;
   onFileUploaded: (file: ApplicationFile) => void;
@@ -50,6 +55,7 @@ export default function ProfileAnswersGroup({
   applicationId,
   blockedBy,
   onChange,
+  onRemember,
   onApprove,
   onFileUploaded,
 }: ProfileAnswersGroupProps) {
@@ -135,6 +141,13 @@ export default function ProfileAnswersGroup({
                   Required
                 </span>
               ) : null}
+              {row.question.kind === 'file' ? null : (
+                <RememberAnswerCheckbox
+                  {...row.remember}
+                  onChange={(remember) => onRemember(row.question, remember)}
+                  compact
+                />
+              )}
               <QuestionApproveButton
                 approved={row.approved}
                 reopened={row.reopened}

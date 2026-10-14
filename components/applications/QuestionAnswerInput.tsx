@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ReactNode } from 'react';
 import { MAX_ATTACHMENT_BYTES } from '@/lib/applications/attachments';
-import { BOOL_ANSWERS, hasOptions, wordCount } from '@/lib/applications/questions';
+import { BOOL_ANSWERS, BOOL_LABELS, hasOptions, wordCount } from '@/lib/applications/questions';
 import { ApiError, uploadApplicationFile } from '@/lib/api-client';
 import type { AnswerMode, AnswerValue, ApplicationFile, ApplicationQuestion } from '@/lib/types';
 
@@ -26,8 +26,6 @@ interface QuestionAnswerInputProps {
   /** One line, for the profile group's rows: no mode toggle, no word count. */
   compact?: boolean;
 }
-
-const BOOL_LABELS: Record<(typeof BOOL_ANSWERS)[number], string> = { yes: 'Yes', no: 'No' };
 
 const fieldClass =
   'w-full rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink outline-none focus:border-accent';

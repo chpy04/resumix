@@ -41,6 +41,9 @@ export const ANSWER_MODES = ['value', 'instruction'] as const satisfies readonly
 
 export const BOOL_ANSWERS = ['yes', 'no'] as const;
 
+/** How a bool answer reads on screen. */
+export const BOOL_LABELS: Record<(typeof BOOL_ANSWERS)[number], string> = { yes: 'Yes', no: 'No' };
+
 /** Choice and multi offer options, and so are the only kinds that take an
  *  instruction instead of a value (R8). */
 export function hasOptions(kind: QuestionKind): boolean {
@@ -247,6 +250,21 @@ export function savedAnswerProblem(
     return `It is a ${saved.kind} answer, and this is a ${question.kind} question.`;
   }
   return answerProblem(question, saved.answer, saved.answerMode);
+}
+
+/** An answer on one line, as the saved-answer row shows it: picks joined,
+ *  yes and no capitalised, an instruction quoted. Empty for no answer. */
+export function answerText(answer: {
+  kind: QuestionKind;
+  answerMode: AnswerMode;
+  answer: AnswerValue | null;
+}): string {
+  const value = answer.answer;
+  if (value === null) return '';
+  if (Array.isArray(value)) return value.join(', ');
+  if (answer.answerMode === 'instruction') return `“${value}”`;
+  if (answer.kind === 'bool' && (value === 'yes' || value === 'no')) return BOOL_LABELS[value];
+  return value;
 }
 
 /** Why this question's answer cannot be remembered, or null when it can:

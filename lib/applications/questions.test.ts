@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   answerProblem,
+  answerText,
   approvalProblem,
   canRedraft,
   decodeAnswer,
@@ -291,6 +292,21 @@ test('a file question takes no saved answer', () => {
     ),
     'A file question takes no saved answer.',
   );
+});
+
+test('answerText puts any answer on one line', () => {
+  assert.equal(answerText({ kind: 'text', answerMode: 'value', answer: 'Because.' }), 'Because.');
+  assert.equal(answerText({ kind: 'bool', answerMode: 'value', answer: 'no' }), 'No');
+  assert.equal(answerText({ kind: 'choice', answerMode: 'value', answer: 'Boston' }), 'Boston');
+  assert.equal(
+    answerText({ kind: 'multi', answerMode: 'value', answer: ['NYC', 'Remote'] }),
+    'NYC, Remote',
+  );
+  assert.equal(
+    answerText({ kind: 'choice', answerMode: 'instruction', answer: 'Boston if listed' }),
+    '“Boston if listed”',
+  );
+  assert.equal(answerText({ kind: 'text', answerMode: 'value', answer: null }), '');
 });
 
 test('only an answered, valid, non-file answer can be remembered', () => {
