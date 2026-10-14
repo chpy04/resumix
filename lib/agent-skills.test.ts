@@ -600,6 +600,7 @@ const SAMPLE_ID = 'f1e00000-0000-4000-8000-000000000003';
 const NOT_PDF_ID = 'f1e00000-0000-4000-8000-000000000004';
 const APPLICATION_ID = '5b7e0000-0000-4000-8000-000000000005';
 const UNKNOWN_ID = '00000000-0000-4000-8000-0000000000ff';
+const REDIRECTED_ID = 'f1e00000-0000-4000-8000-000000000006';
 
 const SERVED: Record<string, string> = {
   [`/api/mcp/files/resume-pdf/${RESUME_ID}`]: '%PDF-1.5 resume',
@@ -608,10 +609,30 @@ const SERVED: Record<string, string> = {
   [`/api/mcp/files/application-file/${NOT_PDF_ID}`]: '<html>not a pdf</html>',
 };
 
+/** Somewhere else on the same machine: where a redirect would send the
+ *  token. Every request it sees is one the script should never have made. */
+const elsewhereRequests: string[] = [];
+const elsewhere = createServer((request, response) => {
+  elsewhereRequests.push(request.url ?? '');
+  response.writeHead(200, { 'content-type': 'application/octet-stream' });
+  response.end('%PDF-1.5 from elsewhere');
+});
+const elsewhereListening = new Promise<number>((resolve) => {
+  elsewhere.listen(0, '127.0.0.1', () => resolve((elsewhere.address() as AddressInfo).port));
+});
+after(() => elsewhere.close());
+
 /** Every request the stand-in saw: its path and its Authorization header. */
 const requests: { url: string; authorization: string | undefined }[] = [];
 const resumix = createServer((request, response) => {
   requests.push({ url: request.url ?? '', authorization: request.headers.authorization });
+  if (request.url === `/api/mcp/files/application-file/${REDIRECTED_ID}`) {
+    void elsewhereListening.then((port) => {
+      response.writeHead(302, { location: `http://127.0.0.1:${port}${request.url}` });
+      response.end();
+    });
+    return;
+  }
   const body = request.method === 'GET' ? SERVED[request.url ?? ''] : undefined;
   if (body === undefined) {
     response.writeHead(404, { 'content-type': 'application/json' });
@@ -753,6 +774,23 @@ test('a file Resumix will not send fails the run, and leaves no folder', async (
     assert.match(result.stderr, /Nothing was downloaded/, name);
     assert.ok(!existsSync(filesDir(agentDir)), `${name}: the folder was left behind`);
   }
+});
+
+test('the download script never follows a redirect, so the token stays put', async () => {
+  await elsewhereListening;
+  const agentDir = agentCopy();
+  const result = await fetchFiles(agentDir, [
+    APPLICATION_ID,
+    `/api/mcp/files/resume-pdf/${RESUME_ID}`,
+    'resume.pdf',
+    `/api/mcp/files/application-file/${REDIRECTED_ID}`,
+    'letter.pdf',
+  ]);
+  assert.notEqual(result.status, 0, 'a redirect was accepted');
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /Nothing was downloaded/);
+  assert.ok(!existsSync(filesDir(agentDir)), 'the folder was left behind');
+  assert.deepEqual(elsewhereRequests, [], 'a request followed the redirect');
 });
 
 test('the download script refuses anything but packet paths and plain names', async () => {

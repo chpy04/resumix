@@ -53,6 +53,8 @@ test('a Ready application becomes applied, keeping what was approved', { skip },
       resume_filename: buildResumeFilename(ready.company),
     });
     assert.equal(after.resumePdfId, before?.resumePdfId);
+    assert.ok(before?.coverLetterPdfId, 'the fixture pins a letter');
+    assert.equal(after.coverLetterPdfId, before.coverLetterPdfId);
     assert.ok(after.approvedAt, 'the approval stays as history');
     assert.deepEqual(
       (await fixtures.listApplicationFileRows(ready.app.id)).map((f) => [f.id, f.isArchived]),
