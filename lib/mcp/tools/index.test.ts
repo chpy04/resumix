@@ -30,6 +30,7 @@ test('the registry serves the library and application tools, in this order', () 
     [
       'ping',
       'get_library',
+      'get_saved_answers',
       'list_applications',
       'get_application',
       'create_application',

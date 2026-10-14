@@ -9,6 +9,11 @@
  * exception is EEO (C10): a proposal on an EEO question is dropped, not
  * refused, because the question still has to reach Chris.
  *
+ * A question can instead name one of Chris's saved answers (D-048), which
+ * the agent picked from `get_saved_answers`; Resumix matches nothing itself
+ * (D15). The query checks the link fits, under the lock; this checks only
+ * that it comes alone.
+ *
  * The status rule is here rather than in `addQuestions`, so a later tool
  * that may add to a Ready application can reuse the query.
  */
@@ -59,6 +64,13 @@ const questionInput = z.strictObject({
     .describe("Where proposed_answer came from: Chris's profile, or written by you."),
   answer_mode: z.enum(ANSWER_MODES).optional(),
   proposed_answer: z.union([z.string(), z.array(z.string())]).optional(),
+  saved_answer_id: z
+    .uuid()
+    .optional()
+    .describe(
+      'A saved answer from get_saved_answers that plainly answers this question. Send it ' +
+        'instead of source, answer_mode and proposed_answer.',
+    ),
 });
 
 type QuestionArgs = z.output<typeof questionInput>;
@@ -82,6 +94,18 @@ function findQuestionProblems(questions: readonly QuestionArgs[]): string[] {
       say('only a choice or multi question takes options');
     }
     if (q.options && new Set(q.options).size !== q.options.length) say('lists an option twice');
+
+    if (q.saved_answer_id !== undefined) {
+      if (
+        q.source !== undefined ||
+        q.answer_mode !== undefined ||
+        q.proposed_answer !== undefined
+      ) {
+        say('send saved_answer_id alone; its answer, mode and source come from the saved answer');
+      }
+      // Whether it fits is the query's check, against the saved answer.
+      return;
+    }
 
     // Dropped, not checked: an EEO question gets no proposal whatever it is.
     if (q.is_eeo || looksLikeEeo(q.prompt)) return;
@@ -124,7 +148,12 @@ export const addQuestions = defineTool({
     'wrote it. It is one of options exactly for choice, a list of options for multi, yes or no ' +
     'for bool, or, for choice and multi only, answer_mode instruction with the choice in words. ' +
     'When get_application shows a question with a redraft_note, Chris wants a new draft: call ' +
-    'this again with its field_ref and the new proposed_answer. Returns JSON { questions: ' +
+    'this again with its field_ref and the new proposed_answer. Call get_saved_answers first: ' +
+    "when one of Chris's saved answers plainly answers a question, send its saved_answer_id " +
+    'instead of a proposal, and the question arrives with that answer, already approved. It ' +
+    'must be the same kind (text and letter count as one; never file) and, for a value, use ' +
+    "this question's options exactly. It is the only way to answer an EEO question. If you " +
+    'are not sure it fits, leave it out: Chris answers in review. Returns JSON { questions: ' +
     '[{ question_id, outcome, note? }] } in input order: outcome is added, unchanged or ' +
     'redrafted, and note eeo_answer_dropped means an answer you proposed was dropped.',
   input: z.strictObject({
@@ -172,6 +201,7 @@ export const addQuestions = defineTool({
         source: q.source ?? null,
         answerMode: q.answer_mode ?? 'value',
         proposedAnswer: q.proposed_answer ?? null,
+        savedAnswerId: q.saved_answer_id,
       })),
       ['proposing', 'needs_review'],
     );
