@@ -6,12 +6,14 @@ import ProfileAnswersGroup, {
 } from '@/components/applications/ProfileAnswersGroup';
 import QuestionCard from '@/components/applications/QuestionCard';
 import type { AnswerDraft } from '@/components/applications/QuestionAnswerInput';
+import SavedAnswerRow from '@/components/applications/SavedAnswerRow';
 import SaveStatusBadge from '@/components/editor/SaveStatusBadge';
 import { useAutosaveRegistry } from '@/components/editor/useAutosaveRegistry';
-import { updateApplicationQuestion } from '@/lib/api-client';
+import { setQuestionRemembered, updateApplicationQuestion } from '@/lib/api-client';
 import {
   approvalProblem,
   questionProgress,
+  rememberProblem,
   reviewGroups,
   sameAnswer,
 } from '@/lib/applications/questions';
@@ -38,16 +40,24 @@ function channel(question: ApplicationQuestion): string {
   return `question:${question.id}`;
 }
 
+/** And one for its "remember" box, which is a separate write (D-048). */
+function rememberChannel(question: ApplicationQuestion): string {
+  return `remember:${question.id}`;
+}
+
 /**
  * Step 3: the application form's questions, each answered and approved on
  * its own (D-047). Profile answers come first, collapsed, to approve in
- * bulk; then every other question in the form's order.
+ * bulk; then the ones the agent answered from Chris's saved answers, which
+ * arrived approved and show as one line each until he edits one (D-048);
+ * then every other question in the form's order.
  *
  * Answers autosave, one queue per question: typing waits 500ms, and a
  * discrete pick (a radio, a toggle, a file) is sent at once. What is on
  * screen is a local draft once Chris has touched a question, and the
  * server's answer until then. A question's Approve waits until the server
  * holds exactly what is on screen, since approving is of the saved answer.
+ * Ticking "remember this answer" is sent at once, on a queue of its own.
  */
 export default function QuestionsReviewStep({
   application,
@@ -60,6 +70,9 @@ export default function QuestionsReviewStep({
   onNext,
 }: QuestionsReviewStepProps) {
   const [drafts, setDrafts] = useState<Readonly<Record<string, AnswerDraft>>>({});
+  const [remembered, setRemembered] = useState<Readonly<Record<string, boolean>>>({});
+  // Saved answers opened for editing stay open, approved again or not.
+  const [editing, setEditing] = useState<ReadonlySet<string>>(new Set());
   const { getController, retryAll, statusOf, status } = useAutosaveRegistry();
 
   useEffect(() => {
@@ -84,9 +97,26 @@ export default function QuestionsReviewStep({
     [getController, onSaved],
   );
 
+  const remember = useCallback(
+    (question: ApplicationQuestion, next: boolean) => {
+      setRemembered((prev) => ({ ...prev, [question.id]: next }));
+      const controller = getController<boolean>(
+        rememberChannel(question),
+        async (value) => {
+          await setQuestionRemembered(question.id, value);
+          onSaved();
+        },
+        0,
+      );
+      controller.schedule(next);
+      controller.flushNow();
+    },
+    [getController, onSaved],
+  );
+
   const liveFiles = application.files.filter((file) => !file.isArchived);
   const progress = questionProgress(application.questions);
-  const { profile, rest } = reviewGroups(application.questions);
+  const { profile, saved, rest } = reviewGroups(application.questions);
 
   /** Everything a card shows that follows from the server and the draft. */
   function view(question: ApplicationQuestion) {
@@ -103,13 +133,52 @@ export default function QuestionsReviewStep({
       reopened: reopened.has(question.id) || (question.approvedAt !== null && unsaved),
       problem: approvalProblem({ ...question, ...draft }, liveFiles),
       disabledReason: blockedBy ?? (unsaved ? 'Waiting for your changes to save' : null),
+      remember: {
+        checked: remembered[question.id] ?? question.savedAnswerId !== null,
+        problem: rememberProblem({ ...question, ...draft }),
+        busy: unsaved,
+      },
     };
   }
 
   const profileRows: ProfileRow[] = profile.map((question) => {
-    const { draft, unsaved, approved, reopened: wasApproved, problem } = view(question);
-    return { question, draft, unsaved, approved, reopened: wasApproved, problem };
+    const shown = view(question);
+    return {
+      question,
+      draft: shown.draft,
+      unsaved: shown.unsaved,
+      approved: shown.approved,
+      reopened: shown.reopened,
+      problem: shown.problem,
+      remember: shown.remember,
+    };
   });
+
+  function card(question: ApplicationQuestion) {
+    const shown = view(question);
+    return (
+      <QuestionCard
+        key={question.id}
+        question={question}
+        draft={shown.draft}
+        files={liveFiles}
+        applicationId={application.id}
+        approved={shown.approved}
+        reopened={shown.reopened}
+        problem={shown.problem}
+        disabledReason={shown.disabledReason}
+        remember={shown.remember}
+        onChange={(next, immediate) => change(question, next, immediate)}
+        onRemember={(next) => remember(question, next)}
+        onApprove={() => onApprove([question.id])}
+        onRedraft={async (note) => {
+          await updateApplicationQuestion(question.id, { redraftNote: note });
+          onSaved();
+        }}
+        onFileUploaded={onFileUploaded}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -132,34 +201,28 @@ export default function QuestionsReviewStep({
               applicationId={application.id}
               blockedBy={blockedBy}
               onChange={change}
+              onRemember={remember}
               onApprove={onApprove}
               onFileUploaded={onFileUploaded}
             />
           ) : null}
 
-          {rest.map((question) => {
-            const card = view(question);
+          {saved.map((question) => {
+            const shown = view(question);
+            if (!shown.approved || editing.has(question.id)) return card(question);
             return (
-              <QuestionCard
+              <SavedAnswerRow
                 key={question.id}
                 question={question}
-                draft={card.draft}
-                files={liveFiles}
-                applicationId={application.id}
-                approved={card.approved}
-                reopened={card.reopened}
-                problem={card.problem}
-                disabledReason={card.disabledReason}
-                onChange={(next, immediate) => change(question, next, immediate)}
-                onApprove={() => onApprove([question.id])}
-                onRedraft={async (note) => {
-                  await updateApplicationQuestion(question.id, { redraftNote: note });
-                  onSaved();
-                }}
-                onFileUploaded={onFileUploaded}
+                draft={shown.draft}
+                remember={shown.remember}
+                onRemember={(next) => remember(question, next)}
+                onEdit={() => setEditing((prev) => new Set([...prev, question.id]))}
               />
             );
           })}
+
+          {rest.map(card)}
         </div>
       </div>
 

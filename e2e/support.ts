@@ -67,8 +67,10 @@ export async function waitForSaved(page: Page): Promise<void> {
 // seeded content's stable names) and for verifying server-side truth
 // (rendered PDF bytes) that would otherwise require screenshot diffing.
 // Every mutation a test cares about proving still goes through the real UI.
-// `setApplicationPipelineState` and `insertApplicationQuestions` are the
-// helpers that write to the database instead, for setup no HTTP path allows.
+// `setApplicationPipelineState`, `insertApplicationQuestions` and
+// `insertSavedAnswer` are the helpers that write to the database instead,
+// for setup no HTTP path allows; `getSavedAnswerRow` reads it, for what the
+// API never shows.
 // ---------------------------------------------------------------------------
 
 /** The stored token, or null in `dev` auth mode where there isn't one. */
@@ -207,6 +209,7 @@ export interface ApplicationDetailLike {
     answerMode: string;
     answer: string | string[] | null;
     redraftNote: string | null;
+    savedAnswerId: string | null;
     approvedAt: string | null;
   }[];
 }
@@ -277,10 +280,15 @@ export interface QuestionSetup {
   options?: string[];
   required?: boolean;
   isEeo?: boolean;
-  source?: 'profile' | 'agent';
+  source?: 'profile' | 'agent' | 'saved';
   answerMode?: 'value' | 'instruction';
   /** Also the answer, as `add_questions` records it. */
   proposedAnswer?: string | string[];
+  /** A saved answer it was filled from (`insertSavedAnswer`), with `source:
+   *  'saved'`, as `add_questions` links one (D-048). */
+  savedAnswerId?: string;
+  /** Approved already, as a linked question arrives. */
+  approvedAt?: Date;
 }
 
 /**
@@ -308,20 +316,70 @@ export async function insertApplicationQuestions(
       const [inserted] = await sql<{ id: string }[]>`
         insert into application_question (
           application_id, sort_order, prompt, kind, options, field_ref, required,
-          is_eeo, source, answer_mode, proposed_answer, answer
+          is_eeo, source, answer_mode, proposed_answer, answer, saved_answer_id, approved_at
         ) values (
           ${applicationId}, ${index}, ${row.label}, ${row.kind},
           ${row.options ? sql.json(row.options) : null},
           ${sql.json({ page: 0, label: row.label, selector: null })},
           ${row.required ?? false}, ${row.isEeo ?? false},
           ${answer === null ? null : (row.source ?? 'agent')},
-          ${row.answerMode ?? 'value'}, ${answer}, ${answer}
+          ${row.answerMode ?? 'value'}, ${answer}, ${answer},
+          ${row.savedAnswerId ?? null}, ${row.approvedAt ?? null}
         )
         returning id`;
       if (!inserted) throw new Error(`could not add question "${row.label}"`);
       ids.push(inserted.id);
     }
     return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * One of Chris's saved answers (D-048), owned by whoever owns this
+ * application, written directly: only ticking "remember" makes one, and a
+ * test of what arrives already linked needs one first. Returns its id.
+ */
+export async function insertSavedAnswer(
+  applicationId: string,
+  saved: {
+    prompt: string;
+    kind: QuestionSetup['kind'];
+    answer: string;
+    answerMode?: 'value' | 'instruction';
+  },
+): Promise<string> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const [inserted] = await sql<{ id: string }[]>`
+      insert into saved_answer (user_id, prompt, kind, answer_mode, answer)
+      select user_id, ${saved.prompt}, ${saved.kind}, ${saved.answerMode ?? 'value'}, ${saved.answer}
+      from application where id = ${applicationId}
+      returning id`;
+    if (!inserted) throw new Error(`no application ${applicationId} to own a saved answer`);
+    return inserted.id;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** A saved answer as stored, archived or not: the API has no read of one. */
+export async function getSavedAnswerRow(
+  id: string,
+): Promise<{ answer: string; answerMode: string; isArchived: boolean }> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const [row] = await sql<{ answer: string; answer_mode: string; is_archived: boolean }[]>`
+      select answer, answer_mode, is_archived from saved_answer where id = ${id}`;
+    if (!row) throw new Error(`no saved answer ${id}`);
+    return { answer: row.answer, answerMode: row.answer_mode, isArchived: row.is_archived };
   } finally {
     await sql.end();
   }

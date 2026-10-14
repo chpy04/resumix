@@ -10,11 +10,11 @@ hidden from the picker unless "show archived" is toggled on.
 
 ## Ownership — every row belongs to exactly one user
 
-The eight **root** tables carry `user_id uuid not null references users (id) on
+The nine **root** tables carry `user_id uuid not null references users (id) on
 delete restrict`:
 
 `template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`cover_letter`, `application`, `api_token`.
+`cover_letter`, `application`, `api_token`, `saved_answer`.
 
 Everything else infers its owner through its parent and carries **no**
 `user_id` of its own:
@@ -361,7 +361,7 @@ Chris edits and approves them in the review's Questions step.
 | `proposed_answer` | text                                       | what was proposed, encoded like `answer`, kept beside Chris's edits         |
 | `answer`          | text                                       | what gets typed into the form; null until there is one                      |
 | `redraft_note`    | text                                       | non-null while Chris has asked the agent for a new draft                    |
-| `saved_answer_id` | uuid                                       | a plain uuid with no foreign key; nothing writes it yet                     |
+| `saved_answer_id` | uuid → `saved_answer(id)`, set null        | the saved answer it came from or is remembered as (D-048)                   |
 | `approved_at`     | timestamptz                                | null until Chris approves this question; cleared by any change to it        |
 
 **`field_ref` is the question's identity.** `page` is the 0-based form page,
@@ -407,3 +407,55 @@ question to be approved; an optional one left unapproved is left blank.
 Questions are never deleted or archived. Recording one again with the same
 `field_ref` changes nothing, unless Chris asked for a redraft, in which case
 the new proposal replaces the answer and clears the request.
+
+**A question holds its own copy of a saved answer.** One the agent links to a
+saved answer (`source = 'saved'`) copies its mode and answer into
+`answer_mode`, `proposed_answer` and `answer`, so editing or archiving the
+saved answer later changes no question already filled from it. That is also
+why `saved_answer_id` is `on delete set null`, and why nothing ties it to
+`source`: `source = 'saved'` with no link is a saved answer since retired.
+The link is **live** while it names one of the owner's saved answers that is
+not archived; the API reports only a live one.
+
+### `saved_answer`
+
+Chris's answers to the questions forms keep asking, saved by ticking
+"remember this answer" in the review's Questions step, for the agent to link
+to the next form that asks (D-048). A root table.
+
+| column        | type                                     | notes                                                   |
+| ------------- | ---------------------------------------- | ------------------------------------------------------- |
+| `user_id`     | uuid → `users(id)` not null              | whose answer it is                                      |
+| `prompt`      | text not null                            | the question's wording when it was first saved          |
+| `kind`        | `application_question_kind` not null     | the kind of question it answers; never `file`           |
+| `answer_mode` | `answer_mode` not null default `'value'` | `value` \| `instruction`                                |
+| `answer`      | text not null                            | encoded as an `application_question.answer` of its kind |
+| `is_archived` | boolean not null default false           | set by unticking; an archived one is never linked again |
+
+**`kind` is stored; `options` is not.** An answer is encoded per kind, so the
+text alone cannot say whether `["A","B"]` is prose or two picks. `kind` is
+what lets the agent judge a fit and the server refuse a mismatch exactly
+(the same kind, `text` and `letter` counting as one). The question being
+answered supplies the options a picked value must be one of.
+
+The CHECKs:
+
+- `ck_saved_answer_kind`: never `file`, since an attachment id belongs to one
+  application.
+- `ck_saved_answer_mode`: only choice and multi take an instruction, as on a
+  question.
+- `ck_saved_answer_answer`: never blank. Ticking needs an answer.
+
+**Never deleted.** Unticking archives the saved answer and unlinks the
+question; ticking again saves a new one. With no page for managing saved
+answers, unticking is the only way to retire one.
+
+**While a question is remembered, its answer edits write through** to the
+saved answer: the answer and its mode, never the prompt, and a cleared answer
+writes nothing. It is a global edit, like a bullet's, and the checkbox's hint
+says so. An agent's redraft is not Chris's edit: it unlinks the
+question instead, and the saved answer stays as it was, live for other forms.
+
+**Duplicate prompts are allowed.** The same words can need different answers
+on two forms ("Which office?"); choosing between them is the agent's call
+(D15), and Resumix does no matching of its own.

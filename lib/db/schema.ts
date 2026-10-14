@@ -513,12 +513,17 @@ export const applicationQuestion = pgTable(
     answer: text('answer'),
     /** Non-null while Chris has asked the agent for a new draft. */
     redraftNote: text('redraft_note'),
-    /** A plain uuid until saved answers add the foreign key. */
-    savedAnswerId: uuid('saved_answer_id'),
+    /** The saved answer this one was filled from or is remembered as. The
+     *  question holds its own copy of the answer, so `set null` loses
+     *  nothing. */
+    savedAnswerId: uuid('saved_answer_id').references((): AnyPgColumn => savedAnswer.id, {
+      onDelete: 'set null',
+    }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
+    index('ix_application_question_saved_answer_id').on(t.savedAnswerId),
     uniqueIndex('ux_application_question_field').on(
       t.applicationId,
       sql`(${t.fieldRef} ->> 'page')`,
@@ -548,6 +553,40 @@ export const applicationQuestion = pgTable(
       'ck_application_question_redraft',
       sql`${t.redraftNote} is null or ${t.approvedAt} is null`,
     ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Saved answers (D-048)
+//
+// Chris's answers to the questions forms keep asking, for the agent to link
+// to the next form that asks. A ninth root table. Archived, never deleted;
+// `kind` is stored so an answer's encoding can be read, `options` is not,
+// because the question it is linked to supplies them.
+// ---------------------------------------------------------------------------
+
+export const savedAnswer = pgTable(
+  'saved_answer',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The question's wording when it was first saved. */
+    prompt: text('prompt').notNull(),
+    kind: applicationQuestionKind('kind').notNull(),
+    answerMode: answerMode('answer_mode').notNull().default('value'),
+    /** Encoded as an `application_question` answer of the same kind. */
+    answer: text('answer').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [
+    index('ix_saved_answer_user_id').on(t.userId),
+    check('ck_saved_answer_kind', sql`${t.kind} <> 'file'`),
+    check(
+      'ck_saved_answer_mode',
+      sql`${t.answerMode} = 'value' or ${t.kind} in ('choice', 'multi')`,
+    ),
+    check('ck_saved_answer_answer', sql`btrim(${t.answer}) <> ''`),
   ],
 );
 

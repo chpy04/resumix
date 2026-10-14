@@ -285,6 +285,11 @@ export const approveQuestionsSchema = z.object({
   questionIds: z.array(uuid, { error: 'must be a list of question ids' }).min(1, 'is empty'),
 });
 
+/** Ticks or unticks "remember this answer" (D-048). */
+export const rememberAnswerSchema = z.object({
+  remember: z.boolean({ error: 'must be true or false' }),
+});
+
 // ---------------------------------------------------------------------------
 // Feedback (in-app "Give feedback" widget → GitHub issue)
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import {
   approveSectionSchema,
   patchApplicationQuestionSchema,
   patchApplicationSchema,
+  rememberAnswerSchema,
 } from './validation.ts';
 
 test('PATCH refuses every status the review flow owns (D-041)', () => {
@@ -68,5 +69,14 @@ test('approving questions needs at least one question id', () => {
       false,
       String(questionIds),
     );
+  }
+});
+
+test('remembering an answer is a yes or a no, and nothing else', () => {
+  for (const remember of [true, false]) {
+    assert.equal(rememberAnswerSchema.safeParse({ remember }).success, true, String(remember));
+  }
+  for (const body of [{}, { remember: 'true' }, { remember: null }]) {
+    assert.equal(rememberAnswerSchema.safeParse(body).success, false, JSON.stringify(body));
   }
 });

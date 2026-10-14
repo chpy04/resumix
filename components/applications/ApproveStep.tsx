@@ -327,10 +327,13 @@ interface QuestionsRowProps {
   onGoTo: () => void;
 }
 
-/** How many of the form's questions are approved. Only the required ones
- *  gate approval; an optional one left open is left blank (C3, D-047). */
+/** How many of the form's questions are approved, and how many of those
+ *  came from saved answers (D-048). Only the required ones gate approval; an
+ *  optional one left open is left blank (C3, D-047). */
 function QuestionsRow({ application, stepNumber, onGoTo }: QuestionsRowProps) {
-  const { approved, total, requiredOpen, optionalOpen } = questionProgress(application.questions);
+  const { approved, total, requiredOpen, optionalOpen, fromSaved } = questionProgress(
+    application.questions,
+  );
   const done = approved === total;
   return (
     <div className="flex flex-col items-center gap-1">
@@ -345,7 +348,9 @@ function QuestionsRow({ application, stepNumber, onGoTo }: QuestionsRowProps) {
         <span className="font-medium">Questions</span>
         <span>·</span>
         <span>
-          {approved} of {total} approved{done ? ' ✓' : ''}
+          {approved} of {total} approved
+          {fromSaved > 0 ? ` (${fromSaved} from saved answers)` : ''}
+          {done ? ' ✓' : ''}
         </span>
         {requiredOpen > 0 ? (
           <>
