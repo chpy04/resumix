@@ -36,7 +36,9 @@ import {
   technicalSkillRow,
   users,
 } from '../db/schema.ts';
+import { approveApplication } from '../application-approval.ts';
 import type { User } from '../types.ts';
+import { createCoverLetter } from './cover-letters.ts';
 import { provisionUser } from './users.ts';
 
 export const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -340,6 +342,57 @@ export function stubLatex(pagesFor: (tex: string) => StubbedCompile): {
       globalThis.fetch = original.fetch;
       if (original.url === undefined) delete process.env.LATEX_SERVICE_URL;
       else process.env.LATEX_SERVICE_URL = original.url;
+    },
+  };
+}
+
+/**
+ * An application made Ready the real way, so its pinned PDF and its letter's
+ * PDF are exactly what final approval stores (C4): in Needs review with its
+ * sections approved, then `approveApplication`, with the sidecar stubbed for
+ * that call only. It has a letter copied from Default unless `withLetter`
+ * is false. `beforeApproval` adds questions and attachments while it is
+ * still in review. `cleanup()` deletes what this made, in the order the
+ * snapshot's `restrict` reference needs.
+ */
+export async function insertReadyApplication(
+  userId: string,
+  tag: string,
+  options: {
+    withLetter?: boolean;
+    beforeApproval?: (applicationId: string) => Promise<void>;
+  } = {},
+) {
+  const resume = await insertTestResume(userId, tag);
+  const company = `T-Ready Co ${tag}`;
+  const letter = options.withLetter === false ? null : await createCoverLetter(userId, company);
+  const app = await insertTestApplication(userId, tag, {
+    company,
+    status: 'needs_review',
+    resumeId: resume.id,
+    coverLetterId: letter?.id ?? null,
+    resumeApprovedAt: new Date(),
+    coverLetterApprovedAt: letter ? new Date() : null,
+  });
+  await options.beforeApproval?.(app.id);
+
+  const latex = stubLatex(() => 1);
+  try {
+    const approved = await approveApplication(userId, app.id);
+    if (!approved.ok) throw new Error(`approval failed: ${approved.errors.join('; ')}`);
+  } finally {
+    latex.restore();
+  }
+
+  return {
+    app,
+    resume,
+    letter,
+    company,
+    async cleanup() {
+      await deleteApplicationRow(app.id);
+      await deleteResumeRow(resume.id);
+      if (letter) await deleteCoverLetterRow(letter.id);
     },
   };
 }

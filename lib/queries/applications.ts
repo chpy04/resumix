@@ -431,6 +431,15 @@ async function repinFailure(userId: string, id: string): Promise<Error> {
   );
 }
 
+/** What marking an application sent writes, however it is marked: the
+ *  status, and `applied_at` the first time it is sent. */
+function appliedFields(existing: Pick<ApplicationRow, 'appliedAt'>) {
+  return {
+    status: 'applied' as const,
+    appliedAt: nextAppliedAt(existing.appliedAt, 'applied', new Date()),
+  };
+}
+
 /**
  * Marks an application as sent, pinning it to the snapshot that went out.
  *
@@ -454,8 +463,7 @@ export async function recordApplied(
   const [row] = await db
     .update(application)
     .set({
-      status: 'applied',
-      appliedAt: nextAppliedAt(existing.appliedAt, 'applied', new Date()),
+      ...appliedFields(existing),
       // A re-send replaces the snapshot; not sending one leaves the last in place.
       ...(resumePdfId === null ? {} : { resumePdfId }),
     })
@@ -470,6 +478,61 @@ export async function recordApplied(
   if (row) return detailFor(row);
 
   throw await repinFailure(userId, id);
+}
+
+/**
+ * The agent's `mark_applied`: Chris has submitted a Ready application's
+ * form, so it becomes `applied`, keeping the PDF final approval pinned
+ * (C3, C4). Only from `ready`, and only while it is not archived: the test
+ * is in the WHERE clause, so an edit that reopened it while the form was
+ * being filled wins. Null when no row matched.
+ */
+export async function recordReadyApplied(
+  userId: string,
+  id: string,
+): Promise<ApplicationDetail | null> {
+  const existing = await getApplicationRow(userId, id);
+  if (!existing) return null;
+
+  const [row] = await db
+    .update(application)
+    .set(appliedFields(existing))
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        eq(application.status, 'ready'),
+        eq(application.isArchived, false),
+      ),
+    )
+    .returning();
+  return row ? detailFor(row) : null;
+}
+
+/**
+ * The id of the caller's live Ready application whose pinned PDF is
+ * `resumePdfId`, or null. A snapshot has no owner of its own, so this is how
+ * the files route learns whose packet a resume PDF is in (D-050). Final
+ * approval stores a fresh snapshot for each application, so there is at
+ * most one.
+ */
+export async function findReadyApplicationPinning(
+  userId: string,
+  resumePdfId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: application.id })
+    .from(application)
+    .where(
+      and(
+        eq(application.resumePdfId, resumePdfId),
+        eq(application.userId, userId),
+        eq(application.status, 'ready'),
+        eq(application.isArchived, false),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
 }
 
 /**

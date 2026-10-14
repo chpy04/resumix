@@ -17,6 +17,8 @@ let BadRequestError: typeof import('./errors.ts').BadRequestError;
 let NotFoundError: typeof import('./errors.ts').NotFoundError;
 let createApplication: typeof import('./applications.ts').createApplication;
 let pinResumePdf: typeof import('./applications.ts').pinResumePdf;
+let findReadyApplicationPinning: typeof import('./applications.ts').findReadyApplicationPinning;
+let recordReadyApplied: typeof import('./applications.ts').recordReadyApplied;
 let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
 let listApplications: typeof import('./applications.ts').listApplications;
 let recordApplied: typeof import('./applications.ts').recordApplied;
@@ -35,10 +37,12 @@ if (!skip) {
   ({ BadRequestError, NotFoundError } = await import('./errors.ts'));
   ({
     createApplication,
+    findReadyApplicationPinning,
     getApplicationDetail,
     listApplications,
     pinResumePdf,
     recordApplied,
+    recordReadyApplied,
     updateApplication,
   } = await import('./applications.ts'));
   ({ addApplicationFile, getApplicationFileBlob, listApplicationFiles, updateApplicationFile } =
@@ -348,6 +352,7 @@ test('files attach, come back out byte for byte, and archive', { skip }, async (
 
     const blob = await getApplicationFileBlob(userId, stored.id);
     assert.equal(blob?.bytes.toString('utf8'), 'Dear hiring manager,\n');
+    assert.deepEqual([blob?.applicationId, blob?.isArchived], [created.id, false]);
 
     const detail = await getApplicationDetail(userId, created.id);
     assert.deepEqual(
@@ -357,6 +362,7 @@ test('files attach, come back out byte for byte, and archive', { skip }, async (
 
     const archived = await updateApplicationFile(userId, stored.id, { isArchived: true });
     assert.equal(archived.isArchived, true);
+    assert.equal((await getApplicationFileBlob(userId, stored.id))?.isArchived, true);
 
     // Archived, not gone (D-011).
     const files = await listApplicationFiles(userId, created.id);
@@ -466,5 +472,75 @@ test("re-pinning another user's application is not found, not refused", { skip }
     assert.equal(unchanged?.sentPdf?.filename, 'approved.pdf');
   } finally {
     await s.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Applying from the agent (D-050): `mark_applied` sends only a Ready
+// application, and the files route finds a PDF's application only while it
+// is Ready.
+// ---------------------------------------------------------------------------
+
+test('marking a Ready application applied keeps the PDF that was approved', { skip }, async () => {
+  const s = await pinned('ready');
+  try {
+    const sent = await recordReadyApplied(s.user.id, s.app.id);
+    assert.equal(sent?.status, 'applied');
+    assert.ok(sent?.appliedAt, 'applied_at is stamped');
+    assert.equal(sent?.sentPdf?.filename, 'approved.pdf');
+    assert.ok(sent?.approvedAt, 'the approval stays as history');
+
+    // Applied now, so a second call matches nothing and changes nothing.
+    assert.equal(await recordReadyApplied(s.user.id, s.app.id), null);
+    const again = await getApplicationDetail(s.user.id, s.app.id);
+    assert.equal(again?.appliedAt, sent?.appliedAt);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('only a live Ready application is marked applied by the agent', { skip }, async () => {
+  for (const status of ['draft', 'proposing', 'needs_review', 'rejected'] as const) {
+    const s = await pinned(status);
+    try {
+      assert.equal(await recordReadyApplied(s.user.id, s.app.id), null, status);
+      const unchanged = await getApplicationDetail(s.user.id, s.app.id);
+      assert.equal(unchanged?.status, status);
+      assert.equal(unchanged?.appliedAt, null, status);
+    } finally {
+      await s.cleanup();
+    }
+  }
+
+  const archived = await pinned('ready');
+  try {
+    await updateApplication(archived.user.id, archived.app.id, { isArchived: true });
+    assert.equal(await recordReadyApplied(archived.user.id, archived.app.id), null);
+    assert.equal((await getApplicationDetail(archived.user.id, archived.app.id))?.status, 'ready');
+  } finally {
+    await archived.cleanup();
+  }
+});
+
+test('a pinned PDF leads back to its application only while it is Ready', { skip }, async () => {
+  const s = await pinned('ready');
+  try {
+    assert.equal(await findReadyApplicationPinning(s.user.id, s.approvedPdf.id), s.app.id);
+    // A later snapshot of the same resume was never approved.
+    assert.equal(await findReadyApplicationPinning(s.user.id, s.newerPdf.id), null);
+
+    await updateApplication(s.user.id, s.app.id, { isArchived: true });
+    assert.equal(await findReadyApplicationPinning(s.user.id, s.approvedPdf.id), null);
+  } finally {
+    await s.cleanup();
+  }
+
+  for (const status of ['needs_review', 'applied'] as const) {
+    const other = await pinned(status);
+    try {
+      assert.equal(await findReadyApplicationPinning(other.user.id, other.approvedPdf.id), null);
+    } finally {
+      await other.cleanup();
+    }
   }
 });

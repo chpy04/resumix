@@ -451,6 +451,32 @@ must be `isError`. The application and its letter are archived, its resume
 deleted and the saved answer archived when it ends. `npm run verify` runs it
 from `e2e/mcp.spec.ts`.
 
+### Files for the agent (`/api/mcp/files/…`)
+
+| method | path                                  | returns                                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------------------- |
+| GET    | `/api/mcp/files/resume-pdf/:id`       | the bytes of a Ready application's pinned `resume_pdf` snapshot  |
+| GET    | `/api/mcp/files/application-file/:id` | the bytes of an attachment in a Ready application's apply packet |
+
+These are the paths `get_apply_packet` returns, and the only way a file
+reaches the agent: no tool returns bytes (C5, D-050).
+
+- **The same token as `/api/mcp`**, checked first, in every auth mode. With
+  no live `rmx_` token it is the same `401 { "error": "unauthorized" }`.
+- **A live Ready application's packet, and nothing else.** A file is served
+  while it is in the packet `get_apply_packet` would return now: the pinned
+  resume PDF, the attachment final approval stored as the letter's PDF, and
+  the attachments approved `file` questions picked. Everything else is
+  `404 { "error": "file <id> not found" }`: another user's file, an
+  attachment nothing picked, an archived one, a snapshot other than the
+  pinned one, an id that is not a uuid, and every file of an application
+  that has been reopened, sent or archived, or whose packet cannot be built.
+  So a path stops working once its application leaves Ready.
+- **Headers:** `Content-Disposition: attachment` with the file's name,
+  `Content-Length`, `X-Content-Type-Options: nosniff` and
+  `Cache-Control: no-store`. A resume is `application/pdf`; an attachment's
+  type comes from the attachment route's fixed list (Attachments, below).
+
 ## Resumes
 
 | method | path               | body                     | returns                                                                                |

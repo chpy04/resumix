@@ -32,6 +32,10 @@ let recordFinalApproval: typeof import('./applications.ts').recordFinalApproval;
 let getApplicationDetail: typeof import('./applications.ts').getApplicationDetail;
 let listApplications: typeof import('./applications.ts').listApplications;
 let recordApplied: typeof import('./applications.ts').recordApplied;
+let recordReadyApplied: typeof import('./applications.ts').recordReadyApplied;
+let findReadyApplicationPinning: typeof import('./applications.ts').findReadyApplicationPinning;
+let loadApplyPacket: typeof import('../apply-packet.ts').loadApplyPacket;
+let serveApplyFile: typeof import('../mcp/files.ts').serveApplyFile;
 let updateApplication: typeof import('./applications.ts').updateApplication;
 let addApplicationFile: typeof import('./application-files.ts').addApplicationFile;
 let getApplicationFileBlob: typeof import('./application-files.ts').getApplicationFileBlob;
@@ -78,11 +82,13 @@ if (!skip) {
     attachCoverLetter,
     createApplication,
     createProposedApplication,
+    findReadyApplicationPinning,
     getApplicationDetail,
     getApplicationRow,
     listApplications,
     recordApplied,
     recordFinalApproval,
+    recordReadyApplied,
     setProposedSelection,
     submitForReview,
     updateApplication,
@@ -104,6 +110,8 @@ if (!skip) {
     updateApplicationQuestion,
   } = await import('./application-questions.ts'));
   ({ listSavedAnswers } = await import('./saved-answers.ts'));
+  ({ loadApplyPacket } = await import('../apply-packet.ts'));
+  ({ serveApplyFile } = await import('../mcp/files.ts'));
   ({
     createResume,
     deleteResume,
@@ -860,5 +868,49 @@ test("a question linked to another user's saved answer cannot reach it", { skip 
     assert.equal((await fixtures.getSavedAnswerRow(bobSaved.id)).answer, "Bob's words");
   } finally {
     await fixtures.deleteApplicationRow(aliceApplication.id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Applying (D-050): Bob's Ready application, its packet and its files are
+// as unreachable as anything else of his. A token held by Alice's agent
+// must never fetch his approved documents, mark him applied, or send his
+// application back to review.
+// ---------------------------------------------------------------------------
+
+test("another user's Ready application can't be applied to", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const ready = await fixtures.insertReadyApplication(bob.id, `b-${tag}`);
+  try {
+    const bobRow = await getApplicationRow(bob.id, ready.app.id);
+    const letterFile = (await fixtures.listApplicationFileRows(ready.app.id))[0];
+    assert.ok(bobRow?.resumePdfId && letterFile);
+
+    assert.equal(await loadApplyPacket(alice.id, ready.app.id), null);
+    assert.equal(await findReadyApplicationPinning(alice.id, bobRow.resumePdfId), null);
+    for (const [kind, id] of [
+      ['resume-pdf', bobRow.resumePdfId],
+      ['application-file', letterFile.id],
+    ] as const) {
+      const response = await serveApplyFile(alice.id, kind, id);
+      assert.equal(response.status, 404, kind);
+      assert.deepEqual(await response.json(), { error: `file ${id} not found` });
+    }
+
+    assert.equal(await recordReadyApplied(alice.id, ready.app.id), null);
+    await assert.rejects(
+      () => addQuestions(alice.id, ready.app.id, [WHY_INPUT], ['ready', 'needs_review']),
+      NotFoundError,
+    );
+
+    // Nothing was written: Bob's is still Ready, unsent, with no new question.
+    const after = await getApplicationRow(bob.id, ready.app.id);
+    assert.equal(after?.status, 'ready');
+    assert.equal(after?.appliedAt, null);
+    assert.ok(after?.approvedAt);
+    assert.deepEqual(await listQuestions(bob.id, ready.app.id), []);
+    assert.equal((await loadApplyPacket(bob.id, ready.app.id))?.ok, true);
+  } finally {
+    await ready.cleanup();
   }
 });
