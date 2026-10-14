@@ -21,14 +21,40 @@ export function normalizeSuggestionText(text: string): string {
   return text.replace(/[ \t\n\r\f\v]+/g, ' ').replace(/^ | $/g, '');
 }
 
-/** Why normalized `text` cannot be a suggestion, or null when it can. */
-export function suggestionTextProblem(text: string): string | null {
-  if (text.length === 0) return 'is required';
-  if (text.length > SUGGESTION_TEXT_MAX) {
-    return `must be at most ${SUGGESTION_TEXT_MAX} characters`;
-  }
-  if (text.includes('\\')) return 'plain text: write it as it should read, without LaTeX';
+type TextProblem = 'empty' | 'long' | 'latex';
+
+function textProblem(text: string): TextProblem | null {
+  if (text.length === 0) return 'empty';
+  if (text.length > SUGGESTION_TEXT_MAX) return 'long';
+  if (text.includes('\\')) return 'latex';
   return null;
+}
+
+/** As a request field's error reads after its name (`proposed_text: …`). */
+const FIELD_MESSAGES: Record<TextProblem, string> = {
+  empty: 'is required',
+  long: `must be at most ${SUGGESTION_TEXT_MAX} characters`,
+  latex: 'plain text: write it as it should read, without LaTeX',
+};
+
+/** As the review page's card says it, on its own. */
+const SENTENCES: Record<TextProblem, string> = {
+  empty: 'Write the bullet, or reject the suggestion.',
+  long: `Shorten it to ${SUGGESTION_TEXT_MAX} characters or fewer.`,
+  latex: 'Write it as plain text, as it should read, without LaTeX.',
+};
+
+/** Why normalized `text` cannot be a suggestion, worded as a field error,
+ *  or null when it can. */
+export function suggestionTextProblem(text: string): string | null {
+  const problem = textProblem(text);
+  return problem && FIELD_MESSAGES[problem];
+}
+
+/** The same rule, as a sentence the review page's card can show. */
+export function suggestionTextHint(text: string): string | null {
+  const problem = textProblem(text);
+  return problem && SENTENCES[problem];
 }
 
 /** Why no suggestion on an application in `status` can be resolved or

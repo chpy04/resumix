@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ApiError } from '@/lib/api-client';
-import { normalizeSuggestionText, suggestionTextProblem } from '@/lib/applications/suggestions';
+import { normalizeSuggestionText, suggestionTextHint } from '@/lib/applications/suggestions';
 import { hasLatexMarkup } from '@/lib/editor/suggestions';
 import { latexToPlainText } from '@/lib/render/plain-text';
 import type { BulletSuggestion, BulletSuggestionAction } from '@/lib/types';
@@ -12,10 +12,17 @@ export interface SuggestionHandlers {
   /** What the card's field shows: Chris's draft, or the stored text. */
   textOf: (suggestion: BulletSuggestion) => string;
   onTextChange: (suggestion: BulletSuggestion, text: string) => void;
-  /** Throws, for the card to show, when the server refuses. */
-  onResolve: (suggestion: BulletSuggestion, action: BulletSuggestionAction) => Promise<void>;
-  /** Why no suggestion can be resolved right now (an edit still saving, or
-   *  the application out of review), or null. */
+  /** Resolves it, or answers why it could not yet, for the card to show.
+   *  Throws an `ApiError` when the server refuses. */
+  onResolve: (
+    suggestion: BulletSuggestion,
+    action: BulletSuggestionAction,
+  ) => Promise<string | null>;
+  /** Why no suggestion can be edited or resolved at all (the application is
+   *  out of review), or null. The text is read-only while it is set. */
+  locked: string | null;
+  /** Why none can be resolved right now: `locked`, or an edit still saving
+   *  or failed. */
   disabledReason: string | null;
 }
 
@@ -39,15 +46,16 @@ export default function SuggestionCard({ suggestion, current, handlers }: Sugges
   const [error, setError] = useState<string | null>(null);
 
   const text = handlers.textOf(suggestion);
-  const problem = suggestionTextProblem(normalizeSuggestionText(text));
-  const blocked = handlers.disabledReason ?? (problem ? `The text ${problem}.` : null);
+  const problem = suggestionTextHint(normalizeSuggestionText(text));
+  const blocked = handlers.disabledReason ?? problem;
   const isEdit = suggestion.kind === 'edit';
 
   async function resolve(action: BulletSuggestionAction): Promise<void> {
     setBusy(true);
     setError(null);
     try {
-      await handlers.onResolve(suggestion, action);
+      const refusal = await handlers.onResolve(suggestion, action);
+      if (refusal) setError(refusal);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve this suggestion.');
     } finally {
@@ -73,12 +81,14 @@ export default function SuggestionCard({ suggestion, current, handlers }: Sugges
         <input
           value={text}
           onChange={(event) => handlers.onTextChange(suggestion, event.target.value)}
+          readOnly={handlers.locked !== null}
+          title={handlers.locked ?? undefined}
           aria-label="Suggested text"
           spellCheck
-          className="min-w-0 flex-1 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none focus:border-accent"
+          className="min-w-0 flex-1 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none read-only:cursor-not-allowed read-only:text-ink-dim focus:border-accent read-only:focus:border-line"
         />
       </label>
-      {problem ? <p className="text-xs text-danger">The text {problem}.</p> : null}
+      {problem ? <p className="text-xs text-danger">{problem}</p> : null}
       {isEdit && current !== null ? (
         <p className="text-xs text-ink-dim">
           <span className="inline-block w-10">was</span> {latexToPlainText(current)}

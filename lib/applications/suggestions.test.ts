@@ -6,6 +6,7 @@ import {
   normalizeSuggestionText,
   suggestionsLocked,
   suggestionTally,
+  suggestionTextHint,
   suggestionTextProblem,
 } from './suggestions.ts';
 
@@ -23,6 +24,16 @@ test('text must be there, short enough, and not LaTeX', () => {
     'plain text: write it as it should read, without LaTeX',
   );
   assert.equal(suggestionTextProblem('Cut 40% & saved $2M'), null);
+});
+
+test('the card says each problem as a sentence of its own', () => {
+  assert.equal(suggestionTextHint(''), 'Write the bullet, or reject the suggestion.');
+  assert.equal(suggestionTextHint('x'.repeat(501)), 'Shorten it to 500 characters or fewer.');
+  assert.equal(
+    suggestionTextHint('Cut \\textbf{40\\%}'),
+    'Write it as plain text, as it should read, without LaTeX.',
+  );
+  assert.equal(suggestionTextHint('Cut 40% & saved $2M'), null);
 });
 
 test('suggestions are resolved only in Needs review', () => {

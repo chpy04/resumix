@@ -60,6 +60,21 @@ export function useAutosaveRegistry() {
     for (const entry of entries.current.values()) entry.controller.flushNow();
   }, []);
 
+  /**
+   * Sends every queued save now and resolves once none is in flight, with
+   * the status they settled on: what an action that acts on the server's
+   * copy waits for, so a save still in its debounce cannot land after it.
+   * Polled, because a channel still sending holds its next value until it
+   * lands and only then sends that one.
+   */
+  const flushAndSettle = useCallback(async (): Promise<SaveStatus> => {
+    flushAll();
+    while ([...statuses.current.values()].includes('saving')) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return combineStatuses(statuses.current.values());
+  }, [flushAll]);
+
   /** One channel's status, for a control that must wait on its own save
    *  rather than on the page's. Fresh on every render, like `status`. */
   const statusOf = useCallback(
@@ -72,5 +87,5 @@ export function useAutosaveRegistry() {
   // any individual channel's status changes.
   const status = combineStatuses(statuses.current.values());
 
-  return { getController, retryAll, flushAll, statusOf, status };
+  return { getController, retryAll, flushAll, flushAndSettle, statusOf, status };
 }

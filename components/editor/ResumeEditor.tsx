@@ -139,6 +139,7 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
     getController,
     retryAll: retryAllSaves,
     flushAll: flushAllSaves,
+    flushAndSettle: settleSaves,
     status: saveStatus,
   } = useAutosaveRegistry();
 
@@ -243,9 +244,6 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   // which drop out at once rather than when the application is re-read.
   const [suggestionDrafts, setSuggestionDrafts] = useState<Record<string, string>>({});
   const [resolvedHere, setResolvedHere] = useState<ReadonlySet<string>>(new Set());
-  // Resolving makes a draft's debounced save pointless, and a late one a
-  // refused PATCH; these are skipped.
-  const settled = useRef<Set<string>>(new Set());
   const reviewSuggestions = review?.suggestions ?? NO_SUGGESTIONS;
   const pendingSuggestions = useMemo(
     () => reviewSuggestions.filter((s) => s.status === 'pending' && !resolvedHere.has(s.id)),
@@ -271,10 +269,14 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
   );
 
   const onSuggestionsChanged = review?.onSuggestionsChanged;
+  const suggestionsLocked = review?.suggestionsLocked ?? null;
   const suggestionHandlers: SuggestionHandlers | undefined = review
     ? {
         textOf: suggestionText,
         onTextChange: (suggestion, text) => {
+          // Outside review the server refuses the edit, so nothing is
+          // scheduled; the card's field is read-only then too.
+          if (suggestionsLocked) return;
           setSuggestionDrafts((prev) => ({ ...prev, [suggestion.id]: text }));
           const normalized = normalizeSuggestionText(text);
           // The card says what is wrong; a save the server must refuse
@@ -282,35 +284,28 @@ export default function ResumeEditor({ resumeId, applicationId, review }: Resume
           if (suggestionTextProblem(normalized)) return;
           getController<string>(
             `suggestion:${suggestion.id}`,
-            async (value) => {
-              if (settled.current.has(suggestion.id)) return;
-              await updateBulletSuggestion(suggestion.id, value);
-            },
+            (value) => updateBulletSuggestion(suggestion.id, value).then(() => undefined),
             500,
           ).schedule(normalized);
         },
         onResolve: async (suggestion: BulletSuggestion, action: BulletSuggestionAction) => {
-          settled.current.add(suggestion.id);
-          try {
-            // The action uses the stored text, so a draft still in its
-            // debounce goes first.
-            const draft = suggestionDrafts[suggestion.id];
-            if (draft !== undefined && action !== 'reject') {
-              await updateBulletSuggestion(suggestion.id, normalizeSuggestionText(draft));
-            }
-            await resolveBulletSuggestion(suggestion.id, action);
-          } catch (error) {
-            settled.current.delete(suggestion.id);
-            throw error;
+          // Every edit on screen lands first, this card's text and any
+          // bullet's included: one still in its debounce would land after
+          // the resolve and undo it, or resolve the agent's wording.
+          if ((await settleSaves()) === 'error') {
+            return "A change didn't save; retry it before resolving this.";
           }
+          await resolveBulletSuggestion(suggestion.id, action);
           setResolvedHere((prev) => new Set([...prev, suggestion.id]));
           // Apply, Save as new and Add bullet changed the library or the
           // selection; re-read both without the loading screen.
           if (action !== 'reject') await loadResume(true);
           onSuggestionsChanged?.();
+          return null;
         },
+        locked: suggestionsLocked,
         disabledReason:
-          review.suggestionsLocked ??
+          suggestionsLocked ??
           (saveStatus === 'saving'
             ? 'Waiting for your changes to save'
             : saveStatus === 'error'
