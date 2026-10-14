@@ -321,9 +321,11 @@ question's choices exactly as the form does. A `proposed_answer` comes with a
   `proposed_answer`, it is `redrafted`, the proposal replaces the answer and
   the note is cleared.
 - **EEO (C10):** a question flagged `is_eeo`, or whose prompt names gender,
-  sex, race, ethnicity, Hispanic or Latino origin, veteran status, disability
-  or transgender identity, is recorded with no source and no answer, and a
-  proposal on it is dropped, not refused (`note: "eeo_answer_dropped"`). Chris
+  sex, race, ethnicity, Hispanic or Latino origin, veteran status, disability,
+  transgender or non-binary identity, pronouns, LGBT, or self-identification
+  (`looksLikeEeo`), is recorded with no source and no answer, and a proposal
+  on it is dropped, not refused (`note: "eeo_answer_dropped"`), with a source
+  or without one. Chris
   answers it in review.
 - **Refused, writing nothing, every problem listed:** two questions with the
   same `field_ref`; options missing on a choice or multi question, or present
