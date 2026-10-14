@@ -31,8 +31,8 @@ procedural only and add no fact about the candidate.
 - Skip `oferta`'s "Cover Letter Draft" section: append no draft to the
   report.
 - Never run the `cover` mode.
-- Resumix drafts cover letters, and only when an application form asks for
-  one as a file.
+- `/resumix-propose` drafts the letter in Resumix when the application form
+  asks for one, as a file or in a text box.
 
 ### Tracker
 
