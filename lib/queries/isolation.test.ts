@@ -545,11 +545,6 @@ test("another user's attachments are unreachable by id", { skip }, async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cover letters. A seventh root table, so the shape is the plainest one here:
-// `user_id` on the row, one WHERE clause, no join to reason about (D-035).
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Application questions: owned through their application, like its files
 // (D-047). Each way of naming one by id, from the wrong account.
 // ---------------------------------------------------------------------------
@@ -648,6 +643,11 @@ test("a file answer cannot name another user's attachment", { skip }, async () =
     await fixtures.deleteApplicationRow(bobApplication.id);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Cover letters. A seventh root table, so the shape is the plainest one here:
+// `user_id` on the row, one WHERE clause, no join to reason about (D-035).
+// ---------------------------------------------------------------------------
 
 test("another user's cover letter is unreachable by id", { skip }, async () => {
   const { alice, bob, tag } = await twoUsers();
