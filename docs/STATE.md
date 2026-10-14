@@ -68,7 +68,9 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   questions when the agent recorded any, and a final Approve. Questions are
   approved one by one, profile answers in bulk; an open-ended answer can be
   sent back to the agent for a redraft, and an EEO question is answered only
-  by Chris (D-047). Each section and each question is approved on its own,
+  by Chris (D-047). An answer ticked "remember this answer" is saved for the
+  agent to reuse on later forms, where it arrives already approved and shows
+  as one green line (D-048). Each section and each question is approved on its own,
   and editing it afterwards unapproves it and sends a Ready application back
   to Needs review; library and template edits do not. Final approval pins the resume snapshot, stores
   the letter's PDF as an attachment, makes the application Ready and copies
