@@ -44,6 +44,14 @@ picks by the same reasoning.
 - [ ] The report in chat quotes no bullet text that is not in
       `mcp__resumix__get_library`, and names gaps without writing bullets
       for them.
+- [ ] At most 3 `mcp__resumix__suggest_bullet` calls, all after the last
+      `mcp__resumix__set_resume_selection`, and the report lists each as
+      edit or add with a one-line why.
+- [ ] Each suggestion traces to `cv.md` or the career-ops report: none
+      invents a number, tool, employer or result that is in neither, nor in
+      the library.
+- [ ] No suggestion when the resume already fit on one page and none would
+      clearly match the posting better.
 - [ ] No Write or Edit outside career-ops' report.
 - [ ] In Resumix: a card under **Proposing** with the company, role and fit
       score; the application page shows the agent summary as plain text and

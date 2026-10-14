@@ -122,6 +122,27 @@ Call `mcp__resumix__list_applications` with `{ "posting_url": <step 1's string> 
 6. At most **8** `mcp__resumix__set_resume_selection` calls, retries
    included. If none of them fit, stop, and tell Chris what you tried and
    the last `overflow.advice`.
+7. Once the last call has answered `ok: true`, you **may** propose changes
+   to bullets with `mcp__resumix__suggest_bullet`. Chris applies or rejects
+   each in review; nothing reaches the library until he does. Make them only
+   after the selection is final, and never call
+   `mcp__resumix__set_resume_selection` again afterwards. If it is already
+   one page and nothing would clearly match the JD better, make none.
+   - At most **3** per application. On a re-run, the `bullet_suggestions`
+     from item 1 count toward the 3; never repeat one.
+   - **`edit`:** a selected bullet (`bullet_id`) that a small rewording
+     would match to the JD better.
+   - **`add`:** under a selected experience or project (`parent_id`, at a
+     `position` among its bullets, 0 first), only when the library plainly
+     lacks a bullet for something `cv.md` or the oferta report shows Chris
+     did.
+   - `proposed_text` is plain text on one line, never LaTeX, and states no
+     fact that is not in the library, `cv.md` or the report. Each carries a
+     short `rationale`.
+   - If its `pages` comes back above 1, it is saved anyway and you cannot
+     withdraw it: make no more to compensate, and name it in the report so
+     Chris rejects it.
+   - When one is refused, do what its text says.
 
 ## 5. Report
 
@@ -137,6 +158,9 @@ In chat, and nowhere else:
   space).
 - **Gaps the library cannot cover:** JD requirements nothing in the library
   supports. Name each one; never write a bullet for it.
+- **Suggested:** one line per `mcp__resumix__suggest_bullet` suggestion, as
+  edit or add, the item it is under, and a one-line why. Name any whose
+  `pages` came back above 1. Say "none" if you made none.
 - The path of the career-ops report.
 
 Name library items as `mcp__resumix__get_library` names them. Quote no
@@ -144,10 +168,11 @@ bullet text that is not in it.
 
 ## Hard rules
 
-- **Never write or rewrite resume text, anywhere:** not in Resumix, not in
-  `cv.md` or any other file, and not in chat as a bullet to add. Resumix has
-  no tool that writes it, and none for suggesting edits. You choose and
-  order what exists.
+- **Never write to the library, and never write resume text anywhere
+  else:** not in `cv.md` or any other file, and not in chat as a bullet to
+  add. The only way you propose text is `mcp__resumix__suggest_bullet`
+  (step 4), which Chris applies or rejects. Otherwise you choose and order
+  what exists.
 - **Never run career-ops' CV, cover-letter or tracker steps:** not the
   `pdf`, `latex`, `latex-tex`, `text` or `cover` modes, not oferta's cover
   letter draft or tracker step, and never `generate-pdf.mjs`,
