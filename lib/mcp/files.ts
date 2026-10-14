@@ -7,10 +7,10 @@
  * Strict on purpose: a file is served only while it is in a live Ready
  * application's apply packet, which is the pinned resume PDF, the pinned
  * letter PDF, archived or not, and the attachments its `file` questions
- * picked. The token
- * sits with an agent that reads untrusted pages, so it can fetch only what
- * Chris approved to send, and a path stops working once the application is
- * reopened or sent. Every miss is the same 404, whoever's the file is.
+ * picked. The token sits with an agent that reads untrusted pages, so it
+ * can fetch only what Chris approved to send, and a path stops working once
+ * the application is reopened or sent. Every miss is the same 404, whoever's
+ * the file is.
  */
 import { z } from 'zod';
 import { sanitizeAttachmentFilename, servableContentType } from '../applications/attachments.ts';

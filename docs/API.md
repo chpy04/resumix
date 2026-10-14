@@ -549,11 +549,10 @@ Chris's part in-process: it rejects both suggestions, which leaves the
 library as it was, and approves the application, final approval compiling
 on the real sidecar. Then it applies: `get_apply_packet` must list the
 approved answer and leave the unapproved EEO one blank; both packet files
-must download over HTTP as PDFs
-with the token, and be `401` without it and `404` for an unknown id;
-`report_question` must send it back to `needs_review`, after which the packet
-and its files are refused; and, approved again, `mark_applied` must make it
-`applied`, once. The application and its letter are archived and the saved
+must download over HTTP as PDFs with the token, and be `401` without it and
+`404` for an unknown id; `report_question` must send it back to
+`needs_review`, after which the packet and its files are refused; and,
+approved again, `mark_applied` must make it `applied`, once. The application and its letter are archived and the saved
 answer archived when it ends; its resume is deleted only if no snapshot of it
 was pinned, since a pinned one is the record of what was sent.
 `npm run verify` runs it from `e2e/mcp.spec.ts`.
@@ -771,9 +770,8 @@ stores a `resume_pdf` snapshot named after the company and pins it as
 `sentPdf` (the path `POST /pdf` takes), stores the letter's PDF as an
 `application/pdf` attachment named like its download
 (`<prefix>_<Company>_Cover_Letter.pdf`), archiving any earlier one of that
-name, pins it as the application's approved letter (`cover_letter_pdf_id`,
-D-050, which no PATCH can set), and sets `approvedAt` and `ready`. A LaTeX
-failure,
+name, pins it as the approved letter (`cover_letter_pdf_id`, which no PATCH
+can set, D-050), and sets `approvedAt` and `ready`. A LaTeX failure,
 or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
 with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
 If an edit lands while the documents compile, the transaction finds the
