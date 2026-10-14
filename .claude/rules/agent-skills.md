@@ -35,6 +35,35 @@ You write its files and never run them: no `claude` in `agent/`, no
 - A skill chooses and orders library content. It never writes resume text,
   and nothing in `agent/` may tell the model to. The tools that would are on
   the NOT EXPOSED list in `.claude/rules/mcp.md`.
+- **Playwright tools are written `mcp__playwright__<name>`,** never bare in
+  a skill, and only from `PLAYWRIGHT_TOOLS` in the test: the default tools
+  of the `@playwright/mcp` version `agent/.mcp.json` pins (core automation
+  and tabs; the rest need a `--caps` flag it does not pass). Bumping the
+  version fails the test until that list is checked against the new
+  README.
+
+## Forms
+
+`/resumix-propose` walks an application form to record its questions, and
+the apply pass fills it. Both read a question's `field_ref` the same way
+(D-049):
+
+- `page` counts the form's pages from 0, as `add_questions` does. Sign-in
+  screens and "how do you want to apply" choices are not pages.
+- `label` is the visible label exactly, minus required markers, and scoped
+  to its block in a repeated "Add another" block, as in
+  `Work experience 1: Job title`, so two blocks never share a `field_ref`.
+- `selector` is a Playwright role selector built from the snapshot
+  (`role=textbox[name="…"]`), which a tool's `target` accepts, or null.
+  Never a snapshot ref such as `e23`: refs change with every snapshot.
+
+**No skill submits a form; Chris does.** The propose skill's hard rules
+carry a `**Never submit` rule that bans clicking "Submit", pressing Enter
+(`browser_press_key`), setting `submit` on `browser_type`, and
+`browser_evaluate` and `browser_run_code_unsafe`, either of which can
+submit in code. No skill may contain `submit: true`. The test pins each of
+these against deletion; only the eval's live-form case can show the skill
+obeys them.
 
 ## The career-ops routing
 
@@ -53,5 +82,8 @@ from its data root, and `agent/career-ops/` stays untouched.
 ## The eval
 
 `agent/evals/propose.md` is how Chris accepts `/resumix-propose`, by hand,
-after a deploy: three `## Case` sections, each a fenced posting and a
-`- [ ]` checklist. Change it in the same commit as the skill.
+after a deploy: four `## Case` sections, each a fenced posting and a
+`- [ ]` checklist, plus a `## Discovery checklist` of `- [ ]` items for any
+run that finds a form. Cases 1–3 are pasted postings with no form behind
+them; Case 4 is a live multi-page form. Change it in the same commit as the
+skill.
