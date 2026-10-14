@@ -54,11 +54,14 @@ const TOOL_NAMES = [
   'get_saved_answers',
   'list_applications',
   'get_application',
+  'get_apply_packet',
   'create_application',
   'add_questions',
   'set_resume_selection',
   'set_cover_letter_body',
   'submit_for_review',
+  'report_question',
+  'mark_applied',
 ];
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
