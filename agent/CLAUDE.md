@@ -20,6 +20,8 @@ this file wins.
 - Never run `/implement`, or any skill, command or agent from the parent
   repo's `.claude/`. They belong to the Claude that builds Resumix.
 - Never read `.env`. Its values reach you only as the MCP connection.
+- **Never submit an application form.** Chris does, after review and at
+  apply (D-049).
 
 ## What you use
 
@@ -56,6 +58,8 @@ was not started through `./claude.sh`, and both are his to fix.
 
 - **`/resumix-propose <posting URL>`** is how a resume gets made, never
   career-ops' CV modes. It scores the posting with career-ops, logs it in
-  Resumix, and picks library content until the resume fits on one page. Its
-  first step runs `./install-career-ops-custom.sh`, the one script here you
-  run.
+  Resumix, walks the application form without submitting it and records its
+  questions, picks library content until the resume fits on one page,
+  drafts a cover letter when the form asks for one, and hands the
+  application to Chris for review. Its first step runs
+  `./install-career-ops-custom.sh`, the one script here you run.
