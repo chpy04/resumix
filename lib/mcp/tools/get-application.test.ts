@@ -24,7 +24,7 @@ after(async () => {
 });
 
 test(
-  'get_application returns status, posting, summary, selection, suggestions and approval',
+  'get_application returns status, posting, summary, selection, suggestions, approval and questions',
   { skip },
   async () => {
     const tag = fixtures.testTag();
@@ -58,6 +58,27 @@ test(
       proposedText: 'Ran on-call',
       rationale: 'Ops',
       status: 'rejected',
+    });
+    // Out of insertion order, to show sort_order is what orders them.
+    const why = await fixtures.insertTestQuestion(app.id, {
+      sortOrder: 1,
+      fieldRef: { page: 2, label: 'Why us?', selector: null },
+      source: 'agent',
+      proposedAnswer: 'Draft.',
+      answer: 'Draft.',
+      redraftNote: 'Mention the on-call work.',
+    });
+    const office = await fixtures.insertTestQuestion(app.id, {
+      sortOrder: 0,
+      prompt: 'Which office?',
+      kind: 'multi',
+      options: ['NYC', 'SF'],
+      fieldRef: { page: 1, label: 'Which office?', selector: '#office' },
+      required: true,
+      source: 'agent',
+      proposedAnswer: '["NYC"]',
+      answer: '["SF"]',
+      approvedAt,
     });
     try {
       const result = await getApplication.call({ userId: user.id }, { application_id: app.id });
@@ -106,6 +127,38 @@ test(
           cover_letter_approved_at: null,
           approved_at: null,
         },
+        questions: [
+          {
+            question_id: office.id,
+            prompt: 'Which office?',
+            kind: 'multi',
+            options: ['NYC', 'SF'],
+            field_ref: { page: 1, label: 'Which office?', selector: '#office' },
+            required: true,
+            is_eeo: false,
+            source: 'agent',
+            answer_mode: 'value',
+            proposed_answer: ['NYC'],
+            answer: ['SF'],
+            approved_at: approvedAt.toISOString(),
+            redraft_note: null,
+          },
+          {
+            question_id: why.id,
+            prompt: 'Why us?',
+            kind: 'text',
+            options: null,
+            field_ref: { page: 2, label: 'Why us?', selector: null },
+            required: false,
+            is_eeo: false,
+            source: 'agent',
+            answer_mode: 'value',
+            proposed_answer: 'Draft.',
+            answer: 'Draft.',
+            approved_at: null,
+            redraft_note: 'Mention the on-call work.',
+          },
+        ],
       });
     } finally {
       await fixtures.deleteApplicationRow(app.id);
@@ -121,6 +174,7 @@ test('an application with no resume has a null selection', { skip }, async () =>
     const result = await getApplication.call({ userId: user.id }, { application_id: app.id });
     const body = JSON.parse(result.content[0]?.text ?? '') as Record<string, unknown>;
     assert.equal(body.selection, null);
+    assert.deepEqual(body.questions, []);
     assert.equal(body.job_description, null);
     assert.equal(body.fit_score, null);
   } finally {

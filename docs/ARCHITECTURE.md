@@ -54,7 +54,7 @@ hand back the exact bytes a resume was last saved with.
 app/                     Next.js App Router
   page.tsx               home: the applications board (Pipeline | Applied)
   applications/[id]/     one application: fields, notes, files, its resume
-    review/              the review flow: resume, cover letter, final approve
+    review/              the review flow: resume, letter, questions, final approve
   resumes/page.tsx       the resume library: grid + fuzzy search
   cover-letters/         the cover letter library, same shape
   cover-letter/[id]/     editor: body|LaTeX tabs + live PDF
@@ -62,7 +62,7 @@ app/                     Next.js App Router
                          ?application=<id> -> saves back to that application
   api/...                route handlers (see docs/API.md)
 lib/
-  applications/          status vocabulary, board grouping, attachment rules (pure)
+  applications/          status, board, review and question rules, attachments (pure)
   db/schema.ts           Drizzle table definitions
   db/index.ts            connection singleton
   render/                template token substitution -> .tex  (pure, unit-tested)

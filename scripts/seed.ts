@@ -62,6 +62,7 @@ function one<T>(rows: T[]): T {
 const ALL_SEEDED_TABLES = [
   'bullet_suggestion',
   'application_file',
+  'application_question',
   'application',
   'resume_pdf',
   'resume_technical_skill',

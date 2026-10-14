@@ -114,6 +114,26 @@ type BulletSuggestion = {
   createdAt;
 };
 
+// One question an application's form asks (D-047). An answer is a string,
+// or the options picked for a multi question; a file answer is an
+// ApplicationFile id, and an instruction is its words.
+type AnswerValue = string | string[];
+type ApplicationQuestion = {
+  id;
+  prompt;
+  kind: 'text' | 'choice' | 'multi' | 'bool' | 'file' | 'letter';
+  options: string[] | null; // choice and multi only
+  fieldRef: { page: number; label: string; selector: string | null };
+  required: boolean;
+  isEeo: boolean; // answered only by Chris (C10)
+  source: 'profile' | 'agent' | 'saved' | null; // who proposed it; null when nothing was
+  answerMode: 'value' | 'instruction';
+  proposedAnswer: AnswerValue | null;
+  answer: AnswerValue | null;
+  redraftNote: string | null; // set while Chris has asked the agent for a new draft
+  approvedAt: string | null; // cleared by any change to the answer
+};
+
 type ApplicationDetail = ApplicationSummary & {
   notes: string;
   jobDescription: string | null; // the posting's text, from the agent
@@ -125,6 +145,7 @@ type ApplicationDetail = ApplicationSummary & {
   pdfFilenames: { resume: string | null; coverLetter: string | null }; // what approval names the PDFs
   files: ApplicationFile[];
   bulletSuggestions: BulletSuggestion[]; // every one, resolved included, oldest first
+  questions: ApplicationQuestion[]; // in the order they were added
 };
 ```
 
@@ -277,21 +298,62 @@ straight back into another (D-042). Text from the library is plain: LaTeX
 markup is stripped for display (`\textbf{x}` → `x`, `\$` → `$`), and the
 stored content stays raw (D-008).
 
-| tool                    | arguments                                                                                                                                                                                                                                                                            | returns                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ping`                  | none                                                                                                                                                                                                                                                                                 | the email of the account that owns the token, as text                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `get_library`           | none                                                                                                                                                                                                                                                                                 | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates                                                                                                                                                                            |
-| `list_applications`     | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                                                                                                                                     | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                                                                                                                                                                                                 |
-| `get_application`       | `{ application_id }`                                                                                                                                                                                                                                                                 | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, bullet_suggestions, approval: { resume_approved_at, cover_letter_approved_at, approved_at } }`. `selection` has `set_resume_selection`'s shape, or is null when no resume is linked. `bullet_suggestions` is `[{ suggestion_id, kind, bullet_id, parent_id, position, proposed_text, rationale, status }]`, oldest first, resolved ones included |
-| `create_application`    | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place                                                                                                              | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                                                                                                                                                                                                    |
-| `set_resume_selection`  | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order                                                                                                                    | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                                                                                                                                                                                              |
-| `suggest_bullet`        | `{ application_id, kind: "edit" \| "add", bullet_id?, parent_id?, position?, proposed_text, rationale }`: an edit names `bullet_id`, an add `parent_id` and `position` (0 first), never both; `proposed_text` is one line of plain text, 1–500 characters, no `\`; `rationale` 1–300 | `{ suggestion_id, kind, replaced, ok, pages }`. Records a pending suggestion and writes no library row; `pages` counts the resume with every pending suggestion applied                                                                                                                                                                                                                                                                                             |
-| `set_cover_letter_body` | `{ application_id, text }`: the whole letter as plain text, date line to sign-off, non-empty after trimming                                                                                                                                                                          | `{ ok, pages }`; `ok` is `pages === 1`. `text` replaces the letter's `body`; an application with no letter is first given a copy of Default                                                                                                                                                                                                                                                                                                                         |
-| `submit_for_review`     | `{ application_id }`                                                                                                                                                                                                                                                                 | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                                                                                                                                                                                                |
+| tool                    | arguments                                                                                                                                                               | returns                                                                                                                                                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ping`                  | none                                                                                                                                                                    | the email of the account that owns the token, as text                                                                                                                                                                                                                                    |
+| `get_library`           | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
+| `list_applications`     | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
+| `get_application`       | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, bullet_suggestions, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null |
+| `create_application`    | `{ company, role_title, posting_url, job_description, agent_summary, fit_score }`, all required: non-empty trimmed text, an http(s) URL, 0.0–5.0 with one decimal place | `{ application_id, status: "proposing" }`. The application holds a copy of Default named after the company. Not idempotent: the agent is told to call `list_applications({ posting_url })` first                                                                                         |
+| `add_questions`         | `{ application_id, questions: [{ field_ref: { page, label, selector? }, prompt, kind, options?, required, is_eeo?, source?, answer_mode?, proposed_answer? }] }`        | `{ questions: [{ question_id, outcome, note? }] }`, in input order: `outcome` is `added`, `unchanged` or `redrafted`, and `note: "eeo_answer_dropped"` means a proposed EEO answer was dropped (C10)                                                                                     |
+| `set_resume_selection`  | `{ application_id, selection: { experiences, experience_bullets, projects, project_bullets, skill_rows, skills } }`, all six required, every array in print order       | `{ ok, pages, overflow }`; `overflow` is null on one page, else `{ candidates: [{ id, kind, parent_id, parent, est_lines, text }], advice }`, at most five bullets to drop, best first                                                                                                   |
+| `suggest_bullet`        | `{ application_id, kind, bullet_id?, parent_id?, position?, proposed_text, rationale }`: an edit names `bullet_id`; an add, `parent_id` and `position` (0 is first)     | `{ suggestion_id, kind, replaced, ok, pages }`. Records a pending suggestion and writes no library row; `pages` counts the resume with every pending suggestion applied                                                                                                                  |
+| `set_cover_letter_body` | `{ application_id, text }`: the whole letter as plain text, date line to sign-off, non-empty after trimming                                                             | `{ ok, pages }`; `ok` is `pages === 1`. `text` replaces the letter's `body`; an application with no letter is first given a copy of Default                                                                                                                                              |
+| `submit_for_review`     | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "needs_review", resume_pages, cover_letter_pages }`; `cover_letter_pages` is null when there is no letter                                                                                                                                                     |
 
 An archived application reads exactly like a missing one, or another
 user's: `No application <id>. Call list_applications to find its
 application_id.`
+
+**`get_application`**'s `questions` are the ones `add_questions` recorded, in
+order: `[{ question_id, prompt, kind, options, field_ref, required, is_eeo,
+source, answer_mode, proposed_answer, answer, approved_at, redraft_note }]`,
+each shaped as in `ApplicationQuestion` (Types, above). `answer` is what will
+be typed into the form, Chris's edits included. A non-null `redraft_note` is
+Chris asking for a new draft of that answer, and says what to change.
+
+**`add_questions`** records the questions an application's form asks, with
+the answer the agent proposes for each (D-047). `kind` is `text`, `choice`,
+`multi`, `bool`, `file` or `letter`; `options` lists a choice or multi
+question's choices exactly as the form does. A `proposed_answer` comes with a
+`source` (`profile` or `agent`) and fits its kind as `PATCH
+/api/application-questions/:id` requires, or is an instruction
+(`answer_mode: "instruction"`, choice and multi only).
+
+- **Appends, de-duplicating on `field_ref`:** page plus label, case and
+  whitespace folded. A question already recorded is `unchanged`, approved or
+  not, and keeps the prompt, kind, options and answer it was first recorded
+  with. The exception is one with a `redraft_note`: re-sent with a new
+  `proposed_answer`, it is `redrafted`, the proposal replaces the answer and
+  the note is cleared.
+- **EEO (C10):** a question flagged `is_eeo`, or whose prompt names gender,
+  sex, race, ethnicity, Hispanic or Latino origin, veteran status, disability,
+  transgender or non-binary identity, pronouns, LGBT, or self-identification
+  (`looksLikeEeo`), is recorded with no source and no answer, and a proposal
+  on it is dropped, not refused (`note: "eeo_answer_dropped"`), with a source
+  or without one. Chris
+  answers it in review.
+- **Refused, writing nothing, every problem listed:** two questions with the
+  same `field_ref`; options missing on a choice or multi question, or present
+  on another kind, or listed twice; a `proposed_answer` without a `source`, or
+  the reverse, or an empty one; an instruction on anything but choice or
+  multi; an answer that does not fit its kind; and any `proposed_answer` on a
+  `file` question, which Chris answers by picking an attachment. The resume
+  and cover letter upload fields are not questions; the apply packet uploads
+  them.
+- **Only while `proposing` or `needs_review`.** A `ready` application is
+  refused (Chris has approved it), and so are drafts and sent ones. A
+  question added to an application in review is one more thing to approve.
 
 **`set_resume_selection`** replaces the resume's whole selection, then
 compiles it. `selection` is the API's `Selections` in snake_case:
@@ -337,6 +399,10 @@ Applications). It never writes to the library or the selection (D-045);
   over the resume, as Chris's preview shows it.
 - **`isError`, with the suggestion saved:** a LaTeX error, or a sidecar that
   cannot be reached; the text names the saved `suggestion_id`.
+- **`get_application`** lists every suggestion as `bullet_suggestions:
+[{ suggestion_id, kind, bullet_id, parent_id, position, proposed_text,
+rationale, status }]`, oldest first, resolved ones included, so the agent
+  can see what Chris did with each.
 
 **Page counts include pending suggestions.** `set_resume_selection`,
 `suggest_bullet` and `submit_for_review` compile the resume with every
@@ -377,13 +443,16 @@ already in `needs_review`, it re-checks the pages and leaves it there.
 real HTTP against `npm run dev` (or `MCP_SMOKE_URL`, loopback only), with a
 token it mints and revokes itself. It then reads the library, creates an
 application, finds it with `list_applications` and `get_application`,
-selects a small resume into it, which the real sidecar must compile to one
-page, suggests an edit (in text holding every character the escaper replaces
-but `\`) and an add, each of which must also compile to one page, which
-`get_application` must then show as pending, with the library unchanged and
-an unknown `bullet_id` refused, writes its cover letter with `set_cover_letter_body`, in text holding
-every character the escaper replaces, which must also compile to one page,
-twice into the same letter, and submits it for review, which
+records two questions with `add_questions` (the EEO one's answer must be
+dropped, a re-send must be `unchanged`, and `get_application` must list
+both), selects a small resume into it, which the real sidecar must compile to
+one page, suggests an edit (in text holding every character the escaper
+replaces but `\`) and an add, each of which must also compile to one page,
+which `get_application` must then show as pending, with the library unchanged
+and an unknown `bullet_id` refused, writes its cover letter with
+`set_cover_letter_body`, in text holding every character the escaper
+replaces, which must also compile to one page, twice into the same letter,
+and submits it for review, which
 `get_application` must then show as `needs_review`; submitting an unknown id
 must be `isError`. The application and its letter are archived and its resume
 deleted when it ends. `npm run verify` runs it
@@ -567,19 +636,21 @@ applied, so approving it would approve text that may never be sent.
 
 **`POST /approve`** is refused with a `400` listing what is left ("Approve the
 resume first. Approve the cover letter first.") unless the application is in
-`needs_review`, has a resume, every section it shows is approved (the
-resume, and the cover letter when one is linked), and no bullet suggestion is
-pending. It then compiles both documents, writing nothing yet, and in one
-transaction stores a `resume_pdf` snapshot named after the company and pins
-it as `sentPdf` (the path `POST /pdf` takes), stores the letter's PDF as an
+`needs_review`, has a resume, no bullet suggestion is pending, and every
+section it shows is approved: the resume, the cover letter when one is
+linked, and every **required** question ("Approve the 2 required questions
+still open in step 3."). An optional question left unapproved is left blank.
+It then compiles both documents, writing nothing yet, and in one transaction
+stores a `resume_pdf` snapshot named after the company and pins it as
+`sentPdf` (the path `POST /pdf` takes), stores the letter's PDF as an
 `application/pdf` attachment named like its download
 (`<prefix>_<Company>_Cover_Letter.pdf`), archiving any earlier one of that
 name, and sets `approvedAt` and `ready`. A LaTeX failure,
 or an unreachable sidecar, is `200 { ok: false, pages, errors, warnings, log }`
 with each error prefixed `Resume:` or `Cover letter:`, and nothing is written.
 If an edit lands while the documents compile, the transaction finds the
-section unapproved again, rolls back, and answers `400` ("This application
-changed while it was being approved; review it again."). Final approval does
+section or the question unapproved again, rolls back, and answers `400`
+("This application changed while it was being approved; review it again."). Final approval does
 not enforce one page; `submit_for_review` does.
 
 **What reopens an approval.** These writes clear the approval of the section
@@ -594,7 +665,11 @@ one goes back to `needs_review`:
   the agent's `set_cover_letter_body`;
 - `PATCH /api/applications/:id` changing `resumeId` or `coverLetterId`,
   unlinking included (a `status` in the same PATCH wins), and `POST
-/cover-letter`, which adds a section to approve.
+/cover-letter`, which adds a section to approve;
+- a question: `PATCH /api/application-questions/:id`, archiving the attachment
+  an approved file answer names, and the agent's `add_questions` when it adds
+  or redrafts one. These clear the question's own `approvedAt` and the
+  application's `approvedAt`; there is no application stamp for questions.
 
 Nothing else does: library edits (bullets, experiences, projects, skills),
 template edits and renaming a letter leave every approval in place, because a
@@ -642,6 +717,43 @@ the agent's wording.
 Save as new and Add bullet write the selection, so they reopen an approved
 resume as any selection write does (see "What reopens an approval"). A second
 resolve of the same suggestion is a `400` and writes nothing.
+
+### Questions
+
+| method | path                                      | body                                     | returns                 |
+| ------ | ----------------------------------------- | ---------------------------------------- | ----------------------- |
+| PATCH  | `/api/application-questions/:id`          | `{ answer?, answerMode?, redraftNote? }` | `ApplicationQuestion`   |
+| POST   | `/api/applications/:id/questions/approve` | `{ questionIds }`                        | `ApplicationQuestion[]` |
+
+An application's form questions arrive from the agent (`add_questions`) and
+are answered and approved in the review's Questions step (D-047).
+
+**`PATCH /api/application-questions/:id`** edits one: `answer` (a string, a
+`string[]` of options for a multi question, or `null` to clear it),
+`answerMode`, and `redraftNote`. Every accepted write unapproves the question
+and, on an application in `needs_review` or `ready`, clears its `approvedAt`,
+so a `ready` one goes back to `needs_review`. There is no diffing. A `400`
+says why when:
+
+- the application has been sent (`applied` or later);
+- the answer does not fit the kind: a choice takes one of its `options`
+  exactly, a multi a list of distinct options, a bool `yes` or `no`, and a
+  file the id of a non-archived attachment of the same application (anything
+  else, another user's included, is `unknown attachment id`);
+- `answerMode: 'instruction'` is set on anything but a choice or multi
+  question. Switching the mode without sending an answer clears the answer;
+- `redraftNote` is set on anything but a non-EEO `text` or `letter` question.
+  The note is what the agent reads through `get_application`; `null` or a
+  blank note cancels the request.
+
+**`POST /api/applications/:id/questions/approve`** stamps `approvedAt` on
+exactly `questionIds`, and clears any redraft request on them. All or none:
+only in `needs_review`; an id that is not one of this application's questions
+is `unknown question id`; and each must have an answer that fits its kind, a
+file answer naming a live attachment. A refusal lists every problem at once,
+each prefixed with its prompt ("Work authorization: answer it first."). The
+ids are the ones the page showed, so a question the agent adds after the page
+loaded is never approved unseen.
 
 ### Attachments
 

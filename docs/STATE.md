@@ -67,9 +67,12 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   is reviewed, and Needs review and Ready cards open it: a stepper over the
   resume editor in review mode (the agent's picks badged, with Reset to
   agent pick), the cover letter's plain text beside its PDF when there is
-  one, and a final Approve. Each section is approved on its own, and editing
-  it afterwards unapproves it and sends a Ready application back to Needs
-  review; library and template edits do not. Final approval pins the resume snapshot, stores
+  one, the form's questions when the agent recorded any, and a final
+  Approve. Questions are approved one by one, profile answers in bulk; an
+  open-ended answer can be sent back to the agent for a redraft, and an EEO
+  question is answered only by Chris (D-047). Each section and each question
+  is approved on its own, and editing it afterwards unapproves it and sends a
+  Ready application back to Needs review; library and template edits do not. Final approval pins the resume snapshot, stores
   the letter's PDF as an attachment, makes the application Ready and copies
   `/resumix-apply <id>` (D-044).
   `/resumes` is the resume library (fuzzy search, per-card download of the
@@ -83,7 +86,7 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   live PDF preview and a LaTeX template tab on the right.
   `/resume/[id]?application=<id>` is the same editor in **application mode**,
   where back returns to the application and saving writes the PDF to it.
-- **Database** — Postgres, 20 tables, Drizzle for typed queries and
+- **Database** — Postgres, 21 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
   the pool on first query, because `next build` evaluates every route module

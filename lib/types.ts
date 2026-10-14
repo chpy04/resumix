@@ -252,6 +252,55 @@ export interface BulletSuggestion {
   createdAt: string;
 }
 
+// Application questions (D-047): what an application's form asks, and the
+// answer Chris approves for each. The vocabularies and their rules are in
+// `lib/applications/questions.ts`.
+
+export type QuestionKind = 'text' | 'choice' | 'multi' | 'bool' | 'file' | 'letter';
+
+/** Who proposed the answer. `saved` is a saved answer Chris made earlier. */
+export type QuestionSource = 'profile' | 'agent' | 'saved';
+
+/** `instruction` is a choice described in words ("Boston if listed,
+ *  otherwise Remote"), for the applying agent to act on (R8). */
+export type AnswerMode = 'value' | 'instruction';
+
+/** Where the field is on the form, as discovery read it. */
+export interface FieldRef {
+  /** 0-based form page. */
+  page: number;
+  /** The field's visible label, trimmed, with its whitespace collapsed. */
+  label: string;
+  /** A selector hint for the applying agent; null when there was none. */
+  selector: string | null;
+}
+
+/** A multi question's value is the options picked; every other answer, an
+ *  instruction included, is one string. A file answer is an attachment id. */
+export type AnswerValue = string | string[];
+
+export interface ApplicationQuestion {
+  id: string;
+  prompt: string;
+  kind: QuestionKind;
+  /** The options a choice or multi question offers; null for every other kind. */
+  options: string[] | null;
+  fieldRef: FieldRef;
+  required: boolean;
+  /** An EEO or demographic question. Only Chris answers these (C10). */
+  isEeo: boolean;
+  /** Null when nothing was proposed. */
+  source: QuestionSource | null;
+  answerMode: AnswerMode;
+  proposedAnswer: AnswerValue | null;
+  /** What gets typed into the form. Null until there is one. */
+  answer: AnswerValue | null;
+  /** Set while Chris has asked the agent for a new draft. */
+  redraftNote: string | null;
+  /** Cleared by any change to the answer (C3). */
+  approvedAt: string | null;
+}
+
 /** `GET /api/applications/:id` — the summary plus what the list view has no
  *  use for. */
 export interface ApplicationDetail extends ApplicationSummary {
@@ -276,6 +325,8 @@ export interface ApplicationDetail extends ApplicationSummary {
   /** Every suggestion the agent made for this application, resolved ones
    *  included, oldest first. */
   bulletSuggestions: BulletSuggestion[];
+  /** The form's questions, in the order they were added (D-047). */
+  questions: ApplicationQuestion[];
 }
 
 /** What both `POST /api/applications/:id/pdf` (save the resume to the

@@ -18,11 +18,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { db, sql } from '../db/index.ts';
+import { db, sql, type Executor } from '../db/index.ts';
 import {
   apiToken,
   application,
   applicationFile,
+  applicationQuestion,
   bulletSuggestion,
   coverLetter,
   experience,
@@ -210,6 +211,43 @@ export async function deleteApplicationRow(id: string): Promise<void> {
   await db.delete(application).where(eq(application.id, id));
 }
 
+/**
+ * A question written straight to the row: an optional text question on page
+ * 0 with a label unique to this call, unless `overrides` says otherwise. The
+ * only way to reach a state the query layer refuses to write, which is what
+ * the CHECK tests need. Deleting the application cascades to it.
+ */
+export async function insertTestQuestion(
+  applicationId: string,
+  overrides: Partial<typeof applicationQuestion.$inferInsert> = {},
+) {
+  const [row] = await db
+    .insert(applicationQuestion)
+    .values({
+      applicationId,
+      sortOrder: 0,
+      prompt: 'Why us?',
+      kind: 'text',
+      fieldRef: { page: 0, label: `Why us? ${testTag()}`, selector: null },
+      required: false,
+      ...overrides,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test question');
+  return row;
+}
+
+/** The raw row, answer encoding and all. */
+export async function getQuestionRow(id: string) {
+  const [row] = await db
+    .select()
+    .from(applicationQuestion)
+    .where(eq(applicationQuestion.id, id))
+    .limit(1);
+  if (!row) throw new Error(`no application_question row ${id}`);
+  return row;
+}
+
 /** Cover letters are archived rather than deleted in the app, but like
  *  resumes they show up in a library the developer has to look at, so
  *  fixtures clean up after themselves. Never pass the provisioned Default. */
@@ -289,16 +327,13 @@ export function stubLatex(pagesFor: (tex: string) => StubbedCompile): {
 }
 
 /**
- * Writes `patch` to an application inside a transaction that stays open,
- * holding the row's lock, until `commit()`: how a test puts a concurrent
- * writer exactly where it wants one. `waitForWaiter()` resolves once another
- * connection is blocked on that lock, so what the test does next happens
- * while it waits, not before or after.
+ * Runs `work` inside a transaction that stays open, holding whatever locks
+ * it took, until `commit()`: how a test puts a concurrent writer exactly
+ * where it wants one. `waitForWaiter()` resolves once another connection is
+ * blocked on one of those locks, so what the test does next happens while
+ * it waits, not before or after.
  */
-export async function holdApplicationWrite(
-  id: string,
-  patch: Partial<typeof application.$inferInsert>,
-) {
+async function holdTransaction(work: (tx: Executor) => Promise<void>) {
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -309,7 +344,7 @@ export async function holdApplicationWrite(
   });
 
   const done = db.transaction(async (tx) => {
-    await tx.update(application).set(patch).where(eq(application.id, id));
+    await work(tx);
     const [row] = await tx.execute<{ pid: number }>('select pg_backend_pid() as pid');
     if (!row) throw new Error('no backend pid');
     locked(row.pid);
@@ -338,6 +373,25 @@ export async function holdApplicationWrite(
       await done;
     },
   };
+}
+
+/** Writes `patch` to an application and holds the row's lock (`holdTransaction`). */
+export function holdApplicationWrite(id: string, patch: Partial<typeof application.$inferInsert>) {
+  return holdTransaction(async (tx) => {
+    await tx.update(application).set(patch).where(eq(application.id, id));
+  });
+}
+
+/** An answer write as `updateApplicationQuestion` makes one: the
+ *  application locked first, then the question unapproved, held open. */
+export function holdAnswerWrite(applicationId: string, questionId: string) {
+  return holdTransaction(async (tx) => {
+    await tx.select().from(application).where(eq(application.id, applicationId)).for('update');
+    await tx
+      .update(applicationQuestion)
+      .set({ approvedAt: null })
+      .where(eq(applicationQuestion.id, questionId));
+  });
 }
 
 /** Every `resume_pdf` row a resume has, newest first, bytes excluded. */

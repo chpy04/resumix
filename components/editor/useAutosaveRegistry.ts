@@ -60,10 +60,17 @@ export function useAutosaveRegistry() {
     for (const entry of entries.current.values()) entry.controller.flushNow();
   }, []);
 
+  /** One channel's status, for a control that must wait on its own save
+   *  rather than on the page's. Fresh on every render, like `status`. */
+  const statusOf = useCallback(
+    (key: string): SaveStatus => statuses.current.get(key) ?? 'idle',
+    [],
+  );
+
   // Recomputed fresh on every render (cheap — a handful of entries at
   // most); `forceRender` is what guarantees a re-render happens whenever
   // any individual channel's status changes.
   const status = combineStatuses(statuses.current.values());
 
-  return { getController, retryAll, flushAll, status };
+  return { getController, retryAll, flushAll, statusOf, status };
 }

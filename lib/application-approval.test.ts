@@ -372,3 +372,109 @@ test('an edit that lands during approval rolls the whole approval back', { skip 
     await s.cleanup();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Questions (D-047): only the required ones gate, and an answer edit that
+// races the approval wins.
+// ---------------------------------------------------------------------------
+
+/** What `recordFinalApproval` is handed once both documents compiled. */
+function compiled(s: Awaited<ReturnType<typeof approvable>>) {
+  return {
+    resumeId: s.resume.id,
+    snapshot: { filename: 'x.pdf', bytes: Buffer.from('%PDF'), tex: '' },
+    letter: {
+      coverLetterId: s.letter!.id,
+      filename: 'x_Cover_Letter.pdf',
+      bytes: Buffer.from('%PDF'),
+    },
+  };
+}
+
+test('an open required question refuses approval before anything compiles', { skip }, async () => {
+  const s = await approvable();
+  await fixtures.insertTestQuestion(s.app.id, { required: true, answer: 'Draft.' });
+  const latex = fixtures.stubLatex(() => 1);
+  try {
+    await assert.rejects(
+      () => approveApplication(s.user.id, s.app.id),
+      (err: Error) =>
+        err instanceof BadRequestError &&
+        err.message === 'Approve the 1 required question still open in step 3.',
+    );
+    assert.equal(latex.sent.length, 0);
+    assert.equal((await s.read())?.status, 'needs_review');
+  } finally {
+    latex.restore();
+    await s.cleanup();
+  }
+});
+
+test('an optional question left open does not hold up approval', { skip }, async () => {
+  const s = await approvable();
+  await fixtures.insertTestQuestion(s.app.id, {
+    required: true,
+    answer: 'Yes.',
+    approvedAt: STAMP,
+  });
+  await fixtures.insertTestQuestion(s.app.id, { required: false });
+  const latex = fixtures.stubLatex(() => 1);
+  try {
+    const result = await approveApplication(s.user.id, s.app.id);
+    assert.ok(result.ok, JSON.stringify(result));
+    assert.equal(result.application.status, 'ready');
+  } finally {
+    latex.restore();
+    await s.cleanup();
+  }
+});
+
+test(
+  'recordFinalApproval refuses while a required question is open, writing nothing',
+  { skip },
+  async () => {
+    const s = await approvable();
+    await fixtures.insertTestQuestion(s.app.id, { required: true });
+    try {
+      await assert.rejects(
+        () => recordFinalApproval(s.user.id, s.app.id, compiled(s)),
+        (err: Error) =>
+          err instanceof BadRequestError &&
+          err.message === 'This application changed while it was being approved; review it again.',
+      );
+      assert.deepEqual(await fixtures.listResumePdfIds(s.resume.id), []);
+      assert.deepEqual(await fixtures.listApplicationFileRows(s.app.id), []);
+      assert.equal((await s.read())?.status, 'needs_review');
+    } finally {
+      await s.cleanup();
+    }
+  },
+);
+
+test('an answer edit in flight makes approval wait for it, then refuse', { skip }, async () => {
+  const s = await approvable();
+  const q = await fixtures.insertTestQuestion(s.app.id, {
+    required: true,
+    answer: 'Yes.',
+    approvedAt: STAMP,
+  });
+  try {
+    // The edit holds the application's lock and has unapproved the question,
+    // uncommitted. Approval starts while it is held.
+    const edit = await fixtures.holdAnswerWrite(s.app.id, q.id);
+    const approval = recordFinalApproval(s.user.id, s.app.id, compiled(s));
+    await edit.waitForWaiter();
+    await edit.commit();
+
+    await assert.rejects(
+      () => approval,
+      (err: Error) =>
+        err instanceof BadRequestError &&
+        err.message === 'This application changed while it was being approved; review it again.',
+    );
+    assert.deepEqual(await fixtures.listResumePdfIds(s.resume.id), []);
+    assert.equal((await s.read())?.status, 'needs_review');
+  } finally {
+    await s.cleanup();
+  }
+});

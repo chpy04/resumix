@@ -37,6 +37,10 @@ let addApplicationFile: typeof import('./application-files.ts').addApplicationFi
 let getApplicationFileBlob: typeof import('./application-files.ts').getApplicationFileBlob;
 let listApplicationFiles: typeof import('./application-files.ts').listApplicationFiles;
 let updateApplicationFile: typeof import('./application-files.ts').updateApplicationFile;
+let addQuestions: typeof import('./application-questions.ts').addQuestions;
+let approveApplicationQuestions: typeof import('./application-questions.ts').approveApplicationQuestions;
+let listQuestions: typeof import('./application-questions.ts').listQuestions;
+let updateApplicationQuestion: typeof import('./application-questions.ts').updateApplicationQuestion;
 let createCoverLetter: typeof import('./cover-letters.ts').createCoverLetter;
 let getCoverLetter: typeof import('./cover-letters.ts').getCoverLetter;
 let getDefaultCoverLetter: typeof import('./cover-letters.ts').getDefaultCoverLetter;
@@ -96,6 +100,8 @@ if (!skip) {
   } = await import('./cover-letters.ts'));
   ({ addApplicationFile, getApplicationFileBlob, listApplicationFiles, updateApplicationFile } =
     await import('./application-files.ts'));
+  ({ addQuestions, approveApplicationQuestions, listQuestions, updateApplicationQuestion } =
+    await import('./application-questions.ts'));
   ({
     createResume,
     deleteResume,
@@ -548,6 +554,106 @@ test("another user's attachments are unreachable by id", { skip }, async () => {
     assert.equal(bobsFiles.length, 1);
     assert.equal(bobsFiles[0]?.isArchived, false);
   } finally {
+    await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Application questions: owned through their application, like its files
+// (D-047). Each way of naming one by id, from the wrong account.
+// ---------------------------------------------------------------------------
+
+test("another user's application takes no questions from you", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const bobApplication = await fixtures.insertTestApplication(bob.id, `b-${tag}`, {
+    status: 'proposing',
+  });
+  try {
+    await assert.rejects(
+      () =>
+        addQuestions(
+          alice.id,
+          bobApplication.id,
+          [
+            {
+              fieldRef: { page: 0, label: 'Name' },
+              prompt: 'Name',
+              kind: 'text',
+              options: null,
+              required: true,
+              isEeo: false,
+              source: 'agent',
+              answerMode: 'value',
+              proposedAnswer: 'Alice',
+            },
+          ],
+          ['proposing'],
+        ),
+      NotFoundError,
+    );
+    assert.deepEqual(await listQuestions(bob.id, bobApplication.id), []);
+  } finally {
+    await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+test("another user's question cannot be read, answered or approved", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const aliceApplication = await fixtures.insertTestApplication(alice.id, `a-${tag}`, {
+    status: 'needs_review',
+  });
+  const bobApplication = await fixtures.insertTestApplication(bob.id, `b-${tag}`, {
+    status: 'needs_review',
+  });
+  try {
+    const bobQuestion = await fixtures.insertTestQuestion(bobApplication.id, { answer: "Bob's" });
+
+    assert.deepEqual(await listQuestions(alice.id, bobApplication.id), []);
+    await assert.rejects(
+      () => updateApplicationQuestion(alice.id, bobQuestion.id, { answer: 'overwritten' }),
+      NotFoundError,
+    );
+
+    // Through your own application, their question is an unknown id; through
+    // theirs, the application itself is not found.
+    await assert.rejects(
+      () => approveApplicationQuestions(alice.id, aliceApplication.id, [bobQuestion.id]),
+      BadRequestError,
+    );
+    await assert.rejects(
+      () => approveApplicationQuestions(alice.id, bobApplication.id, [bobQuestion.id]),
+      NotFoundError,
+    );
+
+    const untouched = await fixtures.getQuestionRow(bobQuestion.id);
+    assert.equal(untouched.answer, "Bob's");
+    assert.equal(untouched.approvedAt, null);
+  } finally {
+    await fixtures.deleteApplicationRow(aliceApplication.id);
+    await fixtures.deleteApplicationRow(bobApplication.id);
+  }
+});
+
+test("a file answer cannot name another user's attachment", { skip }, async () => {
+  const { alice, bob, tag } = await twoUsers();
+  const aliceApplication = await fixtures.insertTestApplication(alice.id, `a-${tag}`, {
+    status: 'needs_review',
+  });
+  const bobApplication = await fixtures.insertTestApplication(bob.id, `b-${tag}`);
+  try {
+    const bobFile = await addApplicationFile(bob.id, bobApplication.id, {
+      filename: 'bob.pdf',
+      contentType: 'application/pdf',
+      bytes: Buffer.from('%PDF'),
+    });
+    const question = await fixtures.insertTestQuestion(aliceApplication.id, { kind: 'file' });
+    await assert.rejects(
+      () => updateApplicationQuestion(alice.id, question.id, { answer: bobFile.id }),
+      BadRequestError,
+    );
+    assert.equal((await fixtures.getQuestionRow(question.id)).answer, null);
+  } finally {
+    await fixtures.deleteApplicationRow(aliceApplication.id);
     await fixtures.deleteApplicationRow(bobApplication.id);
   }
 });

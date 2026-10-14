@@ -22,6 +22,7 @@ import { buildCoverLetterFilename, buildResumeFilename } from '../filename.ts';
 import {
   application,
   applicationFile,
+  applicationQuestion,
   bulletSuggestion,
   coverLetter,
   resume,
@@ -31,11 +32,13 @@ import { saveResumePdfSnapshot, type NewPdfSnapshot } from '../storage.ts';
 import type {
   ApplicationDetail,
   ApplicationFile,
+  ApplicationQuestion,
   ApplicationSummary,
   BulletSuggestion,
   Selections,
 } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
+import { listQuestions, lockApplication } from './application-questions.ts';
 import { reopenRelinked } from './approvals.ts';
 import { countPendingSuggestions, listBulletSuggestions } from './bullet-suggestions.ts';
 import { createCoverLetter } from './cover-letters.ts';
@@ -89,6 +92,7 @@ function toDetail(
   files: ApplicationFile[],
   coverLetterName: string | null,
   bulletSuggestions: BulletSuggestion[],
+  questions: ApplicationQuestion[],
 ): ApplicationDetail {
   return {
     ...toSummary(row, sentPdf),
@@ -106,6 +110,7 @@ function toDetail(
     },
     files,
     bulletSuggestions,
+    questions,
   };
 }
 
@@ -178,13 +183,14 @@ async function coverLetterName(
 }
 
 async function detailFor(row: ApplicationRow): Promise<ApplicationDetail> {
-  const [sentPdf, files, letterName, suggestions] = await Promise.all([
+  const [sentPdf, files, letterName, suggestions, questions] = await Promise.all([
     sentPdfMeta(row.resumePdfId),
     listApplicationFiles(row.userId, row.id),
     coverLetterName(row.userId, row.coverLetterId),
     listBulletSuggestions(row.userId, row.id),
+    listQuestions(row.userId, row.id),
   ]);
-  return toDetail(row, sentPdf, files, letterName, suggestions);
+  return toDetail(row, sentPdf, files, letterName, suggestions, questions);
 }
 
 export async function getApplicationDetail(
@@ -597,9 +603,9 @@ export async function submitForReview(userId: string, id: string): Promise<boole
  * Everything was compiled before this is called, so no sidecar call holds
  * the transaction open. The guarded UPDATE re-checks what the compile was
  * based on: still in review, both approvals still set, the same resume and
- * letter, and no bullet suggestion pending (D-045). An edit that landed in
- * between has cleared an approval, so the guard fails and the whole
- * transaction rolls back.
+ * letter, no bullet suggestion pending (D-045), and no required question
+ * left unapproved. An edit that landed in between has cleared an approval,
+ * so the guard fails and the whole transaction rolls back.
  *
  * The approved letter is the application's one non-archived file with the
  * letter's download name; approving again archives the previous one, since
@@ -615,6 +621,11 @@ export async function recordFinalApproval(
   },
 ): Promise<ApplicationDetail> {
   const row = await db.transaction(async (tx) => {
+    // First, so the guarded UPDATE runs on a snapshot taken after any answer
+    // write in flight has committed: those hold this lock until they do. The
+    // questions live in another table, which the UPDATE's own re-check of a
+    // changed row would not re-read (D-047).
+    await lockApplication(tx, userId, id);
     const saved = await saveResumePdfSnapshot(input.resumeId, input.snapshot, tx);
 
     const [approved] = await tx
@@ -634,6 +645,18 @@ export async function recordFinalApproval(
                 isNotNull(application.coverLetterApprovedAt),
               )
             : isNull(application.coverLetterId),
+          notExists(
+            tx
+              .select({ id: applicationQuestion.id })
+              .from(applicationQuestion)
+              .where(
+                and(
+                  eq(applicationQuestion.applicationId, application.id),
+                  eq(applicationQuestion.required, true),
+                  isNull(applicationQuestion.approvedAt),
+                ),
+              ),
+          ),
         ),
       )
       .returning();

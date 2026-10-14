@@ -26,6 +26,7 @@ function state(overrides: Partial<ReviewState> = {}): ReviewState {
     coverLetterApprovedAt: null,
     approvedAt: null,
     pendingSuggestions: 0,
+    questions: [],
     ...overrides,
   };
 }
@@ -71,6 +72,59 @@ test('final approval happens only from Needs review', () => {
   assert.deepEqual(finalApprovalProblems(state({ ...approved, status: 'ready' })), [
     'Only an application in Needs review can be approved; this one is Ready.',
   ]);
+});
+
+test('final approval waits for every required question, and says which step they are in', () => {
+  const questions = [
+    { required: true, approvedAt: null },
+    { required: true, approvedAt: STAMP },
+    { required: true, approvedAt: null },
+    { required: false, approvedAt: null },
+  ];
+  assert.deepEqual(
+    finalApprovalProblems(
+      state({
+        resumeApprovedAt: STAMP,
+        coverLetterId: 'letter-1',
+        coverLetterApprovedAt: STAMP,
+        questions,
+      }),
+    ),
+    ['Approve the 2 required questions still open in step 3.'],
+  );
+  // Without a letter the questions are step 2.
+  assert.deepEqual(
+    finalApprovalProblems(state({ resumeApprovedAt: STAMP, questions: questions.slice(0, 2) })),
+    ['Approve the 1 required question still open in step 2.'],
+  );
+});
+
+test('an optional question left open does not hold up final approval (C3)', () => {
+  assert.deepEqual(
+    finalApprovalProblems(
+      state({
+        resumeApprovedAt: STAMP,
+        questions: [
+          { required: true, approvedAt: STAMP },
+          { required: false, approvedAt: null },
+        ],
+      }),
+    ),
+    [],
+  );
+});
+
+test('the questions check comes after the letter check', () => {
+  assert.deepEqual(
+    finalApprovalProblems(
+      state({ coverLetterId: 'letter-1', questions: [{ required: true, approvedAt: null }] }),
+    ),
+    [
+      'Approve the resume first.',
+      'Approve the cover letter first.',
+      'Approve the 1 required question still open in step 3.',
+    ],
+  );
 });
 
 test('Date stamps count the same as ISO strings', () => {
@@ -182,6 +236,26 @@ test('in Needs review an edit clears only its own section', () => {
   assert.deepEqual(reopenedApproval(both, 'coverLetter'), { coverLetterApprovedAt: null });
 });
 
+test('an answer edit clears only the final approval: questions have no stamp of their own', () => {
+  const ready = state({
+    status: 'ready',
+    resumeApprovedAt: STAMP,
+    coverLetterId: 'letter-1',
+    coverLetterApprovedAt: STAMP,
+    approvedAt: STAMP,
+  });
+  assert.deepEqual(reopenedApproval(ready, 'questions'), {
+    status: 'needs_review',
+    approvedAt: null,
+  });
+  // In Needs review there is no final approval yet, so nothing to clear.
+  assert.equal(
+    reopenedApproval(state({ resumeApprovedAt: STAMP, coverLetterApprovedAt: STAMP }), 'questions'),
+    null,
+  );
+  assert.equal(reopenedApproval(state({ status: 'proposing' }), 'questions'), null);
+});
+
 test('an edit to a section that was never approved changes nothing', () => {
   assert.equal(reopenedApproval(state(), 'resume'), null);
   assert.equal(reopenedApproval(state({ coverLetterApprovedAt: STAMP }), 'resume'), null);
@@ -231,6 +305,45 @@ test('without a letter there is no letter step, and Approve is step 2 (C12)', ()
       [1, 'resume', 'Resume'],
       [2, 'approve', 'Approve'],
     ],
+  );
+});
+
+test('questions get a step before Approve, done only when every one is approved', () => {
+  const withLetter = reviewSteps(
+    state({
+      coverLetterId: 'letter-1',
+      questions: [
+        { required: true, approvedAt: STAMP },
+        { required: false, approvedAt: null },
+      ],
+    }),
+  );
+  assert.deepEqual(
+    withLetter.map((s) => [s.number, s.key, s.label, s.done]),
+    [
+      [1, 'resume', 'Resume', false],
+      [2, 'coverLetter', 'Cover letter', false],
+      [3, 'questions', 'Questions', false],
+      [4, 'approve', 'Approve', false],
+    ],
+  );
+
+  const noLetter = reviewSteps(state({ questions: [{ required: false, approvedAt: STAMP }] }));
+  assert.deepEqual(
+    noLetter.map((s) => [s.number, s.key, s.done]),
+    [
+      [1, 'resume', false],
+      [2, 'questions', true],
+      [3, 'approve', false],
+    ],
+  );
+});
+
+test('a section can be refused for its questions only by status', () => {
+  assert.equal(sectionApprovalProblem(state(), 'questions'), null);
+  assert.equal(
+    sectionApprovalProblem(state({ status: 'ready' }), 'questions'),
+    'Only an application in Needs review can be approved; this one is Ready.',
   );
 });
 

@@ -6,8 +6,9 @@
  *
  * Both are compiled here, now, rather than trusting an earlier
  * `set_resume_selection` or `set_cover_letter_body` answer: either may have
- * changed since, and a letter made by hand was never compiled by a tool. Every refusal writes nothing. Calling it again on
- * one already in review re-checks the pages and leaves it there.
+ * changed since, and a letter made by hand was never compiled by a tool.
+ * Every refusal writes nothing. Calling it again on one already in review
+ * re-checks the pages and leaves it there.
  */
 import { z } from 'zod';
 import { compileResumeForApplication } from '../../application-pdf.ts';
