@@ -489,9 +489,17 @@ one page, writes its cover letter with `set_cover_letter_body`, in text
 holding every character the escaper replaces, which must also compile to one
 page, twice into the same letter, and submits it for review, which
 `get_application` must then show as `needs_review`; submitting an unknown id
-must be `isError`. The application and its letter are archived, its resume
-deleted and the saved answer archived when it ends. `npm run verify` runs it
-from `e2e/mcp.spec.ts`.
+must be `isError`. It then approves the application in-process, as Chris
+would in review, with final approval compiling on the real sidecar, and
+applies: `get_apply_packet` must list the approved answer and leave the
+unapproved EEO one blank; both packet files must download over HTTP as PDFs
+with the token, and be `401` without it and `404` for an unknown id;
+`report_question` must send it back to `needs_review`, after which the packet
+and its files are refused; and, approved again, `mark_applied` must make it
+`applied`, once. The application and its letter are archived and the saved
+answer archived when it ends; its resume is deleted only if no snapshot of it
+was pinned, since a pinned one is the record of what was sent. `npm run
+verify` runs it from `e2e/mcp.spec.ts`.
 
 ### Files for the agent (`/api/mcp/files/…`)
 

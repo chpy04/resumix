@@ -17,6 +17,8 @@ test('the MCP endpoint answers a real client over HTTP', ({ baseURL }) => {
     env: {
       ...process.env,
       DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+      // Final approval compiles in the script's own process (D-050).
+      LATEX_SERVICE_URL: process.env.LATEX_SERVICE_URL ?? 'http://localhost:8080',
       MCP_SMOKE_URL: `${baseURL}/api/mcp`,
     },
   });

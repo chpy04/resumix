@@ -9,9 +9,16 @@
  * remembers one in-process, as the review page's checkbox would, and links
  * that saved answer to a third (D-048), selects a small resume into it,
  * which the real sidecar compiles, writes its cover letter in plain text
- * (D-046), and submits it for review (D-044). That application and its
- * letter are archived, its resume deleted and its saved answer archived
- * when the script ends, so later specs' boards stay as they were.
+ * (D-046), and submits it for review (D-044). Then the apply pass (D-050):
+ * Chris's approval in-process, the packet, its files over HTTP, a reported
+ * question that sends it back to review, approval again, and
+ * `mark_applied`. That application and its letter are archived and its
+ * saved answer archived when the script ends, so later specs' boards stay
+ * as they were. Its resume is deleted only if nothing pinned a snapshot of
+ * it: once one is pinned it is the record of what was sent (D-032).
+ *
+ * Final approval compiles here, in this process, so it needs
+ * `LATEX_SERVICE_URL` as the server does.
  *
  * It needs a running server. `npm run verify` runs it from
  * `e2e/mcp.spec.ts`, against Playwright's own server; by hand, start
@@ -33,10 +40,18 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
+import { approveApplication } from '../lib/application-approval.ts';
 import { db, sql } from '../lib/db/index.ts';
 import { createApiToken, revokeApiToken } from '../lib/queries/api-tokens.ts';
-import { setQuestionRemembered } from '../lib/queries/application-questions.ts';
-import { getApplicationRow, updateApplication } from '../lib/queries/applications.ts';
+import {
+  approveApplicationQuestions,
+  setQuestionRemembered,
+} from '../lib/queries/application-questions.ts';
+import {
+  approveSection,
+  getApplicationRow,
+  updateApplication,
+} from '../lib/queries/applications.ts';
 import { updateCoverLetter } from '../lib/queries/cover-letters.ts';
 import { deleteResume } from '../lib/queries/resumes.ts';
 import { archiveSavedAnswer } from '../lib/queries/saved-answers.ts';
@@ -183,7 +198,7 @@ interface LibraryJson {
  * The application it logs is archived, its resume deleted and the answer it
  * remembers archived, however this ends.
  */
-async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
+async function smokeTools(mcp: Mcp, userId: string, url: URL, secret: string): Promise<void> {
   const library = await callJson<LibraryJson>(mcp, 'get_library', {});
   assert.ok(library.experiences.length > 0, 'get_library: no experiences');
   check(
@@ -403,17 +418,127 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
       `No application ${unknown}. Call list_applications to find its application_id.`,
     );
     check('submit_for_review on an unknown id is isError');
+
+    await smokeApply(mcp, userId, applicationId, url, secret, {
+      name: name.question_id,
+      gender: gender.question_id,
+    });
   } finally {
     // Archived, never deleted (D-048), so the agent never links it again.
     if (rememberedId) await archiveSavedAnswer(db, userId, rememberedId);
     const row = await getApplicationRow(userId, applicationId);
     await updateApplication(userId, applicationId, { isArchived: true });
-    if (row?.resumeId) await deleteResume(userId, row.resumeId);
+    // Once final approval has pinned a snapshot of it, the resume is the
+    // record of what was sent and stays (D-032): `deleteResume` refuses it.
+    if (row?.resumeId && !row.resumePdfId) await deleteResume(userId, row.resumeId);
     // Archived, never deleted (D-011), so the letter library stays as it was.
     if (row?.coverLetterId) {
       await updateCoverLetter(userId, row.coverLetterId, { isArchived: true });
     }
   }
+}
+
+interface PacketJson {
+  status: string;
+  resume: { filename: string; url: string };
+  cover_letter: { filename: string; url: string } | null;
+  questions: { question_id: string; approved: boolean; answer: unknown }[];
+}
+
+/**
+ * The apply pass (D-050), on the application `smokeTools` submitted. Chris's
+ * side, approving it, happens in-process, as the token is minted: there is
+ * no approval tool (NOT EXPOSED). Final approval compiles with the real
+ * sidecar here, so this process needs `LATEX_SERVICE_URL`.
+ */
+async function smokeApply(
+  mcp: Mcp,
+  userId: string,
+  applicationId: string,
+  url: URL,
+  secret: string,
+  questions: { name: string; gender: string },
+): Promise<void> {
+  const approve = async (questionIds: string[]) => {
+    if (questionIds.length > 0) {
+      await approveApplicationQuestions(userId, applicationId, questionIds);
+    }
+    const approved = await approveApplication(userId, applicationId);
+    assert.ok(approved.ok, `final approval failed: ${JSON.stringify(approved)}`);
+  };
+  await approveSection(userId, applicationId, 'resume');
+  await approveSection(userId, applicationId, 'coverLetter');
+  // The EEO question has no answer and is optional, so it stays unapproved.
+  await approve([questions.name]);
+
+  const packet = await callJson<PacketJson>(mcp, 'get_apply_packet', {
+    application_id: applicationId,
+  });
+  assert.equal(packet.status, 'ready');
+  assert.match(packet.resume.url, /^\/api\/mcp\/files\/resume-pdf\/[0-9a-f-]{36}$/);
+  assert.ok(packet.cover_letter, 'the letter is not in the packet');
+  assert.match(packet.cover_letter.filename, /_Cover_Letter\.pdf$/);
+  const byId = new Map(packet.questions.map((q) => [q.question_id, q]));
+  assert.deepEqual(
+    [byId.get(questions.name)?.answer, byId.get(questions.gender)?.approved],
+    ['Smoke Tester', false],
+  );
+  assert.equal(byId.get(questions.gender)?.answer, null, 'an unapproved answer is left blank');
+  check('get_apply_packet answers the approved packet, with an unapproved question blank');
+
+  // The files, over real HTTP, as the agent's script fetches them.
+  const fetchFile = (path: string, authorization: string | null = `Bearer ${secret}`) =>
+    fetch(new URL(path, url), { headers: authorization ? { authorization } : {} });
+  for (const file of [packet.resume, packet.cover_letter]) {
+    const response = await fetchFile(file.url);
+    assert.equal(response.status, 200, `${file.url}: expected 200, got ${response.status}`);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.subarray(0, 4).toString('latin1'), '%PDF', `${file.url} is not a PDF`);
+  }
+  assert.equal((await fetchFile(packet.resume.url, null)).status, 401, 'no token');
+  assert.equal((await fetchFile(packet.resume.url, 'Bearer abc')).status, 401, 'not rmx_');
+  const other = `/api/mcp/files/resume-pdf/${randomUUID()}`;
+  assert.equal((await fetchFile(other)).status, 404, 'an unknown file');
+  check('both packet files download with the token, and are 401 without it, 404 unknown');
+
+  const reported = await callJson<{ question_id: string; outcome: string; status: string }>(
+    mcp,
+    'report_question',
+    {
+      application_id: applicationId,
+      question: {
+        field_ref: { page: 2, label: 'Are you 18 or older?' },
+        prompt: 'Are you 18 or older?',
+        kind: 'bool',
+        required: true,
+        source: 'profile',
+        proposed_answer: 'yes',
+      },
+    },
+  );
+  assert.deepEqual([reported.outcome, reported.status], ['added', 'needs_review']);
+  const refused = await callTool(mcp, 'get_apply_packet', { application_id: applicationId });
+  assert.equal(refused.isError, true, 'a reopened application still has a packet');
+  assert.match(refused.content[0]?.text ?? '', /^This application is in Needs review/);
+  assert.equal((await fetchFile(packet.resume.url)).status, 404, 'a reopened packet file');
+  check('report_question sends it back to review, and the packet and its files go with it');
+
+  await approve([reported.question_id]);
+  const applied = await callJson<{ status: string; applied_at: string | null }>(
+    mcp,
+    'mark_applied',
+    { application_id: applicationId },
+  );
+  assert.equal(applied.status, 'applied');
+  assert.ok(applied.applied_at, 'applied_at is not stamped');
+  const sent = await callJson<{ status: string }>(mcp, 'get_application', {
+    application_id: applicationId,
+  });
+  assert.equal(sent.status, 'applied');
+  const again = await callTool(mcp, 'mark_applied', { application_id: applicationId });
+  assert.equal(again.isError, true, 'an applied application was marked applied twice');
+  check('mark_applied moves it to applied once, and get_application agrees');
 }
 
 async function main() {
@@ -492,7 +617,7 @@ async function main() {
     assert.equal(content[0]?.text, user.email);
     check(`the ping tool answers ${user.email}`);
 
-    await smokeTools(mcp, user.id);
+    await smokeTools(mcp, user.id, url, secret);
 
     const get = await mcp.send(null, { method: 'GET' });
     assert.equal(get.status, 405, `GET: expected 405, got ${get.status}`);
