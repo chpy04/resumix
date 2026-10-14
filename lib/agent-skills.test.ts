@@ -550,7 +550,9 @@ async function fetchFiles(
   }
   const child = spawn('bash', [join(agentDir, 'fetch-apply-files.sh'), ...args], {
     cwd: agentDir,
-    env: base,
+    // Built from nothing on purpose; the app's ProcessEnv type requires a
+    // NODE_ENV the script has no use for.
+    env: base as NodeJS.ProcessEnv,
   });
   let stdout = '';
   let stderr = '';
