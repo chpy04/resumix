@@ -6,8 +6,9 @@
  *
  * Then it does what the agent does first (D-042): reads the library, logs an
  * application, finds it again, selects a small resume into it, which the
- * real sidecar compiles, writes its cover letter in plain text (D-046), and
- * submits it for review (D-044). That application and its letter are
+ * real sidecar compiles, suggests an edit and an addition to its bullets
+ * without touching the library (D-045), writes its cover letter in plain
+ * text (D-046), and submits it for review (D-044). That application and its letter are
  * archived and its resume deleted when the script ends, so later specs'
  * boards stay as they were.
  *
@@ -51,6 +52,7 @@ const TOOL_NAMES = [
   'get_application',
   'create_application',
   'set_resume_selection',
+  'suggest_bullet',
   'set_cover_letter_body',
   'submit_for_review',
 ];
@@ -164,7 +166,7 @@ async function callJson<T>(mcp: Mcp, name: string, args: Record<string, unknown>
 }
 
 interface LibraryJson {
-  experiences: { id: string; bullets: { id: string }[] }[];
+  experiences: { id: string; bullets: { id: string; text: string }[] }[];
   projects: { id: string }[];
   skill_rows: { id: string; skills: { id: string }[] }[];
 }
@@ -245,6 +247,65 @@ async function smokeTools(mcp: Mcp, userId: string): Promise<void> {
     });
     assert.deepEqual(after.selection, selection);
     check('an unknown id is refused, and the selection is unchanged');
+
+    // Suggestions, while it is still proposing. The edit carries every
+    // character the escaper replaces but `\`, which the tool refuses, so the
+    // real sidecar compiles each replacement inside a resume bullet.
+    type Suggested = { suggestion_id: string; kind: string; replaced: boolean; ok: boolean };
+    const edited = experience.bullets[0];
+    const edit = await callJson<Suggested & { pages: number }>(mcp, 'suggest_bullet', {
+      application_id: applicationId,
+      kind: 'edit',
+      bullet_id: edited.id,
+      proposed_text: `Smoke ${tag}: a<b>c | 50% ~x^2_y {z} $5 & #1`,
+      rationale: 'The MCP smoke checks a suggestion compiles.',
+    });
+    const add = await callJson<Suggested & { pages: number }>(mcp, 'suggest_bullet', {
+      application_id: applicationId,
+      kind: 'add',
+      parent_id: experience.id,
+      position: 1,
+      proposed_text: `Smoke ${tag}: an added bullet`,
+      rationale: 'The MCP smoke checks an addition compiles.',
+    });
+    for (const [answer, kind] of [
+      [edit, 'edit'],
+      [add, 'add'],
+    ] as const) {
+      assert.deepEqual(
+        { kind: answer.kind, replaced: answer.replaced, ok: answer.ok, pages: answer.pages },
+        { kind, replaced: false, ok: true, pages: 1 },
+      );
+    }
+    const suggested = await callJson<{
+      bullet_suggestions: { suggestion_id: string; status: string }[];
+    }>(mcp, 'get_application', { application_id: applicationId });
+    assert.deepEqual(
+      suggested.bullet_suggestions.map((x) => [x.suggestion_id, x.status]),
+      [
+        [edit.suggestion_id, 'pending'],
+        [add.suggestion_id, 'pending'],
+      ],
+    );
+    const strange = await callTool(mcp, 'suggest_bullet', {
+      application_id: applicationId,
+      kind: 'edit',
+      bullet_id: randomUUID(),
+      proposed_text: 'Anything',
+      rationale: 'An unknown bullet.',
+    });
+    assert.equal(strange.isError, true, 'an unknown bullet was accepted');
+    assert.match(strange.content[0]?.text ?? '', /^No bullet .* in the library/);
+    // Nothing reached the library: the bullet reads as it did, and no
+    // bullet carries the smoke's text.
+    const bullets = (await callJson<LibraryJson>(mcp, 'get_library', {})).experiences.flatMap(
+      (e) => e.bullets,
+    );
+    assert.equal(bullets.find((b) => b.id === edited.id)?.text, edited.text);
+    assert.ok(!bullets.some((b) => b.text.includes(tag)), 'a suggestion reached the library');
+    check(
+      'suggest_bullet records an edit and an add, each compiling to one page, and the library is untouched',
+    );
 
     // All thirteen characters the escaper replaces, so the real sidecar
     // proves each replacement exists in its TeX Live.

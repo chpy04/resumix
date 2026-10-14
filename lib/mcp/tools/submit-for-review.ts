@@ -14,6 +14,7 @@ import { compileResumeForApplication } from '../../application-pdf.ts';
 import { compileCoverLetterPdf } from '../../cover-letter-pdf.ts';
 import { LatexServiceError } from '../../latex.ts';
 import { submitForReview as submitApplication } from '../../queries/applications.ts';
+import { listBulletSuggestions } from '../../queries/bullet-suggestions.ts';
 import { getCoverLetterRow } from '../../queries/cover-letters.ts';
 import { findLiveApplication, noSuchApplication } from '../application.ts';
 import { defineTool, toolError, toolJson, type ToolResult } from '../tool.ts';
@@ -65,9 +66,12 @@ export const submitForReview = defineTool({
       );
     }
 
+    // Pending suggestions are what review is for, so they never stop a
+    // submit, but the page count includes them: Chris's preview does (D-045).
     const resume = await compileResumeForApplication(ctx.userId, {
       resumeId: app.resumeId,
       company: app.company,
+      suggestions: await listBulletSuggestions(ctx.userId, app.id),
     });
     if (!resume.ok) {
       return resume.unavailable

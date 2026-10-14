@@ -12,6 +12,7 @@ import { ping } from './ping.ts';
 import { setCoverLetterBody } from './set-cover-letter-body.ts';
 import { setResumeSelection } from './set-resume-selection.ts';
 import { submitForReview } from './submit-for-review.ts';
+import { suggestBullet } from './suggest-bullet.ts';
 
 export const TOOLS: readonly McpTool[] = [
   ping,
@@ -20,6 +21,7 @@ export const TOOLS: readonly McpTool[] = [
   getApplication,
   createApplication,
   setResumeSelection,
+  suggestBullet,
   setCoverLetterBody,
   submitForReview,
 ];

@@ -24,7 +24,7 @@ after(async () => {
 });
 
 test(
-  'get_application returns status, posting, summary, selection and approval',
+  'get_application returns status, posting, summary, selection, suggestions and approval',
   { skip },
   async () => {
     const tag = fixtures.testTag();
@@ -46,6 +46,19 @@ test(
       fitScore: 4.5,
       resumeApprovedAt: approvedAt,
     });
+    const edit = await fixtures.insertBulletSuggestion(app.id, {
+      bulletId: bullet.id,
+      proposedText: 'Did it twice',
+      rationale: 'Scale',
+    });
+    const add = await fixtures.insertBulletSuggestion(app.id, {
+      kind: 'add',
+      parentId: exp.id,
+      position: 1,
+      proposedText: 'Ran on-call',
+      rationale: 'Ops',
+      status: 'rejected',
+    });
     try {
       const result = await getApplication.call({ userId: user.id }, { application_id: app.id });
       assert.equal(result.isError, undefined, result.content[0]?.text);
@@ -66,6 +79,28 @@ test(
           skill_rows: [],
           skills: {},
         },
+        bullet_suggestions: [
+          {
+            suggestion_id: edit.id,
+            kind: 'edit',
+            bullet_id: bullet.id,
+            parent_id: null,
+            position: null,
+            proposed_text: 'Did it twice',
+            rationale: 'Scale',
+            status: 'pending',
+          },
+          {
+            suggestion_id: add.id,
+            kind: 'add',
+            bullet_id: null,
+            parent_id: exp.id,
+            position: 1,
+            proposed_text: 'Ran on-call',
+            rationale: 'Ops',
+            status: 'rejected',
+          },
+        ],
         approval: {
           resume_approved_at: approvedAt.toISOString(),
           cover_letter_approved_at: null,

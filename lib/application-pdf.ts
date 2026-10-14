@@ -17,6 +17,7 @@ import { buildResumeFilename } from './filename.ts';
 import { compileTex, latexUnavailableResult, LatexServiceError } from './latex.ts';
 import { renderResumeById } from './queries/render.ts';
 import { saveResumePdfSnapshot, type NewPdfSnapshot } from './storage.ts';
+import type { BulletSuggestion } from './types.ts';
 
 export interface SnapshotFailure {
   ok: false;
@@ -37,11 +38,19 @@ export type CompiledResume =
   | { ok: true; pages: number | null; snapshot: NewPdfSnapshot }
   | (SnapshotFailure & { unavailable: boolean });
 
+/** `suggestions` are laid over the bullets for `submit_for_review`'s page
+ *  count, which must match Chris's preview (D-045). Final approval never
+ *  passes them, so what it pins is only what is stored. */
 export async function compileResumeForApplication(
   userId: string,
-  input: { resumeId: string; company: string },
+  input: { resumeId: string; company: string; suggestions?: readonly BulletSuggestion[] },
 ): Promise<CompiledResume> {
-  const { tex, warnings } = await renderResumeById(userId, input.resumeId);
+  const { tex, warnings } = await renderResumeById(
+    userId,
+    input.resumeId,
+    undefined,
+    input.suggestions,
+  );
 
   let compiled;
   try {
