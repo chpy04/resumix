@@ -24,10 +24,10 @@ Two kinds live side by side:
   never a mock. Each file self-skips via `{ skip: !hasDatabase }` from
   `lib/queries/test-fixtures.ts` when `DATABASE_URL` is unset.
 
-That skip is a trap worth knowing: without `DATABASE_URL` these 16 tests
+That skip is a trap worth knowing: without `DATABASE_URL` 273 tests
 vanish and `npm test` still reports green. The `test` script passes
 `--env-file-if-exists=.env` for exactly that reason. If your test count
-drops below 170, your `.env` is missing, not your code.
+drops below 430, your `.env` is missing, not your code.
 
 Fixtures never assume an empty database and never touch rows they did not
 create (the dev DB is shared). Content rows are left behind, tagged with a
