@@ -180,7 +180,7 @@ represent my current resume" — is that diff coming back empty.
 The merge gate is `npm run verify`: `format:check`, `lint`, `typecheck`,
 `test`, `build`, reseed, `smoke`, `test:e2e`, in an order that works. It needs
 `docker compose up -d db latex`. `test` needs `DATABASE_URL` or the
-`lib/queries` integration suites self-skip and still report green, so the
+DB-backed tests across `lib/` self-skip and still report green, so the
 skipped count must be zero. `build` is not redundant with `typecheck`:
 `next build` additionally validates App Router export signatures, and a page
 whose default export takes a custom prop typechecks fine and fails the build.

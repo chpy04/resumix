@@ -1,6 +1,6 @@
-# Unit + query-integration tests. Needs Postgres: without DATABASE_URL the 16
-# lib/queries suites self-skip and the run still reports green, so this job
-# asserts the count as well as the exit code.
+# Unit + query-integration tests. Needs Postgres: without DATABASE_URL the
+# DB-backed tests across lib/ self-skip and the run still reports green, so
+# this job asserts the count as well as the exit code.
 name: test
 on:
   push:
@@ -41,8 +41,8 @@ jobs:
           fi
           echo "skipped=$skipped"
           if [ "$skipped" -ne 0 ]; then
-            echo "::error::$skipped test(s) skipped. The lib/queries suites self-skip"
-            echo "::error::without DATABASE_URL, which would make this job green on a"
-            echo "::error::subset of the suite."
+            echo "::error::$skipped test(s) skipped. The DB-backed tests across lib/"
+            echo "::error::self-skip without DATABASE_URL, which would make this job"
+            echo "::error::green on a subset of the suite."
             exit 1
           fi

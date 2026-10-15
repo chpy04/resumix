@@ -42,8 +42,6 @@ import type { User } from '../types.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { provisionUser } from './users.ts';
 
-export const hasDatabase = Boolean(process.env.DATABASE_URL);
-
 /** Unique-ish tag so fixture rows are identifiable in a shared dev database. */
 export function testTag(): string {
   return randomUUID().slice(0, 8);

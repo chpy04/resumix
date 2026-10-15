@@ -50,8 +50,8 @@ across runs keyed on the Dockerfile; `docker-compose.yml` takes a
 Two things in those workflows are load-bearing and easy to undo by accident:
 `build` deliberately runs with **no** `DATABASE_URL`, which is what makes it
 the regression test for the lazy DB client (D-014); and `test` asserts the
-skipped-test count is zero, because the `lib/queries` suites self-skip
-without a database and the job would otherwise pass on a subset.
+skipped-test count is zero, because the DB-backed tests across `lib/`
+self-skip without a database and the job would otherwise pass on a subset.
 
 ## Formatting and linting
 

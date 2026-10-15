@@ -20,9 +20,10 @@ Two kinds live side by side:
 
 - **Pure logic** (`render`, `autosave`, `visibility`, `selections-reducer`,
   `fuzzy`, `filename`, `auth`) — no DB, always runs.
-- **Query integration** (`lib/queries/*.test.ts`) — hits a **real Postgres**,
-  never a mock. Each file self-skips via `{ skip: !hasDatabase }` from
-  `lib/queries/test-fixtures.ts` when `DATABASE_URL` is unset.
+- **Query integration** (DB-backed tests across `lib/`, most in `lib/queries`
+  and `lib/mcp`) — hits a **real Postgres**, never a mock. Each file sets
+  `const skip = !process.env.DATABASE_URL` and passes `{ skip }` to its DB
+  tests, so they self-skip when `DATABASE_URL` is unset.
 
 That skip is a trap worth knowing: without `DATABASE_URL` 273 tests
 vanish and `npm test` still reports green. The `test` script passes
