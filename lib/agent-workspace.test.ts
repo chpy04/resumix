@@ -5,7 +5,7 @@
 // Pure: it reads git and the filesystem, never the database.
 //
 // It cannot see `claude mcp add`, which writes to ~/.claude.json, outside the
-// repo. CLAUDE.md says not to use it for Resumix.
+// repo.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

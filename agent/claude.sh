@@ -24,7 +24,7 @@ if [[ -n "${CLAUDECODE:-}" ]]; then
 refusing to start: CLAUDECODE is set.
 
 agent/ is the workspace of the Claude that applies to jobs, and everything it
-does reaches production (CLAUDE.md, "Production is not yours"). The Claude
+does reaches production (D-038). The Claude
 that builds Resumix works at the repo root against the dev stack instead.
 
 A human should run ./claude.sh in their own shell.

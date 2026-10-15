@@ -226,4 +226,4 @@ tooling. On the VM, production's block is all there is.
 
 Production's block is deliberately odd and bound to `127.0.0.1`; on the VM,
 only the HTTPS front end reaches 39000. Nothing in development points at
-production; nothing may (CLAUDE.md, "Production is not yours").
+production; nothing may (`docs/DEPLOYMENT.md`, "Agents do not deploy").

@@ -22,7 +22,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Agents do not deploy.
 #
-# The rule is in CLAUDE.md, but prose is not a control. Claude Code exports
+# The rule is D-031's, but prose is not a control. Claude Code exports
 # CLAUDECODE=1 into every command it runs, so this is the rule in executable
 # form: an agent that tries this stops here, whatever it was told.
 # ---------------------------------------------------------------------------
@@ -30,9 +30,9 @@ if [[ -n "${CLAUDECODE:-}" ]]; then
   cat >&2 <<'EOF'
 refusing to deploy: CLAUDECODE is set.
 
-Production holds real resume content and is off-limits to agents (CLAUDE.md,
-"Production is not yours"). Test against the development environment
-instead: docker compose up -d db latex && npm run dev.
+Production holds real resume content and is off-limits to agents (D-031).
+Test against the development environment instead:
+docker compose up -d db latex && npm run dev.
 
 A human should run `npm run deploy:prod` in their own shell.
 EOF

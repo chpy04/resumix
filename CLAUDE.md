@@ -186,44 +186,6 @@ the issue back to backlog.
 never pays for them in context. The skill is `disable-model-invocation: true`
 and fires only when something types `/implement 12`, never on its own.
 
-## Production is not yours
-
-Production is a cloud VM, reached over HTTPS, holding Chris's real
-applications and resume content — not seed data. Chris deploys it by hand
-from a shell on the VM (D-051, `docs/DEPLOYMENT.md`). An earlier instance
-also runs on this machine, from `~/.resumix/src` on ports
-**39000 / 39432 / 39080**, deployed by `npm run deploy:prod` (D-031), and it
-holds real content too.
-
-**Never deploy, migrate, seed, query, stop or read either.** No `ssh` to the
-VM, no request to its URL, and no production URL or token anywhere outside
-`agent/.env`. Everything you do — `npm run dev`, `npm run verify`,
-Playwright, `psql` — belongs to the development environment on
-**3000 / 3100 / 5433 / 8080**, whose database exists to be wiped and
-reseeded and where `npm run verify` reseeds with `--force` on every run.
-That is exactly why they are separate: so the merge gate can destroy its
-data freely.
-
-This is enforced, not merely asked. `scripts/deploy-prod.sh` aborts when
-`CLAUDECODE` is set, and `.claude/settings.json` denies the deploy script,
-the prod compose file, everything under `~/.resumix/` and `agent/.env`. The
-VM's credentials exist only on the VM and in that file. If you find yourself
-wanting to route around any of it, the answer is no — say what you wanted to
-do and let the human do it.
-
-Editing the prod _lane_ is normal work: `Dockerfile`,
-`docker-compose.prod.yml`, `scripts/deploy-prod.sh` and `prod.env.example`
-are ordinary checked-in files. Changing them is fine. Running them is not.
-
-`agent/` is the same kind of lane. It belongs to a second Claude, the one
-that applies to jobs through production's MCP (D-038). Edit its files when a
-change asks for it, but never run anything there (no `claude`, no
-`agent/claude.sh`) and never read `agent/.env`. The Resumix MCP is configured
-in `agent/.mcp.json` and nowhere else: `lib/agent-workspace.test.ts` fails if
-a root `.mcp.json` or `.claude/settings*.json` names it. It cannot see
-`claude mcp add`, which writes to `~/.claude.json`, so never use that for
-Resumix.
-
 ## Branches and worktrees
 
 **Never commit to `main`.** Branch `feat/<slug>`, `fix/<slug>` or
