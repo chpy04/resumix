@@ -62,11 +62,11 @@ sidecar runs `pdflatex` on whatever it is handed (`services/latex/README.md`).
 
 ## Agents do not deploy
 
-Only Chris reaches the VM. No agent opens a shell on it, calls its URL, or
-holds a production token anywhere but `agent/.env` (CLAUDE.md, "Production is
-not yours"). There is no script on the VM for an agent to be stopped by: what
-keeps agents out is that the credentials exist only there and in
-`agent/.env`, which `.claude/settings.json` denies.
+Only Chris reaches the VM. Agents at the repo root are never told where it
+is: its URL and credentials exist only on the VM and in `agent/.env`, which
+`.claude/settings.json` denies, so `CLAUDE.md` says nothing about production
+at all (D-052). The laptop instance, which does sit on the same machine as
+the agents, is fenced in code instead (below).
 
 ## First deploy
 

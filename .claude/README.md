@@ -28,8 +28,7 @@ Checked-in configuration for agents working in this repo.
   `agent/career-ops-data/`, which holds Chris's real CV, profile and tracker
   (D-038). `scripts/deploy-prod.sh`
   refuses independently when `CLAUDECODE` is set, so neither half is the only
-  thing standing between an agent and real data — see CLAUDE.md, "Production
-  is not yours".
+  thing standing between an agent and real data (D-031).
 
 The mechanical half of these rules is enforced by `eslint.config.mjs`, whose
 error messages name the rule file that explains them. Prose and lint config
