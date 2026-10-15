@@ -123,7 +123,7 @@ and a 1-page PDF. This is the project's acceptance bar (see
 | `npm run test:e2e`    | Playwright browser tests (`e2e/**`); spins up its own dev server on :3100 and **force-reseeds the database** — see `playwright.config.ts` before running against data you care about |
 | `npm run db:migrate`  | Applies any `drizzle/*.sql` files not yet recorded in `_migrations`. Idempotent — safe to re-run.                                                                                    |
 | `npm run db:seed`     | Seeds the real V1 resume content + Default template + Default resume. Refuses to run twice unless you pass `--force` (wipes and reseeds)                                             |
-| `npm run deploy:prod` | **Not a development command.** Deploys the separate production instance from `origin/main` onto :39000 — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Refuses to run under an agent |
+| `npm run deploy:prod` | **Not a development command.** Deploys the laptop instance from `origin/main` onto :39000, not the VM — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Refuses to run under an agent  |
 | `npm run smoke`       | The end-to-end check described above: DB → render → compile → assert                                                                                                                 |
 | `npm run typecheck`   | `tsc --noEmit` — faster than `build`, but not sufficient on its own (see the note above)                                                                                             |
 | `npm run lint`        | ESLint (`eslint.config.mjs`); `lint:fix` applies the fixable ones                                                                                                                    |
@@ -211,7 +211,7 @@ docs/                    architecture, contracts, decisions, deployment — see 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, repo layout, the smoke test
 - [docs/SCHEMA.md](docs/SCHEMA.md), [docs/API.md](docs/API.md), [docs/TEMPLATE_TOKENS.md](docs/TEMPLATE_TOKENS.md) — frozen contracts
 - [docs/DECISIONS.md](docs/DECISIONS.md) — why things are the way they are
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — the production instance: `npm run deploy:prod`, step by step
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — production on a cloud VM, deployed by hand, step by step
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — adding a migration, an endpoint, running the smoke test
 - [CLAUDE.md](CLAUDE.md) — guide for an AI agent picking this repo up cold
 - `services/latex/README.md` — the sidecar's own contract, security notes, and Fly.io deploy notes

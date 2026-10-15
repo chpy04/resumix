@@ -188,24 +188,28 @@ and fires only when something types `/implement 12`, never on its own.
 
 ## Production is not yours
 
-There is a second Resumix on this machine. It runs from its own clone at
-`~/.resumix/src`, its own Postgres volume, its own images, on ports
-**39000 / 39432 / 39080**, and it holds Chris's real resume content — not
-seed data. `npm run deploy:prod` is the only thing that touches it, and a
-human is the only one who runs it (D-031, `docs/DEPLOYMENT.md`).
+Production is a cloud VM, reached over HTTPS, holding Chris's real
+applications and resume content — not seed data. Chris deploys it by hand
+from a shell on the VM (D-051, `docs/DEPLOYMENT.md`). An earlier instance
+also runs on this machine, from `~/.resumix/src` on ports
+**39000 / 39432 / 39080**, deployed by `npm run deploy:prod` (D-031), and it
+holds real content too.
 
-**Never deploy, migrate, seed, query, stop or read it.** Everything you do
-— `npm run dev`, `npm run verify`, Playwright, `psql` — belongs to the
-development environment on **3000 / 3100 / 5433 / 8080**, whose database
-exists to be wiped and reseeded and where `npm run verify` reseeds with
-`--force` on every run. That is exactly why the two are separate: so the
-merge gate can destroy its data freely.
+**Never deploy, migrate, seed, query, stop or read either.** No `ssh` to the
+VM, no request to its URL, and no production URL or token anywhere outside
+`agent/.env`. Everything you do — `npm run dev`, `npm run verify`,
+Playwright, `psql` — belongs to the development environment on
+**3000 / 3100 / 5433 / 8080**, whose database exists to be wiped and
+reseeded and where `npm run verify` reseeds with `--force` on every run.
+That is exactly why they are separate: so the merge gate can destroy its
+data freely.
 
 This is enforced, not merely asked. `scripts/deploy-prod.sh` aborts when
 `CLAUDECODE` is set, and `.claude/settings.json` denies the deploy script,
-the prod compose file, and everything under `~/.resumix/`. If you find
-yourself wanting to route around either, the answer is no — say what you
-wanted to do and let the human do it.
+the prod compose file, everything under `~/.resumix/` and `agent/.env`. The
+VM's credentials exist only on the VM and in that file. If you find yourself
+wanting to route around any of it, the answer is no — say what you wanted to
+do and let the human do it.
 
 Editing the prod _lane_ is normal work: `Dockerfile`,
 `docker-compose.prod.yml`, `scripts/deploy-prod.sh` and `prod.env.example`

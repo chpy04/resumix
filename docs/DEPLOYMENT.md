@@ -1,19 +1,14 @@
 # Deployment
 
-Production is a **second copy of Resumix on this same machine**. It has its
-own clone, its own Postgres volume, its own images and its own ports; it
-holds real resume content; and no development command can reach it. One
-script deploys it:
+Production is a **cloud VM that runs Docker and nothing else**. It has its
+own clone, its own Postgres volume and its own images; it holds real resume
+content; and it is deployed by hand, with `docker compose`, from a shell on
+the VM. HTTPS in front of it is not part of this repo (D-051).
 
-```
-npm run deploy:prod
-```
+The appendix at the bottom describes the Vercel + Fly + Supabase path that
+was written, validated, and not taken.
 
-That is the whole interface. See D-031 for why it is local rather than
-cloud-hosted, and the appendix at the bottom for the Vercel + Fly + Supabase
-path that was written, validated, and not taken.
-
-## Why two instances
+## Why a separate instance
 
 `npm run verify` runs `npm run db:seed -- --force`, which `TRUNCATE`s every
 content table, and then drives Playwright through the app leaving edited
@@ -25,55 +20,81 @@ So the two are disjoint at every layer that could leak:
 
 |          | development               | production                                        |
 | -------- | ------------------------- | ------------------------------------------------- |
-| source   | this checkout, any branch | `~/.resumix/src`, always `origin/main`            |
+| machine  | your laptop               | the VM                                            |
+| source   | this checkout, any branch | `~/.resumix/src` on the VM, at the deployed ref   |
 | app      | `next dev` on the host    | `resumix-app:prod` container                      |
 | database | volume `resumix_pgdata`   | volume `resumix-prod_pgdata`                      |
 | compose  | `docker-compose.yml`      | `docker-compose.prod.yml`, project `resumix-prod` |
-| web      | 3000 (e2e 3100)           | **39000**                                         |
-| postgres | 5433                      | **39432**                                         |
-| latex    | 8080                      | **39080**                                         |
-| secrets  | `.env`                    | `~/.resumix/prod.env`                             |
+| web      | 3000 (e2e 3100)           | `127.0.0.1:39000`, behind HTTPS                   |
+| postgres | 5433                      | `127.0.0.1:39432`                                 |
+| latex    | 8080                      | `127.0.0.1:39080`                                 |
+| secrets  | `.env`                    | `~/.resumix/prod.env` on the VM                   |
 | auth     | `dev` — no login screen   | `password`                                        |
-| seeding  | `--force`, constantly     | once, on first deploy, never `--force`            |
+| seeding  | `--force`, constantly     | once, on the first deploy, never `--force`        |
 
-Production's ports are deliberately odd and bound to `127.0.0.1`, so nothing
-that guesses a default port can find it and nothing outside the machine can
-reach it at all.
-
-Everything production owns lives under `~/.resumix`, outside the repo:
+Everything production owns lives under `~/.resumix` on the VM, outside the
+clone:
 
 ```
 ~/.resumix/prod.env      secrets, mode 600, never committed
-~/.resumix/src/          the clone deploys build from
+~/.resumix/src/          the clone deploys build from, never edited by hand
 ~/.resumix/backups/      a pg_dump taken before every migration
 ```
 
+## HTTPS is in front, and not in this repo
+
+`docker-compose.prod.yml` binds every port to `127.0.0.1`, so the app is
+reachable only at `127.0.0.1:39000` on the VM itself, and Postgres and the
+LaTeX sidecar not at all from off it. Whatever terminates HTTPS runs on the
+VM host, or tunnels into it, and forwards to that address. The repo carries
+no proxy, certificate or DNS configuration, and nothing reaches production
+over plain HTTP:
+
+- The browser uses `https://<host>`.
+- The applying agent's `RESUMIX_MCP_URL` is `https://<host>/api/mcp`. Apply
+  packets' file paths resolve against it (D-050), so there is no separate
+  base URL to keep in step.
+- `/api/auth` has no rate limit, so on a public URL `APP_PASSWORD` is the
+  whole gate on the UI. Make it long and random.
+
+Never forward 39432 or 39080. The database has only its password, and the
+sidecar runs `pdflatex` on whatever it is handed (`services/latex/README.md`).
+
 ## Agents do not deploy
 
-`scripts/deploy-prod.sh` exits immediately when `CLAUDECODE` is set, and
-`.claude/settings.json` denies the deploy script, the prod compose file and
-everything under `~/.resumix/`. The matching prose is CLAUDE.md's
-"Production is not yours". If Claude needs a deploy, it should say so and
-stop — the refusal is intentional, and routing around it is not a clever
-solution to anything.
+Only Chris reaches the VM. No agent opens a shell on it, calls its URL, or
+holds a production token anywhere but `agent/.env` (CLAUDE.md, "Production is
+not yours"). There is no script on the VM for an agent to be stopped by: what
+keeps agents out is that the credentials exist only there and in
+`agent/.env`, which `.claude/settings.json` denies.
 
 ## First deploy
 
-Prerequisites: Docker Desktop running, and the work you want deployed merged
-to `main`.
+Prerequisites on the VM:
 
-1. **Bootstrap.**
+- Docker Engine with the Compose plugin (`docker compose version`), with the
+  daemon enabled at boot, so `restart: unless-stopped` brings production back
+  after a reboot.
+- `git`, with read access to the repo.
+- Enough memory to build. Images build on the VM, and `next build` inside
+  Docker is the step that needs it; see Troubleshooting for exit 137.
+- The HTTPS front end, forwarding to `127.0.0.1:39000`.
+
+1. **Clone** the ref you are deploying, normally `main`:
 
    ```bash
-   npm run deploy:prod
+   mkdir -p ~/.resumix/backups && chmod 700 ~/.resumix
+   git clone --branch main <repo-url> ~/.resumix/src
    ```
 
-   With nothing set up yet this clones `origin` into `~/.resumix/src`, copies
-   `prod.env.example` to `~/.resumix/prod.env` (mode 600), and stops. It does
-   not deploy on this pass — a half-configured production instance is worse
-   than none.
+2. **Write the secrets.**
 
-2. **Fill in the secrets** in `~/.resumix/prod.env`. Four are required:
+   ```bash
+   cp ~/.resumix/src/prod.env.example ~/.resumix/prod.env
+   chmod 600 ~/.resumix/prod.env
+   ```
+
+   Five are required, and compose refuses to start without any of them:
 
    | Variable              | What it is                                                |
    | --------------------- | --------------------------------------------------------- |
@@ -83,118 +104,190 @@ to `main`.
    | `LATEX_SERVICE_TOKEN` | shared secret the app presents to the sidecar             |
    | `OWNER_EMAIL`         | which user the password gate signs in as                  |
 
-   Generate each random one separately with `openssl rand -base64 32`. You
-   never write a `DATABASE_URL`: `docker-compose.prod.yml` builds it from
-   `POSTGRES_PASSWORD` against the compose network, so there is no line to
-   edit that could point production at the development database.
+   Set `SEED_USER_NAME` as well. Left blank, compose passes it as an empty
+   string, and the seed stores that instead of its default.
 
-3. **Deploy.**
+   Generate each random value separately with `openssl rand -hex 32`. **Hex,
+   not base64:** `POSTGRES_PASSWORD` is spliced unescaped into the app's
+   `DATABASE_URL`, and a `/` from base64 makes that URL unparseable. Compose
+   also expands `$` in unquoted values, so single-quote an `APP_PASSWORD`
+   that contains one. You never write a `DATABASE_URL` yourself:
+   `docker-compose.prod.yml` builds it against the compose network, so no
+   line in the env file can point production at another database.
+
+3. **Define the shorthand** every command below uses, from the clone:
 
    ```bash
-   npm run deploy:prod
+   cd ~/.resumix/src
+   prod() { docker compose --env-file ~/.resumix/prod.env -f docker-compose.prod.yml "$@"; }
    ```
 
-   On this pass it builds the images, starts Postgres, applies migrations,
-   and runs `scripts/seed.ts` **without** `--force`. The seed is a faithful
-   transcription of the reference resume, so the first deploy hands you a
-   working account with real content; every later deploy finds a user already
-   there and no-ops.
+4. **Build, migrate, seed, start.**
 
-4. Open <http://localhost:39000> and log in with `APP_PASSWORD`.
+   ```bash
+   prod --profile tools build
+   prod up -d --wait db
+   prod run --rm migrate
+   prod run --rm migrate npm run db:seed
+   prod up -d --wait
+   curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:39000/login
+   ```
+
+   `--profile tools` is load-bearing, not tidiness: `migrate` is a profiled
+   service, and a plain `build` skips it silently, so `run` would migrate
+   with the previous deploy's image. The seed is a faithful transcription of
+   the reference resume, so the first deploy creates the `OWNER_EMAIL` user
+   with real content and the Default cover letter; run again, it finds a
+   user and does nothing. **Never pass it `--force` here** — that truncates
+   every content table.
+
+   The `curl` prints `200`. Open `https://<host>` and log in with
+   `APP_PASSWORD`.
+
+5. **Mint the agent's token** inside the migrate image, which already points
+   at production's database:
+
+   ```bash
+   prod run --rm -T migrate npm run -s token:create -- --label laptop-agent
+   ```
+
+   Only the secret goes to stdout, and only this once. The migrate service
+   has no `OWNER_EMAIL`, so the owner is the only user; add `--email` once
+   there are more. `token:revoke` runs the same way.
+
+6. **Connect the applying agent**, on the laptop, in a checkout that has
+   `agent/`:
+
+   ```bash
+   git submodule update --init agent/career-ops
+   cp agent/.env.example agent/.env    # then fill it in
+   cd agent && ./claude.sh
+   ```
+
+   `agent/.env` takes `RESUMIX_MCP_URL=https://<host>/api/mcp`, the token as
+   `RESUMIX_MCP_TOKEN`, and an absolute `CAREER_OPS_DATA_DIR`. In the session,
+   `/mcp` lists `resumix` as connected.
 
 ## Every deploy after that
 
+Always in this order, one command at a time, stopping at the first failure.
+The running app keeps serving until the last command swaps it.
+
 ```bash
-npm run deploy:prod
+cd ~/.resumix/src
+git fetch --prune origin
+git checkout main && git reset --hard origin/main
+
+prod --profile tools build
+prod up -d --wait db
+
+f=~/.resumix/backups/$(date +%Y%m%d-%H%M%S).sql
+prod exec -T db pg_dump -U resumix resumix > "$f" && chmod 600 "$f"
+
+prod run --rm migrate
+comm -23 <(ls drizzle/*.sql | xargs -n1 basename | sort) \
+  <(prod exec -T db psql -U resumix -d resumix -tAc 'select filename from _migrations' | sort)
+
+prod up -d --wait --remove-orphans
 ```
 
-Idempotent, and always in this order:
-
-1. `git fetch` + `reset --hard origin/main` in `~/.resumix/src` — that clone
-   is deploy output and is never edited by hand, so "whatever is on
-   `origin/main`" is the only state it may be in. The script prints the
-   commit range it is moving across.
-2. `docker compose --profile tools build` — from the pulled tree, not from
-   your checkout. The profile flag is required, not cosmetic: `migrate` is a
-   profiled service and a plain `compose build` skips those silently, which
-   would migrate using the previous deploy's image.
-3. `pg_dump` into `~/.resumix/backups/` **before** anything touches the
-   schema. The last 20 are kept.
-4. Migrations, via `docker compose run --rm migrate`. They run inside the
-   image built from the same commit, so the schema applied always matches the
-   code that will run against it.
-5. A check that the schema is level with the commit being deployed: every
-   `drizzle/*.sql` in the pulled tree must appear in the database's
-   `_migrations`. Compared against the tree rather than by asking the
-   migrate container what is pending, because an image that predates a
-   migration does not carry the file and would answer "nothing pending"
-   quite honestly.
-6. `docker compose up -d`, then poll `http://localhost:39000/login` until it
-   answers.
-
-Any step failing stops the deploy (`set -euo pipefail`); the currently
-running containers keep serving until the final step actually swaps them.
-That ordering is the reason the schema check sits before the swap: shipping
-code ahead of its schema does not fail during the deploy, it fails later as
-500s from whichever query first touches a column that is not there.
+- **Hard reset, not merge.** The clone is deploy output, so "what is on the
+  remote ref" is the only state it may be in. A merge could leave
+  production sitting on a conflict. To deploy another ref, put it where
+  `main` is.
+- **Back up before migrating.** Migrations only go forward; the dump is the
+  way back.
+- **The `comm` must print nothing.** It compares the tree's
+  `drizzle/*.sql` with the database's `_migrations`, rather than asking the
+  migrate container what is pending, because an image that predates a
+  migration does not carry the file and would answer "nothing pending"
+  quite honestly. It sits before the swap because code shipped ahead of its
+  schema does not fail during the deploy; it fails later, as 500s from the
+  first query that touches a missing column.
+- Nothing prunes the backups.
+  `ls -1t ~/.resumix/backups/*.sql | tail -n +21 | xargs rm -f` keeps the
+  newest 20.
 
 ## Operating it
 
 ```bash
-npm run deploy:prod status    # docker compose ps
-npm run deploy:prod logs      # follow all services; add a name to narrow
-npm run deploy:prod stop      # stop without removing anything
-npm run deploy:prod backup    # take a dump now, outside a deploy
+prod ps
+prod logs -f --tail=100 [service]
+prod stop        # sticky until the next `prod up -d`
 ```
-
-Containers are `restart: unless-stopped`, so production comes back on its own
-when Docker Desktop starts. `stop` is sticky — the next `deploy` starts it
-again.
 
 ## Backups and restore
 
-Every deploy dumps first, and `backup` dumps on demand. To restore:
+Each dump is plain `pg_dump` output of a small database, and it includes the
+`resume_pdf` snapshots — which is the point, since those bytes are not
+reproducible from content once a template or bullet changes (D-011). Take
+one outside a deploy with the two backup lines above. They live on the VM's
+own disk, so losing the VM loses them: copy them off it.
+
+A dump restores only into an empty schema:
 
 ```bash
-cd ~/.resumix/src
-docker compose --env-file ~/.resumix/prod.env -f docker-compose.prod.yml \
-  exec -T db psql -U resumix -d resumix < ~/.resumix/backups/<timestamp>.sql
+prod stop app
+prod exec -T db psql -U resumix -d resumix -c 'drop schema public cascade; create schema public;'
+prod exec -T db psql -U resumix -d resumix -v ON_ERROR_STOP=1 < ~/.resumix/backups/<timestamp>.sql
+prod up -d --wait
 ```
 
-These are plain `pg_dump` output of a small database, and they include the
-`resume_pdf` snapshots — which is the point, since those bytes are not
-reproducible from content once a template or bullet changes (D-011).
+If the dump predates the deployed commit's migrations, run
+`prod run --rm migrate` before the last line.
 
 ## Limits worth knowing
 
-- **One machine.** Loopback-bound, so production exists only on this laptop
-  and is down whenever it is asleep. There is no remote access story.
-- **`pdflatex` cold path.** The prod sidecar is `restart: unless-stopped`
-  rather than scale-to-zero, so there is no cold start, at the cost of an
-  idle container.
 - **Single-user in practice.** The schema is multi-user but the only
   implemented login is the shared password, which signs in as `OWNER_EMAIL`.
   See "A note on multi-user" in the appendix.
+- **One VM, one disk.** No replica, and the backups share its disk.
+- **Builds run on the VM.** There is no registry; every deploy builds from
+  the clone.
+- **`npm run deploy:prod` does not deploy it.** That script pulls only
+  `origin/main`, and its permission check calls `stat -f`, which GNU
+  coreutils reads as a filesystem query, so it fails on Linux. It deploys
+  the laptop instance below.
+
+## The laptop instance
+
+`npm run deploy:prod` (`scripts/deploy-prod.sh`) deploys an earlier, local
+instance on Chris's laptop (D-031): its own clone at `~/.resumix/src` there,
+loopback ports 39000 / 39432 / 39080, always `origin/main`, macOS only. It
+holds the real content entered before the VM, and it is as off-limits to
+agents as the VM: the script exits when `CLAUDECODE` is set, and
+`.claude/settings.json` denies the script, the prod compose file and
+`~/.resumix/`. Its first run bootstraps `~/.resumix` and stops for the
+secrets; after that it takes `deploy`, `status`, `logs`, `stop` or `backup`.
 
 ## Troubleshooting
 
-**`refusing to deploy: CLAUDECODE is set`** — working as designed; run it in
-your own shell rather than through an agent.
+**`TypeError: Invalid URL` from the app or `migrate`** — `POSTGRES_PASSWORD`
+contains a `/` or another character a URL cannot carry unescaped. Postgres
+takes its password from the variable only when the volume is first created,
+so editing `prod.env` alone does not fix it. With no data yet, `prod down -v`
+and deploy again. With data, change it in the database first
+(`prod exec db psql -U resumix -d resumix -c "alter user resumix password '<hex>'"`),
+then in `prod.env`.
 
-**`~/.resumix/prod.env is mode 644`** — `chmod 600 ~/.resumix/prod.env`.
+**The build is killed with exit 137** — the VM ran out of memory, almost
+always in `next build`. Add swap or memory and build again.
 
-**`database did not become ready in 60s`** — `npm run deploy:prod logs db`.
-Usually a port clash on 39432 or a volume left mid-upgrade by a Postgres
-major bump.
+**The HTTPS URL answers 502** — the front end cannot reach
+`127.0.0.1:39000`. It has to run on the VM host or tunnel into it; a proxy
+in its own container needs host networking. `curl` against that address on
+the VM tells the two apart.
 
-**A port is already in use** — something else grabbed 39000/39432/39080.
-These are only defaults; change them in `docker-compose.prod.yml` and update
-the table in `docs/STATE.md`.
+**`/api/mcp` answers 401** — production does not know the token: it was
+minted against another database (`npm run token:create` on a laptop mints
+against dev), revoked, or mistyped in `agent/.env`.
 
-**Production and development disagree about the schema** — they are separate
-databases with separate `_migrations` tables, which is intended. `npm run
-deploy:prod` is the only thing that migrates production, and it only ever
-applies what is on `origin/main`.
+**The `comm` prints a filename** — the migrate image is stale. Run
+`prod run --rm --build migrate` and check again.
+
+**Production and development disagree about the schema** — they are
+separate databases with separate `_migrations` tables, which is intended.
+Production only ever applies what is in the ref its clone is at.
 
 ---
 
@@ -202,7 +295,7 @@ applies what is on `origin/main`.
 
 Everything below describes deploying to **Supabase + Fly.io + Vercel**. It
 was written and checked for internal consistency against the code, but it has
-never been executed and is not the current deployment (D-031). It is kept
+never been executed and is not the current deployment (D-051). It is kept
 because `services/latex/fly.toml` is still checked in and the constraints it
 documents — above all why `pdflatex` cannot run on Vercel — remain true.
 
