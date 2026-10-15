@@ -19,9 +19,9 @@ Run all of it, not a subset:
   App Router export signatures and resolves the webpack config; a page whose
   default export takes a custom prop typechecks fine and fails the build.
   That bug reached `main` once, which is why `build` is in the gate.
-- `npm test` needs `DATABASE_URL` (it reads `.env`). Without it, the 16
-  `lib/queries` integration suites self-skip and the run still reports
-  green. Expect **237 passing, 0 skipped**.
+- `npm test` needs `DATABASE_URL` (it reads `.env`). Without it, the 273
+  integration tests self-skip and the run still reports green. Expect
+  **702 passing, 0 skipped**.
 - `npm run smoke` reads live database state, and a Playwright run leaves
   edited content behind — hence the reseed immediately before it. Running
   `smoke` straight after `test:e2e` will fail the round-trip diff for
@@ -50,8 +50,8 @@ across runs keyed on the Dockerfile; `docker-compose.yml` takes a
 Two things in those workflows are load-bearing and easy to undo by accident:
 `build` deliberately runs with **no** `DATABASE_URL`, which is what makes it
 the regression test for the lazy DB client (D-014); and `test` asserts the
-skipped-test count is zero, because the `lib/queries` suites self-skip
-without a database and the job would otherwise pass on a subset.
+skipped-test count is zero, because the DB-backed tests across `lib/`
+self-skip without a database and the job would otherwise pass on a subset.
 
 ## Formatting and linting
 

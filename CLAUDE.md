@@ -20,7 +20,8 @@ content or templates are edited later.
 An **Application** is one job applied to, and the thing the app is organised
 around — the home page is the applications board, the resume library sits
 behind it at `/resumes`. An application carries a company, a status
-(`draft`/`applied`/`interviewing`/`offered`/`rejected`), freeform notes,
+(`draft`, the agent flow's `proposing`/`needs_review`/`ready` (D-041), or
+`applied`/`interviewing`/`offered`/`rejected`), freeform notes,
 untyped attachments, two resume references — the live `resume_id` you tailor,
 and the `resume_pdf_id` snapshot pinned when you save that resume to the
 application — and a `cover_letter_id`. Logging one clones a resume named
@@ -67,8 +68,9 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    `requireMcpUserId(request)` instead, which takes only an `rmx_` API token,
    in every auth mode (D-039). `user_id` lives only on the nine
    root tables (`template`, `experience`, `project`, `technical_skill_row`,
-   `resume`, `cover_letter`, `application`, `api_token`, `saved_answer`) — bullets, skills, bridge rows,
-   PDF snapshots and application files inherit their owner through a join to
+   `resume`, `cover_letter`, `application`, `api_token`, `saved_answer`) —
+   bullets, skills, bridge rows, PDF snapshots, application files, application
+   questions and bullet suggestions inherit their owner through a join to
    their parent. Isolation is enforced in the
    queries, **not** in `middleware.ts`, which runs on the Edge and cannot
    reach the database. Another user's id must read as "not found", never
@@ -102,8 +104,8 @@ one cannot:
   validates App Router export signatures and resolves the webpack config; a
   page default export taking a custom prop typechecks fine and fails the
   build. That bug reached `main` once.
-- `test` needs `DATABASE_URL` or 16 integration tests silently self-skip and
-  still report green. Expect **237 passing, 0 skipped**.
+- `test` needs `DATABASE_URL` or 273 integration tests silently self-skip and
+  still report green. Expect **702 passing, 0 skipped**.
 - `smoke` reads live DB state and a prior Playwright run leaves edited
   content behind — hence the reseed before it.
 

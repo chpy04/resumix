@@ -1,5 +1,5 @@
 /**
- * Shared setup for the `lib/queries/*.test.ts` integration suites. These run
+ * Shared setup for the DB-backed tests across `lib/`. These run
  * against a real Postgres (`DATABASE_URL`, e.g. the docker-compose `db`
  * service) — never mocked. Every test file marks itself `{ skip: ... }` when
  * `DATABASE_URL` is unset so `npm test` still passes without a database.
@@ -41,8 +41,6 @@ import { approveApplication } from '../application-approval.ts';
 import type { User } from '../types.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { provisionUser } from './users.ts';
-
-export const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 /** Unique-ish tag so fixture rows are identifiable in a shared dev database. */
 export function testTag(): string {
