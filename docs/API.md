@@ -205,6 +205,8 @@ never again, and the token's id, label and owner to stderr. The owner is
 `--email`, else `OWNER_EMAIL`, else the only user; with several users and
 neither, both scripts refuse. Both act on whatever database `DATABASE_URL`
 names, which is the dev one, through `.env`, unless you point them elsewhere.
+Production's are minted on the VM, inside the migrate image
+(`docs/DEPLOYMENT.md`).
 
 ## MCP (`/api/mcp`)
 

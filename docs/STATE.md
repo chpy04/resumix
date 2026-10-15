@@ -200,13 +200,13 @@ rule message names the file in `.claude/rules/` that explains it (D-017).
 
 These are properties of the system as it stands, not a to-do list.
 
-- **Production is a second local instance, not a cloud one.** It runs from
-  `~/.resumix/src` via `npm run deploy:prod` on ports 39000/39432/39080,
-  entirely separate from development (D-031, `docs/DEPLOYMENT.md`). The
-  Vercel + Fly.io + Supabase path is documented as an appendix and has never
-  been executed.
-- **No multi-machine story.** Production is reachable on loopback only, so
-  the app exists on exactly one laptop and is down whenever it is asleep.
+- **Production is one cloud VM, deployed by hand.** `docker compose` from
+  `~/.resumix/src` on the VM, entirely separate from development, behind an
+  HTTPS front end that is not part of this repo (D-051,
+  `docs/DEPLOYMENT.md`). `npm run deploy:prod` deploys only the earlier
+  laptop instance (D-031) and does not run on Linux. The Vercel + Fly.io +
+  Supabase path is documented as an appendix and has never been executed.
+- **No redundancy.** One VM and one disk, with the backups on it.
 - **No multi-template UI.** The schema supports many templates per user; the
   editor assumes the resume's own.
 - **Nothing shows which user is signed in.** Invisible with one seeded user.
@@ -215,13 +215,15 @@ These are properties of the system as it stands, not a to-do list.
 
 ## Ports
 
-Two disjoint blocks, so the two instances can run at once and neither can be
-reached by accident from the other's tooling.
+Two disjoint blocks, so development and a production instance can run on one
+machine at once and neither can be reached by accident from the other's
+tooling. On the VM, production's block is all there is.
 
 |             | web             | postgres                                 | latex     |
 | ----------- | --------------- | ---------------------------------------- | --------- |
 | development | 3000 (e2e 3100) | **5433** — 5432 is usually already taken | 8080      |
 | production  | **39000**       | **39432**                                | **39080** |
 
-Production's block is deliberately odd and bound to `127.0.0.1`. Nothing in
-development points at it; nothing may (CLAUDE.md, "Production is not yours").
+Production's block is deliberately odd and bound to `127.0.0.1`; on the VM,
+only the HTTPS front end reaches 39000. Nothing in development points at
+production; nothing may (CLAUDE.md, "Production is not yours").
