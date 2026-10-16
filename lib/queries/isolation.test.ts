@@ -77,6 +77,11 @@ let listBulletSuggestions: typeof import('./bullet-suggestions.ts').listBulletSu
 let previewSuggestions: typeof import('./bullet-suggestions.ts').previewSuggestions;
 let resolveBulletSuggestion: typeof import('./bullet-suggestions.ts').resolveBulletSuggestion;
 let updateBulletSuggestionText: typeof import('./bullet-suggestions.ts').updateBulletSuggestionText;
+let createResumeSuggestion: typeof import('./bullet-suggestions.ts').createResumeSuggestion;
+let listResumeSuggestions: typeof import('./bullet-suggestions.ts').listResumeSuggestions;
+let pendingResumeSuggestions: typeof import('./bullet-suggestions.ts').pendingResumeSuggestions;
+let findApplicationUsingResume: typeof import('./resumes.ts').findApplicationUsingResume;
+let listStandaloneResumes: typeof import('./resumes.ts').listStandaloneResumes;
 let fixtures: typeof import('./test-fixtures.ts');
 
 if (!skip) {
@@ -125,6 +130,8 @@ if (!skip) {
     getResumeRow,
     listResumeSummaries,
     updateResume,
+    findApplicationUsingResume,
+    listStandaloneResumes,
   } = await import('./resumes.ts'));
   ({ getExperienceById, updateExperience } = await import('./experiences.ts'));
   ({ createExperienceBullet, updateExperienceBullet } = await import('./experience-bullets.ts'));
@@ -139,6 +146,9 @@ if (!skip) {
     previewSuggestions,
     resolveBulletSuggestion,
     updateBulletSuggestionText,
+    createResumeSuggestion,
+    listResumeSuggestions,
+    pendingResumeSuggestions,
   } = await import('./bullet-suggestions.ts'));
   fixtures = await import('./test-fixtures.ts');
 }
@@ -819,6 +829,76 @@ test("another user's suggestions are unreachable, by application or by id", { sk
     await fixtures.deleteResumeRow(bobResume.id);
   }
 });
+
+test(
+  "another user's resume suggestions are unreachable, by resume or by id (D-054)",
+  { skip },
+  async () => {
+    const { alice, bob, bobExp, bobBullet, tag } = await twoUsers();
+    const bobResume = await fixtures.insertTestResume(bob.id, tag);
+    await replaceSelections(bob.id, bobResume.id, {
+      experiences: [bobExp.id],
+      experienceBullets: { [bobExp.id]: [bobBullet.id] },
+    });
+    const bobsTailored = await fixtures.insertTestResume(bob.id, `${tag}-app`);
+    const bobsApp = await fixtures.insertTestApplication(bob.id, tag, {
+      resumeId: bobsTailored.id,
+    });
+    const edit = await fixtures.insertResumeSuggestion(bobResume.id, { bulletId: bobBullet.id });
+    const add = await fixtures.insertResumeSuggestion(bobResume.id, {
+      kind: 'add',
+      parentId: bobExp.id,
+      position: 0,
+    });
+    try {
+      const libraryBefore = await assembleLibrary(bob.id, true);
+      const selectionsBefore = await getSelections(bobResume.id);
+
+      assert.deepEqual(await listResumeSuggestions(alice.id, bobResume.id), []);
+      assert.deepEqual(await pendingResumeSuggestions(alice.id, bobResume.id), []);
+      await assert.rejects(
+        () =>
+          createResumeSuggestion(alice.id, bobResume.id, {
+            kind: 'edit',
+            bulletKind: 'experience',
+            bulletId: bobBullet.id,
+            proposedText: 'x',
+            rationale: 'y',
+          }),
+        NotFoundError,
+      );
+      await assert.rejects(() => updateBulletSuggestionText(alice.id, edit.id, 'x'), NotFoundError);
+      for (const [row, action] of [
+        [edit, 'apply'],
+        [edit, 'copy'],
+        [edit, 'reject'],
+        [add, 'apply'],
+      ] as const) {
+        await assert.rejects(
+          () => resolveBulletSuggestion(alice.id, row.id, action),
+          NotFoundError,
+        );
+      }
+      // Bob's application is invisible too, so Alice is never told whose
+      // resume it is.
+      assert.equal(await findApplicationUsingResume(alice.id, bobsTailored.id), null);
+      const alices = (await listStandaloneResumes(alice.id)).map((r) => r.id);
+      assert.ok(!alices.includes(bobResume.id));
+      assert.ok(!alices.includes(bobsTailored.id));
+
+      assert.deepEqual(await assembleLibrary(bob.id, true), libraryBefore);
+      assert.deepEqual(await getSelections(bobResume.id), selectionsBefore);
+      assert.deepEqual(
+        (await listResumeSuggestions(bob.id, bobResume.id)).map((x) => x.status),
+        ['pending', 'pending'],
+      );
+    } finally {
+      await fixtures.deleteApplicationRow(bobsApp.id);
+      await fixtures.deleteResumeRow(bobResume.id);
+      await fixtures.deleteResumeRow(bobsTailored.id);
+    }
+  },
+);
 
 test(
   "a suggestion pointing at another user's bullet or experience fails on resolve and writes nothing",

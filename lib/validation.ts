@@ -71,12 +71,20 @@ export const selectionsPatchSchema = z
 // Rendering
 // ---------------------------------------------------------------------------
 
-export const renderBodySchema = z.object({
-  templateOverride: z.string().optional(),
-  /** Lay this application's pending bullet suggestions over the preview
-   *  (D-045). The application must send this resume. */
-  suggestionsFor: uuid.optional(),
-});
+export const renderBodySchema = z
+  .object({
+    templateOverride: z.string().optional(),
+    /** Lay this application's pending bullet suggestions over the preview
+     *  (D-045). The application must send this resume. */
+    suggestionsFor: uuid.optional(),
+    /** Lay the resume's own pending suggestions over it instead, as its
+     *  editor does outside any application (D-054). */
+    resumeSuggestions: z.boolean().optional(),
+  })
+  .refine((body) => !(body.suggestionsFor && body.resumeSuggestions), {
+    message: 'pass suggestionsFor or resumeSuggestions, not both',
+    path: ['resumeSuggestions'],
+  });
 
 // ---------------------------------------------------------------------------
 // Library: experiences

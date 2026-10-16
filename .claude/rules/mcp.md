@@ -38,6 +38,13 @@ export const someTool = defineTool({
 - **C1.** A tool that acts on an application takes `application_id`, and the
   server resolves that application's resume, cover letter and template. Never
   make the agent pass an id Resumix can work out for itself.
+- **A tool that acts on one of Chris's own resumes** (D-054) takes an
+  optional `resume_id` and resolves it with `findOwnResume`
+  (`lib/mcp/resume.ts`): Default when it is left out, and a refusal for a
+  resume an application uses, whose changes go through that application.
+  Its selection is saved straight onto it; its bullet text is only ever a
+  suggestion (`createResumeSuggestion`), with `suggest_bullet`'s checks
+  from `lib/mcp/suggestion.ts`.
 - **Inputs are `z.strictObject`**, with snake_case keys. An unknown key is
   then an error that names it, instead of an argument silently dropped.
 - **A description says when to call the tool and what comes back** (the

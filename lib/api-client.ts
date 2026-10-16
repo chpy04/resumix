@@ -168,21 +168,28 @@ export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
 /**
  * `POST /api/resumes/:id/render` — the live preview pane's only network
  * call. **Never persists anything** (that's `/pdf`, above). `templateOverride`
- * lets the Template tab preview unsaved LaTeX, and `suggestionsFor` lays an
- * application's pending bullet suggestions over the preview in review
- * (D-045). Check `.ok`: a LaTeX compile failure is a normal
+ * lets the Template tab preview unsaved LaTeX, and `suggestions` lays pending
+ * bullet suggestions over the preview: an application's id for its, in
+ * review (D-045), or `'resume'` for the resume's own (D-054). Check `.ok`:
+ * a LaTeX compile failure is a normal
  * `200 { ok: false, errors, warnings }`, never a thrown `ApiError` — same
  * shape as `saveResumePdf` (`docs/API.md`).
  */
 export function renderResume(
   id: string,
   templateOverride?: string,
-  suggestionsFor?: string,
+  suggestions?: string,
 ): Promise<RenderResult> {
+  const overlay =
+    suggestions === 'resume'
+      ? { resumeSuggestions: true }
+      : suggestions
+        ? { suggestionsFor: suggestions }
+        : {};
   return requestJson<RenderResult>(`/api/resumes/${id}/render`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ templateOverride, suggestionsFor }),
+    body: JSON.stringify({ templateOverride, ...overlay }),
   });
 }
 

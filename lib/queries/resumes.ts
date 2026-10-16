@@ -6,11 +6,12 @@
  * exist — `null` / `NotFoundError`, never a 403. Distinguishing the two
  * would confirm to a stranger that a given id is real.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, notExists } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { application, resume, resumePdf } from '../db/schema.ts';
 import type { ResumeDetail, ResumeSummary } from '../types.ts';
 import { getLatestResumePdfMetaByResumeId } from '../storage.ts';
+import { pendingResumeSuggestions } from './bullet-suggestions.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
 import { assembleLibrary } from './library.ts';
 import { cloneSelections, getSelections } from './selections.ts';
@@ -72,6 +73,43 @@ export async function getDefaultResumeRow(userId: string): Promise<ResumeRow | n
     .where(and(eq(resume.userId, userId), eq(resume.isDefault, true)))
     .limit(1);
   return row ?? null;
+}
+
+/** The application that uses this resume, the copy it is tailored on, or
+ *  null. Such a resume's agent edits go through that application's review
+ *  (D-045), never straight onto it (D-054). Archived applications count. */
+export async function findApplicationUsingResume(
+  userId: string,
+  resumeId: string,
+): Promise<{ id: string; company: string } | null> {
+  const [row] = await db
+    .select({ id: application.id, company: application.company })
+    .from(application)
+    .where(and(eq(application.resumeId, resumeId), eq(application.userId, userId)))
+    // The oldest, when several share it; the id breaks the tie (D-030).
+    .orderBy(application.createdAt, application.id)
+    .limit(1);
+  return row ?? null;
+}
+
+/** The caller's resumes that no application uses, Default first, then
+ *  newest: the ones the agent may change outside any application (D-054). */
+export async function listStandaloneResumes(userId: string): Promise<ResumeRow[]> {
+  return db
+    .select()
+    .from(resume)
+    .where(
+      and(
+        eq(resume.userId, userId),
+        notExists(
+          db
+            .select({ id: application.id })
+            .from(application)
+            .where(and(eq(application.resumeId, resume.id), eq(application.userId, userId))),
+        ),
+      ),
+    )
+    .orderBy(desc(resume.isDefault), desc(resume.createdAt), desc(resume.id));
 }
 
 /**
@@ -181,10 +219,11 @@ export async function getResumeDetail(userId: string, id: string): Promise<Resum
     throw new Error(`resume ${id} references missing template ${row.templateId}`);
   }
 
-  const [selections, library, pdfMeta] = await Promise.all([
+  const [selections, library, pdfMeta, suggestions] = await Promise.all([
     getSelections(id),
     assembleLibrary(userId, true),
     getLatestResumePdfMetaByResumeId([id]),
+    pendingResumeSuggestions(userId, id),
   ]);
 
   return {
@@ -192,5 +231,6 @@ export async function getResumeDetail(userId: string, id: string): Promise<Resum
     template,
     selections,
     library,
+    suggestions,
   };
 }

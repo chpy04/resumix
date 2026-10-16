@@ -304,6 +304,16 @@ Another user's id reads as not found, as everywhere else. A failing tool's
 text says what the agent should do next. A description says when to call the
 tool and what comes back.
 
+**Chris's own resumes (D-054).** `get_resume`, `edit_resume_selection` and
+`suggest_resume_bullet` act on one of his resumes outside any application.
+They take an optional `resume_id`, from `list_resumes`, and act on Default
+without one, since "my resume" is the one every new resume is copied from.
+A resume an application uses is refused, naming that application: it is
+changed through `set_resume_selection` and `suggest_bullet`, and its review.
+The selection is saved at once, with no review; bullet text is only ever a
+suggestion, reviewed in that resume's editor (`editor_path`,
+`/resume/<resume_id>`).
+
 ### Tool reference
 
 Every tool but `ping` answers one text item of compact JSON whose keys are
@@ -317,6 +327,10 @@ stored content stays raw (D-008).
 | `ping`                  | none                                                                                                                                                                    | the email of the account that owns the token, as text                                                                                                                                                                                                                                    |
 | `get_library`           | none                                                                                                                                                                    | `{ experiences: [{ id, company, title, date_range, location, bullets: [{ id, text }] }], projects: [{ id, name, technologies, date_range, bullets }], skill_rows: [{ id, name, top, skills: [{ id, name }] }] }`: non-archived content only (C9), in library order (D-030); no templates |
 | `get_saved_answers`     | none                                                                                                                                                                    | `[{ saved_answer_id, prompt, kind, answer_mode, answer }]`: Chris's saved answers that are not archived, oldest first; `[]` when there are none. `answer` is a `string[]` for a multi value                                                                                              |
+| `list_resumes`          | none                                                                                                                                                                    | `[{ resume_id, name, is_default }]`: Chris's own resumes, the ones no application uses, Default first, then newest                                                                                                                                                                       |
+| `get_resume`            | `{ resume_id? }`: Default when left out                                                                                                                                 | `{ resume_id, name, is_default, editor_path, selection, bullet_suggestions }`: `selection` in `edit_resume_selection`'s shape; `bullet_suggestions` every one kept, oldest first, with its status                                                                                        |
+| `edit_resume_selection` | `{ resume_id?, selection }`: `selection` as `set_resume_selection` takes it, all six arrays in print order                                                              | `{ resume_id, ok, pages, overflow }`, as `set_resume_selection`. Saved at once, with no review; pages are counted with its pending suggestions applied                                                                                                                                   |
+| `suggest_resume_bullet` | `{ resume_id?, kind, bullet_id?, parent_id?, position?, proposed_text, rationale }`, the rest as `suggest_bullet`                                                       | `{ resume_id, suggestion_id, kind, replaced, ok, pages, editor_path }`. Records a pending suggestion, writing no library row and no selection                                                                                                                                            |
 | `list_applications`     | `{ status?, posting_url? }`: `status` is any application status; `posting_url` is matched exactly after trimming                                                        | `[{ application_id, company, role_title, posting_url, status, fit_score, created_at }]`, newest first; `[]` when none match. Archived applications are never listed                                                                                                                      |
 | `get_application`       | `{ application_id }`                                                                                                                                                    | `{ application_id, company, role_title, posting_url, status, fit_score, job_description, agent_summary, selection, bullet_suggestions, approval: { resume_approved_at, cover_letter_approved_at, approved_at }, questions }`. `selection` has `set_resume_selection`'s shape, or is null |
 | `get_apply_packet`      | `{ application_id }`                                                                                                                                                    | `{ application_id, status: "ready", company, role_title, posting_url, approved_at, resume, cover_letter, questions }`: Ready only. `resume` and `cover_letter` (null with no letter) are `{ filename, url }`, `url` a path under `/api/mcp/files/`; `questions` below                    |
@@ -588,13 +602,19 @@ reaches the agent: no tool returns bytes (C5, D-050).
 
 ## Resumes
 
-| method | path               | body                     | returns                                                                                |
-| ------ | ------------------ | ------------------------ | -------------------------------------------------------------------------------------- |
-| GET    | `/api/resumes`     | —                        | `ResumeSummary[]`, default first, then `created_at desc`                               |
-| POST   | `/api/resumes`     | `{ name }`               | `ResumeSummary` — clones the default resume's template + every selection               |
-| GET    | `/api/resumes/:id` | —                        | `{ resume, template, selections, library }` — the whole editor payload, one round trip |
-| PATCH  | `/api/resumes/:id` | `{ name?, templateId? }` | `ResumeSummary`                                                                        |
-| DELETE | `/api/resumes/:id` | —                        | `204` · `400` if it is the default resume                                              |
+| method | path               | body                     | returns                                                                                             |
+| ------ | ------------------ | ------------------------ | --------------------------------------------------------------------------------------------------- |
+| GET    | `/api/resumes`     | —                        | `ResumeSummary[]`, default first, then `created_at desc`                                            |
+| POST   | `/api/resumes`     | `{ name }`               | `ResumeSummary` — clones the default resume's template + every selection                            |
+| GET    | `/api/resumes/:id` | —                        | `{ resume, template, selections, library, suggestions }` — the whole editor payload, one round trip |
+| PATCH  | `/api/resumes/:id` | `{ name?, templateId? }` | `ResumeSummary`                                                                                     |
+| DELETE | `/api/resumes/:id` | —                        | `204` · `400` if it is the default resume                                                           |
+
+`suggestions` is the resume's own pending `BulletSuggestion[]`, oldest first:
+the ones the agent made on it outside any application with
+`suggest_resume_bullet` (D-054). It is `[]` for a resume an application
+uses, whose suggestions arrive on `ApplicationDetail.bulletSuggestions`
+instead.
 
 ## Selections (autosave target)
 
@@ -608,11 +628,11 @@ in the body are untouched. Idempotent — safe to call on every debounced keystr
 
 ## Rendering & PDFs
 
-| method | path                      | body                                     | returns                                                                                                  |
-| ------ | ------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/resumes/:id/render` | `{ templateOverride?, suggestionsFor? }` | `{ ok, pdfBase64?, pages, errors: string[], warnings: string[], log }` — **preview only, saves nothing** |
-| POST   | `/api/resumes/:id/pdf`    | —                                        | `{ ok: true, filename, createdAt }` — renders, stores a `resume_pdf` snapshot                            |
-| GET    | `/api/resumes/:id/pdf`    | —                                        | `application/pdf` of the **latest snapshot** + `Content-Disposition: attachment`; `404` if never saved   |
+| method | path                      | body                                                         | returns                                                                                                  |
+| ------ | ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/resumes/:id/render` | `{ templateOverride?, suggestionsFor?, resumeSuggestions? }` | `{ ok, pdfBase64?, pages, errors: string[], warnings: string[], log }` — **preview only, saves nothing** |
+| POST   | `/api/resumes/:id/pdf`    | —                                                            | `{ ok: true, filename, createdAt }` — renders, stores a `resume_pdf` snapshot                            |
+| GET    | `/api/resumes/:id/pdf`    | —                                                            | `application/pdf` of the **latest snapshot** + `Content-Disposition: attachment`; `404` if never saved   |
 
 `templateOverride` lets the Template tab preview unsaved LaTeX without persisting it.
 
@@ -620,8 +640,10 @@ in the body are untouched. Idempotent — safe to call on every debounced keystr
 application's pending bullet suggestions as if applied: an edit's text in
 place of its bullet, an addition at its position, each escaped (D-045).
 Preview only; never in a snapshot. `404` unless the application is the
-caller's and sends this resume. A suggestion whose bullet or parent is gone
-is skipped with a warning.
+caller's and sends this resume. `resumeSuggestions: true` lays the resume's
+own pending suggestions over it in the same way, as its editor does outside
+any application (D-054); sending both is a `400`. A suggestion whose bullet
+or parent is gone is skipped with a warning.
 
 A LaTeX compile failure is **not** an HTTP error on either POST — it is a `200`
 with `ok: false`. `POST /pdf` then returns the same failure shape `/render` does
@@ -823,6 +845,11 @@ both only on a `pending` suggestion of an application in `needs_review`; a
 resolved one, or one whose application has left review, is a `400` saying
 why, and another user's is a `404`.
 
+The suggestions `suggest_resume_bullet` makes on one of Chris's own resumes
+arrive on that resume's `GET /api/resumes/:id` instead, and the same two
+routes act on them whenever they are `pending`, with no status to wait for
+(D-054). Everything below applies to them on that resume.
+
 **PATCH** is Chris's edit to the text before he resolves it. `proposedText`
 is plain text: whitespace collapses to one line, 1–500 characters, and no
 `\` ("plain text: write it as it should read, without LaTeX"). It overwrites
@@ -836,8 +863,8 @@ the agent's wording.
   every resume that shows it changes, and no application reopens (C6).
   Status `applied`.
 - `copy` on an edit (Save as new) creates a sibling bullet under the same
-  parent and puts it where the original sat in this application's resume, or
-  last if the original is no longer ticked. The original is untouched.
+  parent and puts it where the original sat in this application's resume (or
+  this resume), or last if the original is no longer ticked. The original is untouched.
   Status `copied`.
 - `apply` on an addition (Add bullet) creates the bullet under its parent and
   selects it at `position`, or last. Status `applied`. `copy` on an addition

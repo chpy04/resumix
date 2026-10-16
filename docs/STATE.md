@@ -136,8 +136,13 @@ never LaTeX (D-046). Content is never deleted, only archived (D-011).
   with the same token, fills the form in a visible browser and stops before
   Submit. Chris submits; `mark_applied` then moves the application to
   Applied, and a field nobody saw (`report_question`) sends it back to
-  Needs review (D-050). `npm run mcp:smoke` drives it over real HTTP, and
-  the gate runs that from the e2e suite.
+  Needs review (D-050). Outside any application, the agent changes one of
+  Chris's own resumes, Default unless he names another: `edit_resume_selection`
+  saves a selection at once, and `suggest_resume_bullet` leaves bullet text
+  as a suggestion on that resume, shown in its editor on the review page's
+  card and preview overlay, where he rewords, applies or rejects it (D-054).
+  A resume an application uses is refused. `npm run mcp:smoke` drives it
+  over real HTTP, and the gate runs that from the e2e suite.
 
 ## Users and isolation
 

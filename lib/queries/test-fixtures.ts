@@ -210,6 +210,27 @@ export async function insertBulletSuggestion(
   return row;
 }
 
+/** The same for one of the user's own resumes, outside any application
+ *  (D-054). Deleted with its resume (`on delete cascade`). */
+export async function insertResumeSuggestion(
+  resumeId: string,
+  values: Partial<typeof bulletSuggestion.$inferInsert>,
+) {
+  const [row] = await db
+    .insert(bulletSuggestion)
+    .values({
+      resumeId,
+      kind: 'edit',
+      bulletKind: 'experience',
+      proposedText: 'A suggested bullet',
+      rationale: 'Chris asked for it',
+      ...values,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test resume suggestion');
+  return row;
+}
+
 export async function deleteApplicationRow(id: string): Promise<void> {
   await db.delete(application).where(eq(application.id, id));
 }

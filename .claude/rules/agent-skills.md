@@ -97,8 +97,9 @@ URL and token `prod/mint-token` prints into `agent/.env` (D-053), and
 `agent/CLAUDE.md` and `agent/.claude/settings.json` keep the applying Claude
 off it. It refuses when `CLAUDECODE` is set, prints neither value, and
 checks both down to characters that mean nothing to the shell, because
-`claude.sh` sources the file. Keep it bash 3.2 and BSD awk, tracked as mode 100755. Its tests, in `lib/agent-workspace.test.ts`, run a copy against a
-template of their own, never the real `agent/.env`.
+`claude.sh` sources the file. Keep it bash 3.2 and BSD awk, and tracked as
+mode 100755. Its tests, in `lib/agent-workspace.test.ts`, run a copy against
+a template of their own, never the real `agent/.env`.
 
 ## The career-ops routing
 

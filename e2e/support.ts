@@ -136,6 +136,8 @@ export interface ResumeDetailLike {
     }[];
     skillRows: { id: string; name: string; skills: { id: string; name: string }[] }[];
   };
+  /** The resume's own pending suggestions (D-054). */
+  suggestions: { id: string; status: string; proposedText: string }[];
 }
 
 export function getResumeDetail(page: Page, resumeId: string): Promise<ResumeDetailLike> {
@@ -491,6 +493,40 @@ export async function insertBulletSuggestions(
   }
 }
 
+/** The same for one of Chris's own resumes, outside any application, where
+ *  the agent records them with `suggest_resume_bullet` (D-054). */
+export async function insertResumeSuggestions(
+  resumeId: string,
+  rows: SuggestionSetup[],
+): Promise<string[]> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const ids: string[] = [];
+    for (const row of rows) {
+      const [inserted] = await sql<{ id: string }[]>`
+        insert into bullet_suggestion (
+          resume_id, kind, bullet_kind, bullet_id, parent_id, position,
+          proposed_text, rationale
+        ) values (
+          ${resumeId}, ${row.kind}, 'experience',
+          ${row.kind === 'edit' ? row.bulletId : null},
+          ${row.kind === 'add' ? row.parentId : null},
+          ${row.kind === 'add' ? row.position : null},
+          ${row.proposedText}, ${row.rationale}
+        )
+        returning id`;
+      if (!inserted) throw new Error(`could not add suggestion "${row.proposedText}"`);
+      ids.push(inserted.id);
+    }
+    return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
 export function findExperienceId(detail: ResumeDetailLike, company: string): string {
   const experience = detail.library.experiences.find((e) => e.company === company);
   if (!experience) throw new Error(`no experience found for company "${company}"`);
@@ -508,15 +544,22 @@ interface RenderResultLike {
  *  PDF text — the most reliable way to assert "X is/isn't on the page"
  *  without pixel-diffing a canvas. `suggestionsFor` renders it as the
  *  review preview does, with that application's pending bullet suggestions
- *  laid over it. */
+ *  laid over it, or, as `'resume'`, as the resume's own editor does, with
+ *  its own (D-054). */
 export async function renderResumeText(
   page: Page,
   resumeId: string,
   suggestionsFor?: string,
 ): Promise<string> {
+  const body =
+    suggestionsFor === undefined
+      ? {}
+      : suggestionsFor === 'resume'
+        ? { resumeSuggestions: true }
+        : { suggestionsFor };
   const result = await apiRequest<RenderResultLike>(page, `/api/resumes/${resumeId}/render`, {
     method: 'POST',
-    body: suggestionsFor === undefined ? {} : { suggestionsFor },
+    body,
   });
   if (!result.ok || !result.pdfBase64) {
     throw new Error(`render failed for resume ${resumeId}: ${result.errors.join('; ')}`);
