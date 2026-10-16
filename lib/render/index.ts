@@ -7,14 +7,18 @@
  * zero-bullet items, unknown tokens). Never throws on bad references — a
  * stale id must never break the whole preview.
  */
-import type { Library, Selections } from '../types.ts';
+import type { BulletSuggestion, Library, Selections } from '../types.ts';
 import { renderExperiences, renderProjects, renderSkills } from './sections.ts';
+import { overlaySuggestions } from './suggestions.ts';
 import { resolveConditionals, substituteTokens } from './tokens.ts';
 
 export interface RenderResumeInput {
   templateContent: string;
   library: Library;
   selections: Selections;
+  /** The agent's suggestions, laid over the bullets for a preview or a page
+   *  count. Only pending ones count. Never passed for a snapshot (D-045). */
+  suggestions?: readonly BulletSuggestion[];
 }
 
 export interface RenderResumeOutput {
@@ -24,10 +28,12 @@ export interface RenderResumeOutput {
 
 export function renderResume({
   templateContent,
-  library,
-  selections,
+  library: stored,
+  selections: chosen,
+  suggestions = [],
 }: RenderResumeInput): RenderResumeOutput {
   const warnings: string[] = [];
+  const { library, selections } = overlaySuggestions(stored, chosen, suggestions, warnings);
 
   const experiences = renderExperiences(library, selections, warnings);
   const projects = renderProjects(library, selections, warnings);

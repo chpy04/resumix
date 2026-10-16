@@ -1,4 +1,5 @@
 import { snapshotResumeForApplication } from '@/lib/application-pdf';
+import { repinRefusal } from '@/lib/applications/review';
 import { sanitizeForHeader } from '@/lib/filename';
 import { errorResponse, type RouteContext, withApiErrors } from '@/lib/http';
 import { getApplicationRow, pinResumePdf } from '@/lib/queries/applications';
@@ -13,7 +14,7 @@ import { getResumePdfSnapshotById } from '@/lib/storage';
  * is the normal loop; declaring it sent is a separate decision.
  *
  * Same failure contract as every other render: `200 { ok: false, ... }` and
- * nothing stored.
+ * nothing stored. A Ready application is a `400`: its PDF is the approved one.
  */
 export async function POST(request: Request, { params }: RouteContext): Promise<Response> {
   return withApiErrors(async () => {
@@ -25,6 +26,9 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
     if (!row.resumeId) {
       throw new BadRequestError(`application ${id} has no resume linked`);
     }
+    // Before the compile, so a refusal leaves no snapshot behind (D-044).
+    const refusal = repinRefusal(row.status);
+    if (refusal) throw new BadRequestError(refusal);
 
     const snapshot = await snapshotResumeForApplication(userId, {
       resumeId: row.resumeId,

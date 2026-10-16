@@ -17,7 +17,9 @@
     "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types scripts/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env --experimental-strip-types scripts/seed.ts",
     "smoke": "node --env-file-if-exists=.env --experimental-strip-types scripts/smoke.ts",
-    "deploy:prod": "bash scripts/deploy-prod.sh",
+    "token:create": "node --env-file-if-exists=.env --experimental-strip-types scripts/token-create.ts",
+    "token:revoke": "node --env-file-if-exists=.env --experimental-strip-types scripts/token-revoke.ts",
+    "mcp:smoke": "node --env-file-if-exists=.env --experimental-strip-types scripts/mcp-smoke.ts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && npm run db:seed -- --force && npm run smoke && npm run test:e2e"
   },
   "dependencies": {

@@ -31,8 +31,10 @@ because most applications are sent and never touched again (D-033).
 
 A **Cover letter** is the deliberate inversion of all that, and the fastest
 way to get this wrong is to make it symmetrical. It has no reuse, so it
-stores its entire LaTeX document in one `content` column: no template, no
-selections, no tokens, no snapshot table. Creating one copies the default
+stores its own text: `content` is the letter's LaTeX, and an optional
+plain-text `body`, which the agent drafts and the review edits, is escaped
+and placed at its one `%%BODY%%` line (D-046). No template, no selections,
+no tokens, no snapshot table. Creating one copies both columns
 **verbatim**; downloading one compiles the stored text on demand. Which is
 also why `GET /api/cover-letters/:id/pdf` is the single endpoint in this app
 where a LaTeX error is an HTTP error — there is no JSON envelope on a binary
@@ -51,7 +53,9 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    forever (D-011).
 2. **Content is raw, unescaped LaTeX.** Bullets legitimately contain
    `\textbf{}`, `\href{}{}`, `\$`, `\&`. Never add auto-escaping — it would
-   corrupt every existing bullet (D-008).
+   corrupt every existing bullet (D-008). Plain text arriving from outside
+   LaTeX (a letter's `body`) is escaped by `lib/render/escape.ts`; library
+   content never is (D-046).
 3. **The DB client stays lazy.** Never hoist `postgres(...)`/`drizzle(...)`
    to module scope; `next build` evaluates every route module and would fail
    on any machine without a live `DATABASE_URL` (D-014).
@@ -59,9 +63,11 @@ Breaking any of these is silent — nothing fails loudly at the moment you do it
    Middleware runs on the Edge runtime. `lib/auth.ts` is Web Crypto only.
 5. **Every query is scoped to a user.** Handlers begin with
    `const userId = await requireUserId(request)` (`lib/session.ts`) and pass
-   it down; the query layer filters on it. `user_id` lives only on the seven
+   it down; the query layer filters on it. `/api/mcp/**` handlers begin with
+   `requireMcpUserId(request)` instead, which takes only an `rmx_` API token,
+   in every auth mode (D-039). `user_id` lives only on the nine
    root tables (`template`, `experience`, `project`, `technical_skill_row`,
-   `resume`, `cover_letter`, `application`) — bullets, skills, bridge rows,
+   `resume`, `cover_letter`, `application`, `api_token`, `saved_answer`) — bullets, skills, bridge rows,
    PDF snapshots and application files inherit their owner through a join to
    their parent. Isolation is enforced in the
    queries, **not** in `middleware.ts`, which runs on the Edge and cannot
@@ -116,6 +122,8 @@ error messages name the rule file.
 | `styling.md`      | the same, plus `app/globals.css`             |
 | `render-latex.md` | `lib/render/**`, `lib/latex.ts`, `services/` |
 | `auth.md`         | the auth + middleware graph                  |
+| `mcp.md`          | `lib/mcp/**`, `app/api/mcp/**`               |
+| `agent-skills.md` | `agent/**`                                   |
 | `testing.md`      | `**/*.test.ts`, `e2e/**`, `scripts/**`       |
 | `docs.md`         | `docs/**`                                    |
 | `github.md`       | `.github/**`, `scripts/status.sh`            |
@@ -177,31 +185,6 @@ the issue back to backlog.
 `.claude/rules/github.md`, deliberately out of here, so an attended session
 never pays for them in context. The skill is `disable-model-invocation: true`
 and fires only when something types `/implement 12`, never on its own.
-
-## Production is not yours
-
-There is a second Resumix on this machine. It runs from its own clone at
-`~/.resumix/src`, its own Postgres volume, its own images, on ports
-**39000 / 39432 / 39080**, and it holds Chris's real resume content — not
-seed data. `npm run deploy:prod` is the only thing that touches it, and a
-human is the only one who runs it (D-031, `docs/DEPLOYMENT.md`).
-
-**Never deploy, migrate, seed, query, stop or read it.** Everything you do
-— `npm run dev`, `npm run verify`, Playwright, `psql` — belongs to the
-development environment on **3000 / 3100 / 5433 / 8080**, whose database
-exists to be wiped and reseeded and where `npm run verify` reseeds with
-`--force` on every run. That is exactly why the two are separate: so the
-merge gate can destroy its data freely.
-
-This is enforced, not merely asked. `scripts/deploy-prod.sh` aborts when
-`CLAUDECODE` is set, and `.claude/settings.json` denies the deploy script,
-the prod compose file, and everything under `~/.resumix/`. If you find
-yourself wanting to route around either, the answer is no — say what you
-wanted to do and let the human do it.
-
-Editing the prod _lane_ is normal work: `Dockerfile`,
-`docker-compose.prod.yml`, `scripts/deploy-prod.sh` and `prod.env.example`
-are ordinary checked-in files. Changing them is fine. Running them is not.
 
 ## Branches and worktrees
 

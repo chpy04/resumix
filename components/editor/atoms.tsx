@@ -2,9 +2,12 @@
 
 /**
  * Small, shared, presentation-only pieces used across the content-pane
- * sections. Nothing here talks to the network — see `ResumeEditor.tsx` for
- * the data/autosave wiring that owns the callbacks passed in.
+ * sections and the two editors. Nothing here talks to the network — see
+ * `ResumeEditor.tsx` for the data/autosave wiring that owns the callbacks
+ * passed in.
  */
+
+import type { ReactNode } from 'react';
 
 interface SelectToggleProps {
   checked: boolean;
@@ -56,6 +59,19 @@ export function GlobalEditBadge({
       className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-line text-[9px] text-ink-dim"
     >
       ⊕
+    </span>
+  );
+}
+
+/** Marks a row the agent picked for this application (C7). Shown whether or
+ *  not it is still ticked, so an unticked one is easy to find again. */
+export function AgentPickBadge() {
+  return (
+    <span
+      title="The agent picked this for this application"
+      className="inline-block shrink-0 rounded-full border border-accent/50 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+    >
+      agent pick
     </span>
   );
 }
@@ -117,6 +133,30 @@ export function ExpandChevron({ expanded, onClick, label }: ChevronProps) {
           strokeLinejoin="round"
         />
       </svg>
+    </button>
+  );
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+/** One tab of an editor's pane switcher: the resume's Content/Template, a
+ *  cover letter's Body/LaTeX. */
+export function TabButton({ active, onClick, children }: TabButtonProps) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`rounded-t-md border-b-2 px-3 py-1.5 text-sm transition-colors ${
+        active ? 'border-accent text-ink' : 'border-transparent text-ink-dim hover:text-ink'
+      }`}
+    >
+      {children}
     </button>
   );
 }

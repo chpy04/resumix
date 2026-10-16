@@ -7,16 +7,21 @@
  */
 import type { RenderResumeOutput } from '../render/index.ts';
 import { renderResume } from '../render/index.ts';
+import type { BulletSuggestion } from '../types.ts';
 import { NotFoundError } from './errors.ts';
 import { assembleLibrary } from './library.ts';
 import { getResumeRow } from './resumes.ts';
 import { getSelections } from './selections.ts';
 import { getTemplateById } from './templates.ts';
 
+/** `suggestions` are laid over the bullets (D-045): the review preview and
+ *  the agent's page counts pass them, and nothing that stores a snapshot
+ *  does. */
 export async function renderResumeById(
   userId: string,
   resumeId: string,
   templateOverride?: string,
+  suggestions?: readonly BulletSuggestion[],
 ): Promise<RenderResumeOutput> {
   const resumeRow = await getResumeRow(userId, resumeId);
   if (!resumeRow) throw new NotFoundError(`resume ${resumeId} not found`);
@@ -35,5 +40,5 @@ export async function renderResumeById(
     assembleLibrary(userId, true),
   ]);
 
-  return renderResume({ templateContent, library, selections });
+  return renderResume({ templateContent, library, selections, suggestions });
 }

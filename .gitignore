@@ -8,10 +8,12 @@ dist/
 *.tsbuildinfo
 .env
 .env*.local
-# The real one lives at ~/.resumix/prod.env, outside the repo (D-031). This
-# is belt-and-braces for a copy that lands here by accident; the committed
-# template is `prod.env.example`.
-prod.env
+# Production's own state, on the VM (D-053). prod/.env needs no line: the
+# `.env` rule above matches at any depth. The backups folder is kept by its
+# .gitkeep, so it exists, owned by whoever cloned, before Docker can create
+# it as root.
+prod/backups/*
+!prod/backups/.gitkeep
 .DS_Store
 coverage/
 playwright-report/
@@ -27,3 +29,13 @@ scripts/.scratch/
 # per-machine overrides and runtime state are not.
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# agent/, the applying Claude's workspace (D-038). Its .env needs no line of
+# its own: the `.env` rule above has no slash, so it matches at any depth. The
+# browser profile holds live ATS sessions, and career-ops-data holds the
+# personal files career-ops would otherwise write into its submodule.
+agent/.browser-profile/
+agent/career-ops-data/
+# The PDFs /resumix-apply downloads to upload. They live inside agent/
+# because Playwright MCP 0.0.83 reads files only under its workspace root.
+agent/.apply-files/

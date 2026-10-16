@@ -10,20 +10,40 @@
  * two nullable references instead — the live resume it is being tailored
  * from, and the immutable snapshot that was actually sent (D-032).
  */
-import { and, desc, eq } from 'drizzle-orm';
-import { nextAppliedAt } from '../applications/status.ts';
-import { db } from '../db/index.ts';
-import { application, coverLetter, resume, resumePdf } from '../db/schema.ts';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, notExists, type SQL } from 'drizzle-orm';
+import {
+  repinRefusal,
+  sectionApprovalProblem,
+  type ReviewSection,
+} from '../applications/review.ts';
+import { nextAppliedAt, type ManualStatus } from '../applications/status.ts';
+import { db, type Executor } from '../db/index.ts';
+import { buildCoverLetterFilename, buildResumeFilename } from '../filename.ts';
+import {
+  application,
+  applicationFile,
+  applicationQuestion,
+  bulletSuggestion,
+  coverLetter,
+  resume,
+  resumePdf,
+} from '../db/schema.ts';
+import { saveResumePdfSnapshot, type NewPdfSnapshot } from '../storage.ts';
 import type {
   ApplicationDetail,
   ApplicationFile,
-  ApplicationStatus,
+  ApplicationQuestion,
   ApplicationSummary,
+  BulletSuggestion,
+  Selections,
 } from '../types.ts';
 import { listApplicationFiles } from './application-files.ts';
+import { listQuestions, lockApplication } from './application-questions.ts';
+import { reopenRelinked } from './approvals.ts';
+import { countPendingSuggestions, listBulletSuggestions } from './bullet-suggestions.ts';
 import { createCoverLetter } from './cover-letters.ts';
 import { BadRequestError, NotFoundError } from './errors.ts';
-import { createResume } from './resumes.ts';
+import { createResume, getDefaultResumeRow } from './resumes.ts';
 
 type ApplicationRow = typeof application.$inferSelect;
 
@@ -38,7 +58,9 @@ export interface ApplicationPatch {
   roleTitle?: string;
   postingUrl?: string;
   notes?: string;
-  status?: ApplicationStatus;
+  /** A flow status is never patched in by hand; the review flow writes
+   *  those through its own query functions (D-041). */
+  status?: ManualStatus;
   /** `null` unlinks the resume; omitted leaves it alone. */
   resumeId?: string | null;
   /** `null` unlinks the cover letter; the letter itself is untouched. */
@@ -57,6 +79,7 @@ function toSummary(row: ApplicationRow, sentPdf: SentPdfMeta | null): Applicatio
     resumeId: row.resumeId,
     sentPdf,
     coverLetterId: row.coverLetterId,
+    fitScore: row.fitScore,
     isArchived: row.isArchived,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -67,8 +90,28 @@ function toDetail(
   row: ApplicationRow,
   sentPdf: SentPdfMeta | null,
   files: ApplicationFile[],
+  coverLetterName: string | null,
+  bulletSuggestions: BulletSuggestion[],
+  questions: ApplicationQuestion[],
 ): ApplicationDetail {
-  return { ...toSummary(row, sentPdf), notes: row.notes, files };
+  return {
+    ...toSummary(row, sentPdf),
+    notes: row.notes,
+    jobDescription: row.jobDescription,
+    agentSummary: row.agentSummary,
+    proposedSelection: row.proposedSelection,
+    resumeApprovedAt: row.resumeApprovedAt?.toISOString() ?? null,
+    coverLetterApprovedAt: row.coverLetterApprovedAt?.toISOString() ?? null,
+    approvedAt: row.approvedAt?.toISOString() ?? null,
+    // Named here, where `PDF_NAME_PREFIX` is set; the browser never sees it.
+    pdfFilenames: {
+      resume: row.resumeId ? buildResumeFilename(row.company) : null,
+      coverLetter: coverLetterName === null ? null : buildCoverLetterFilename(coverLetterName),
+    },
+    files,
+    bulletSuggestions,
+    questions,
+  };
 }
 
 /** Newest first. The board regroups and re-sorts client-side
@@ -125,12 +168,29 @@ async function sentPdfMeta(resumePdfId: string | null): Promise<SentPdfMeta | nu
   return row ? { filename: row.filename, createdAt: row.createdAt.toISOString() } : null;
 }
 
+/** The linked letter's name, which names its PDF. */
+async function coverLetterName(
+  userId: string,
+  coverLetterId: string | null,
+): Promise<string | null> {
+  if (!coverLetterId) return null;
+  const [row] = await db
+    .select({ name: coverLetter.name })
+    .from(coverLetter)
+    .where(and(eq(coverLetter.id, coverLetterId), eq(coverLetter.userId, userId)))
+    .limit(1);
+  return row?.name ?? null;
+}
+
 async function detailFor(row: ApplicationRow): Promise<ApplicationDetail> {
-  const [sentPdf, files] = await Promise.all([
+  const [sentPdf, files, letterName, suggestions, questions] = await Promise.all([
     sentPdfMeta(row.resumePdfId),
     listApplicationFiles(row.userId, row.id),
+    coverLetterName(row.userId, row.coverLetterId),
+    listBulletSuggestions(row.userId, row.id),
+    listQuestions(row.userId, row.id),
   ]);
-  return toDetail(row, sentPdf, files);
+  return toDetail(row, sentPdf, files, letterName, suggestions, questions);
 }
 
 export async function getApplicationDetail(
@@ -206,6 +266,84 @@ export async function createApplication(
 }
 
 /**
+ * The agent's front door (D-042): an application that arrives in
+ * `proposing`, with the posting, the agent's evaluation and its score, and
+ * a copy of Default named after the company to propose a resume in.
+ *
+ * Always Default, never another resume: the agent picks from the library,
+ * and Default is the one every account has. `createResume` is the same clone
+ * `createResumeFrom` takes.
+ */
+export async function createProposedApplication(
+  userId: string,
+  input: {
+    company: string;
+    roleTitle: string;
+    postingUrl: string;
+    jobDescription: string;
+    agentSummary: string;
+    fitScore: number;
+  },
+): Promise<ApplicationDetail> {
+  const source = await getDefaultResumeRow(userId);
+  // Every account is provisioned with one, so this is a broken account. Said
+  // here, in words, because `createResume`'s own refusal is a plain `Error`,
+  // which would reach the agent as an anonymous internal error.
+  if (!source) {
+    throw new BadRequestError(
+      'This account has no Default resume to copy, so no application was created. ' +
+        'Stop and tell Chris.',
+    );
+  }
+  const created = await createResume(userId, input.company, source.id);
+
+  const [row] = await db
+    .insert(application)
+    .values({
+      userId,
+      company: input.company,
+      roleTitle: input.roleTitle,
+      postingUrl: input.postingUrl,
+      status: 'proposing',
+      jobDescription: input.jobDescription,
+      agentSummary: input.agentSummary,
+      fitScore: input.fitScore,
+      resumeId: created.id,
+    })
+    .returning();
+  if (!row) throw new Error('failed to create application');
+
+  return detailFor(row);
+}
+
+/**
+ * Records the agent's pick as `proposed_selection` (C7), and only while the
+ * application is still `proposing`: once it is in review, the pick it was
+ * proposed with is the baseline "Reset to agent pick" returns to, and later
+ * edits must not move it. The status test is in the WHERE clause, so a
+ * review that starts mid-call cannot be overwritten. Each call while
+ * proposing replaces the last. Returns whether a row was written.
+ */
+export async function setProposedSelection(
+  userId: string,
+  id: string,
+  selections: Selections,
+): Promise<boolean> {
+  const rows = await db
+    .update(application)
+    .set({ proposedSelection: selections })
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        eq(application.status, 'proposing'),
+      ),
+    )
+    .returning({ id: application.id });
+  return rows.length > 0;
+}
+
+/**
  * Field edits, the status picker and archiving all land here.
  *
  * `applied_at` is not a field the caller can set: it follows from the status
@@ -223,19 +361,40 @@ export async function updateApplication(
   if (patch.resumeId) await assertOwnedResume(userId, patch.resumeId);
   if (patch.coverLetterId) await assertOwnedCoverLetter(userId, patch.coverLetterId);
 
-  const { status, ...rest } = patch;
-  const [row] = await db
-    .update(application)
-    .set({
-      ...rest,
-      ...(status === undefined
-        ? {}
-        : { status, appliedAt: nextAppliedAt(existing.appliedAt, status, new Date()) }),
-    })
-    .where(and(eq(application.id, id), eq(application.userId, userId)))
-    .returning();
-  if (!row) throw new NotFoundError(`application ${id} not found`);
+  // Pointing at a different document, or at none, unapproves that section:
+  // what was approved is no longer what this sends (D-044).
+  const relinked: ReviewSection[] = [];
+  if (patch.resumeId !== undefined && patch.resumeId !== existing.resumeId) {
+    relinked.push('resume');
+  }
+  if (patch.coverLetterId !== undefined && patch.coverLetterId !== existing.coverLetterId) {
+    relinked.push('coverLetter');
+  }
 
+  const { status, ...rest } = patch;
+  const write = async (executor: Executor): Promise<ApplicationRow> => {
+    const [row] = await executor
+      .update(application)
+      .set({
+        ...rest,
+        ...(status === undefined
+          ? {}
+          : { status, appliedAt: nextAppliedAt(existing.appliedAt, status, new Date()) }),
+      })
+      .where(and(eq(application.id, id), eq(application.userId, userId)))
+      .returning();
+    if (!row) throw new NotFoundError(`application ${id} not found`);
+    if (relinked.length === 0) return row;
+
+    await reopenRelinked(executor, userId, id, relinked);
+    const [reread] = await executor
+      .select()
+      .from(application)
+      .where(and(eq(application.id, id), eq(application.userId, userId)));
+    return reread ?? row;
+  };
+
+  const row = relinked.length === 0 ? await write(db) : await db.transaction(write);
   return detailFor(row);
 }
 
@@ -246,6 +405,10 @@ export async function updateApplication(
  * inside the application, save, and the application now holds those bytes.
  * Doing it before it is sent is normal — marking it applied is a separate,
  * later decision.
+ *
+ * Refused while `ready`: that PDF is the one final approval stored, and only
+ * another final approval replaces it (C4, D-044). The status test is in the
+ * WHERE clause, so an approval that lands first still wins.
  */
 export async function pinResumePdf(
   userId: string,
@@ -255,11 +418,32 @@ export async function pinResumePdf(
   const [row] = await db
     .update(application)
     .set({ resumePdfId })
-    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .where(
+      and(eq(application.id, id), eq(application.userId, userId), ne(application.status, 'ready')),
+    )
     .returning();
-  if (!row) throw new NotFoundError(`application ${id} not found`);
+  if (row) return detailFor(row);
 
-  return detailFor(row);
+  throw await repinFailure(userId, id);
+}
+
+/** Why a guarded re-pin wrote nothing: the row is missing (or someone
+ *  else's), or it is Ready. */
+async function repinFailure(userId: string, id: string): Promise<Error> {
+  const current = await getApplicationRow(userId, id);
+  if (!current) return new NotFoundError(`application ${id} not found`);
+  return new BadRequestError(
+    repinRefusal(current.status) ?? `application ${id} changed while saving; try again`,
+  );
+}
+
+/** What marking an application sent writes, however it is marked: the
+ *  status, and `applied_at` the first time it is sent. */
+function appliedFields(existing: Pick<ApplicationRow, 'appliedAt'>) {
+  return {
+    status: 'applied' as const,
+    appliedAt: nextAppliedAt(existing.appliedAt, 'applied', new Date()),
+  };
 }
 
 /**
@@ -270,6 +454,9 @@ export async function pinResumePdf(
  * show for it. Called by `POST /api/applications/:id/apply` once the render
  * has actually produced a PDF; the compile itself lives in the route, as it
  * does for `POST /api/resumes/:id/pdf`.
+ *
+ * A new `resumePdfId` is refused while `ready`, as in `pinResumePdf`; sending
+ * a Ready application keeps the PDF that was approved.
  */
 export async function recordApplied(
   userId: string,
@@ -282,16 +469,76 @@ export async function recordApplied(
   const [row] = await db
     .update(application)
     .set({
-      status: 'applied',
-      appliedAt: nextAppliedAt(existing.appliedAt, 'applied', new Date()),
+      ...appliedFields(existing),
       // A re-send replaces the snapshot; not sending one leaves the last in place.
       ...(resumePdfId === null ? {} : { resumePdfId }),
     })
-    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        resumePdfId === null ? undefined : ne(application.status, 'ready'),
+      ),
+    )
     .returning();
-  if (!row) throw new NotFoundError(`application ${id} not found`);
+  if (row) return detailFor(row);
 
-  return detailFor(row);
+  throw await repinFailure(userId, id);
+}
+
+/**
+ * The agent's `mark_applied`: Chris has submitted a Ready application's
+ * form, so it becomes `applied`, keeping the PDF final approval pinned
+ * (C3, C4). Only from `ready`, and only while it is not archived: the test
+ * is in the WHERE clause, so an edit that reopened it while the form was
+ * being filled wins. Null when no row matched.
+ */
+export async function recordReadyApplied(
+  userId: string,
+  id: string,
+): Promise<ApplicationDetail | null> {
+  const existing = await getApplicationRow(userId, id);
+  if (!existing) return null;
+
+  const [row] = await db
+    .update(application)
+    .set(appliedFields(existing))
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        eq(application.status, 'ready'),
+        eq(application.isArchived, false),
+      ),
+    )
+    .returning();
+  return row ? detailFor(row) : null;
+}
+
+/**
+ * The id of the caller's live Ready application whose pinned PDF is
+ * `resumePdfId`, or null. A snapshot has no owner of its own, so this is how
+ * the files route learns whose packet a resume PDF is in (D-050). Final
+ * approval stores a fresh snapshot for each application, so there is at
+ * most one.
+ */
+export async function findReadyApplicationPinning(
+  userId: string,
+  resumePdfId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: application.id })
+    .from(application)
+    .where(
+      and(
+        eq(application.resumePdfId, resumePdfId),
+        eq(application.userId, userId),
+        eq(application.status, 'ready'),
+        eq(application.isArchived, false),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
 }
 
 /**
@@ -312,12 +559,217 @@ export async function attachCoverLetter(userId: string, id: string): Promise<App
 
   const created = await createCoverLetter(userId, existing.company);
 
+  const row = await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(application)
+      .set({ coverLetterId: created.id })
+      .where(and(eq(application.id, id), eq(application.userId, userId)))
+      .returning();
+    if (!updated) throw new NotFoundError(`application ${id} not found`);
+
+    // A new letter is a new section to approve, so a ready application goes
+    // back to review (D-044).
+    await reopenRelinked(tx, userId, id, ['coverLetter']);
+    const [reread] = await tx
+      .select()
+      .from(application)
+      .where(and(eq(application.id, id), eq(application.userId, userId)));
+    return reread ?? updated;
+  });
+
+  return detailFor(row);
+}
+
+// ---------------------------------------------------------------------------
+// The review flow (D-044). These write the flow statuses, which a PATCH may
+// not (D-041), and each re-checks its own precondition in its WHERE clause,
+// so a concurrent edit cannot slip an approval past the gate.
+// ---------------------------------------------------------------------------
+
+/** No bullet suggestion on this application is still pending (D-045): the
+ *  resume Chris approves must be the one he will send, not one with the
+ *  agent's proposals laid over it. */
+function noPendingSuggestions(executor: Executor, id: string): SQL {
+  return notExists(
+    executor
+      .select({ id: bulletSuggestion.id })
+      .from(bulletSuggestion)
+      .where(and(eq(bulletSuggestion.applicationId, id), eq(bulletSuggestion.status, 'pending'))),
+  );
+}
+
+/**
+ * Chris approves one section. Only in `needs_review`, only a section the
+ * application actually has, and the resume only once no bullet suggestion
+ * is pending (D-045); the reason for a refusal comes from
+ * `sectionApprovalProblem`, the same rule the page shows.
+ */
+export async function approveSection(
+  userId: string,
+  id: string,
+  section: ReviewSection,
+): Promise<ApplicationDetail> {
   const [row] = await db
     .update(application)
-    .set({ coverLetterId: created.id })
-    .where(and(eq(application.id, id), eq(application.userId, userId)))
+    .set(
+      section === 'resume'
+        ? { resumeApprovedAt: new Date() }
+        : { coverLetterApprovedAt: new Date() },
+    )
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        eq(application.status, 'needs_review'),
+        isNotNull(section === 'resume' ? application.resumeId : application.coverLetterId),
+        section === 'resume' ? noPendingSuggestions(db, id) : undefined,
+      ),
+    )
     .returning();
-  if (!row) throw new NotFoundError(`application ${id} not found`);
+  if (row) return detailFor(row);
+
+  const existing = await getApplicationRow(userId, id);
+  if (!existing) throw new NotFoundError(`application ${id} not found`);
+  const pendingSuggestions = await countPendingSuggestions(userId, id);
+  throw new BadRequestError(
+    sectionApprovalProblem({ ...existing, pendingSuggestions }, section) ??
+      'This section cannot be approved right now.',
+  );
+}
+
+/**
+ * The agent hands an application over for review: `proposing` becomes
+ * `needs_review`. Resubmitting one already in review keeps it there. The
+ * one-page checks are the caller's (`submit_for_review`), which compiles
+ * first; this is only the status move. Returns whether a row was written.
+ */
+export async function submitForReview(userId: string, id: string): Promise<boolean> {
+  const rows = await db
+    .update(application)
+    .set({ status: 'needs_review' })
+    .where(
+      and(
+        eq(application.id, id),
+        eq(application.userId, userId),
+        inArray(application.status, ['proposing', 'needs_review']),
+      ),
+    )
+    .returning({ id: application.id });
+  return rows.length > 0;
+}
+
+/**
+ * The write half of final approval, all in one transaction: store the
+ * resume snapshot and pin it, store the letter's PDF as an attachment, set
+ * `approved_at` and move to `ready` (C4).
+ *
+ * Everything was compiled before this is called, so no sidecar call holds
+ * the transaction open. The guarded UPDATE re-checks what the compile was
+ * based on: still in review, both approvals still set, the same resume and
+ * letter, no bullet suggestion pending (D-045), and no required question
+ * left unapproved. An edit that landed in between has cleared an approval,
+ * so the guard fails and the whole transaction rolls back.
+ *
+ * The letter's PDF is pinned by `cover_letter_pdf_id`, as the resume's is by
+ * `resume_pdf_id`, and is null when there is no letter (D-050). Approving
+ * again archives the earlier files of that name, for tidiness, since nothing
+ * is deleted (D-011); the pointer, not the name, says which one was approved.
+ */
+export async function recordFinalApproval(
+  userId: string,
+  id: string,
+  input: {
+    resumeId: string;
+    snapshot: NewPdfSnapshot;
+    letter: { coverLetterId: string; filename: string; bytes: Buffer } | null;
+  },
+): Promise<ApplicationDetail> {
+  const row = await db.transaction(async (tx) => {
+    // First, so the guarded UPDATE runs on a snapshot taken after any answer
+    // write in flight has committed: those hold this lock until they do. The
+    // questions live in another table, which the UPDATE's own re-check of a
+    // changed row would not re-read (D-047).
+    await lockApplication(tx, userId, id);
+    const saved = await saveResumePdfSnapshot(input.resumeId, input.snapshot, tx);
+
+    // Stored before the guarded UPDATE so that one statement pins both PDFs;
+    // if the guard fails, the rollback takes this file and the archive with it.
+    let letterFileId: string | null = null;
+    if (input.letter) {
+      await tx
+        .update(applicationFile)
+        .set({ isArchived: true })
+        .where(
+          and(
+            eq(applicationFile.applicationId, id),
+            eq(applicationFile.filename, input.letter.filename),
+            eq(applicationFile.isArchived, false),
+          ),
+        );
+      const [stored] = await tx
+        .insert(applicationFile)
+        .values({
+          applicationId: id,
+          filename: input.letter.filename,
+          contentType: 'application/pdf',
+          bytes: input.letter.bytes,
+          byteSize: input.letter.bytes.byteLength,
+        })
+        .returning({ id: applicationFile.id });
+      if (!stored) throw new Error('failed to store the approved cover letter PDF');
+      letterFileId = stored.id;
+    }
+
+    const [approved] = await tx
+      .update(application)
+      .set({
+        resumePdfId: saved.id,
+        coverLetterPdfId: letterFileId,
+        approvedAt: new Date(),
+        status: 'ready',
+      })
+      .where(
+        and(
+          eq(application.id, id),
+          eq(application.userId, userId),
+          eq(application.status, 'needs_review'),
+          eq(application.resumeId, input.resumeId),
+          isNotNull(application.resumeApprovedAt),
+          noPendingSuggestions(tx, id),
+          input.letter
+            ? and(
+                eq(application.coverLetterId, input.letter.coverLetterId),
+                isNotNull(application.coverLetterApprovedAt),
+              )
+            : isNull(application.coverLetterId),
+          notExists(
+            tx
+              .select({ id: applicationQuestion.id })
+              .from(applicationQuestion)
+              .where(
+                and(
+                  eq(applicationQuestion.applicationId, application.id),
+                  eq(applicationQuestion.required, true),
+                  isNull(applicationQuestion.approvedAt),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+    if (!approved) {
+      const [exists] = await tx
+        .select({ id: application.id })
+        .from(application)
+        .where(and(eq(application.id, id), eq(application.userId, userId)));
+      if (!exists) throw new NotFoundError(`application ${id} not found`);
+      throw new BadRequestError(
+        'This application changed while it was being approved; review it again.',
+      );
+    }
+
+    return approved;
+  });
 
   return detailFor(row);
 }

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# Mint an API token for the applying agent, against production, and print it
+# with the one command that connects the agent to it (D-039, D-053):
+#
+#   prod/mint-token [label]        label defaults to laptop-agent
+#
+# Run it on the VM, from anywhere. The token is shown this once: only its
+# sha-256 is stored, so a lost one is replaced, never recovered. Revoke one by
+# the id printed above it:
+#
+#   docker compose run --rm migrate npm run token:revoke -- <id>
+#
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Agents do not mint production tokens.
+#
+# Claude Code exports CLAUDECODE=1 into every command it runs, so this is the
+# rule in executable form, as in agent/claude.sh (D-052).
+# ---------------------------------------------------------------------------
+if [[ -n "${CLAUDECODE:-}" ]]; then
+  cat >&2 <<'EOF'
+refusing to mint a token: CLAUDECODE is set.
+
+A production token reaches Chris's real applications (D-039). A human should
+run prod/mint-token in their own shell.
+EOF
+  exit 1
+fi
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+[[ -f .env ]] || die "prod/.env is missing. Copy prod/.env.example to prod/.env and fill it in."
+
+label="${1:-laptop-agent}"
+
+# The last PUBLIC_URL line wins, as in compose, read without its quotes or a
+# trailing slash. Checked before minting, so a bad value never costs a token.
+url="$(sed -n 's/^PUBLIC_URL=//p' .env | tail -n 1 | sed 's/[[:space:]]*$//')"
+url="${url#\"}" && url="${url%\"}"
+url="${url#\'}" && url="${url%\'}"
+url="${url%/}"
+[[ "$url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] ||
+  die "PUBLIC_URL in prod/.env must be the https:// address you open Resumix at, with no path, such as https://resumix.example.com."
+
+# `run` starts what migrate depends on (the database, then a backup) the way
+# `up` does. -T keeps the token alone on stdout: compose's progress and
+# token:create's notes, the token's id among them, go to stderr.
+token="$(docker compose run --rm -T migrate npm run -s token:create -- --label "$label")"
+[[ "$token" =~ ^rmx_[A-Za-z0-9_-]{43}$ ]] || die "token:create did not print a token."
+
+cat <<EOF
+
+Your token, shown this once:
+
+    $token
+
+To connect the applying agent, run this on your laptop, in your resumix checkout:
+
+    agent/connect.sh $url/api/mcp $token
+
+Then start it with: cd agent && ./claude.sh
+EOF

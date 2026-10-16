@@ -38,7 +38,7 @@ none of this.** It follows `CLAUDE.md`.
 - **Never merge.** Opening the PR is where you stop.
 - **Never file an issue.** Other work you notice goes in the PR body under
   "Noticed, not done".
-- **Never touch production.** See `CLAUDE.md`, "Production is not yours".
+- **Never touch production.** See `docs/DEPLOYMENT.md`, "Agents do not deploy".
 
 ## 1. Check it is yours to take
 

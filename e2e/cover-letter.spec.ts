@@ -38,11 +38,17 @@ test('an application gets its own cover letter, and editing it is not global', a
   // In application mode the way back is to the application, as on the resume.
   await expect(page.getByRole('link', { name: '← Application' })).toBeVisible();
 
-  // The editor holds the whole document, and the preview compiles it.
+  // A letter copied from the Default opens on its plain-text Body. Its LaTeX
+  // tab holds the rest of the document, and with no body written the
+  // preview compiles that as written, so LaTeX alone still makes a letter.
+  await expect(page.getByRole('tab', { name: 'Body' })).toHaveAttribute('aria-selected', 'true', {
+    timeout: 15_000,
+  });
+  await page.getByRole('tab', { name: 'LaTeX' }).click();
   const editor = page.getByLabel('Cover letter LaTeX');
-  await expect(editor).toHaveValue(/\\documentclass/, { timeout: 15_000 });
+  await expect(editor).toHaveValue(/\\documentclass/);
   const body = await editor.inputValue();
-  await editor.fill(body.replace('Dear Hiring Team,', `Dear Hiring Team, ${marker}`));
+  await editor.fill(body.replace('\\end{document}', `${marker}\n\n\\end{document}`));
   await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 20_000 });
 
   // The download is a fresh compile of the saved text, not a stored snapshot.
@@ -61,5 +67,8 @@ test('an application gets its own cover letter, and editing it is not global', a
   await defaultCard.first().click();
   await expect(page).toHaveURL(/\/cover-letter\//, { timeout: 15_000 });
   expect(/\/cover-letter\/([^/?#]+)/.exec(page.url())![1]).not.toEqual(coverLetterId);
+  await expect(page.getByRole('tab', { name: 'Body' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: 'LaTeX' }).click();
+  await expect(page.getByLabel('Cover letter LaTeX')).toHaveValue(/\\documentclass/);
   await expect(page.getByLabel('Cover letter LaTeX')).not.toHaveValue(new RegExp(marker));
 });

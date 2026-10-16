@@ -3,12 +3,14 @@
  * of these and returns `400 { error }` on failure — see docs/API.md.
  */
 import { z } from 'zod';
-import { APPLICATION_STATUSES } from './applications/status.ts';
+import { ANSWER_MODES } from './applications/questions.ts';
+import { MANUAL_STATUSES } from './applications/status.ts';
+import { normalizeSuggestionText, suggestionTextProblem } from './applications/suggestions.ts';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
 
-function isHttpUrl(value: string): boolean {
+export function isHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
@@ -69,9 +71,20 @@ export const selectionsPatchSchema = z
 // Rendering
 // ---------------------------------------------------------------------------
 
-export const renderBodySchema = z.object({
-  templateOverride: z.string().optional(),
-});
+export const renderBodySchema = z
+  .object({
+    templateOverride: z.string().optional(),
+    /** Lay this application's pending bullet suggestions over the preview
+     *  (D-045). The application must send this resume. */
+    suggestionsFor: uuid.optional(),
+    /** Lay the resume's own pending suggestions over it instead, as its
+     *  editor does outside any application (D-054). */
+    resumeSuggestions: z.boolean().optional(),
+  })
+  .refine((body) => !(body.suggestionsFor && body.resumeSuggestions), {
+    message: 'pass suggestionsFor or resumeSuggestions, not both',
+    path: ['resumeSuggestions'],
+  });
 
 // ---------------------------------------------------------------------------
 // Library: experiences
@@ -171,8 +184,9 @@ export const patchTemplateSchema = z
 //
 // `content` may be empty: a letter you have cleared out to start over is a
 // normal editor state, and an empty document simply fails to compile the
-// same way a broken one does. `isDefault` is absent on purpose — see
-// `updateCoverLetter`.
+// same way a broken one does. So may `body`, which prints as nothing; it is
+// never null, because nothing turns a letter back into LaTeX only (D-046).
+// `isDefault` is absent on purpose — see `updateCoverLetter`.
 // ---------------------------------------------------------------------------
 
 export const createCoverLetterSchema = z.object({
@@ -185,6 +199,7 @@ export const patchCoverLetterSchema = z
   .object({
     name: nonEmpty.optional(),
     content: z.string().optional(),
+    body: z.string().optional(),
     isArchived: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
@@ -193,6 +208,7 @@ export const patchCoverLetterSchema = z
  *  the same trick `renderBodySchema` plays with `templateOverride`. */
 export const renderCoverLetterSchema = z.object({
   contentOverride: z.string().optional(),
+  bodyOverride: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -201,7 +217,9 @@ export const renderCoverLetterSchema = z.object({
 // Everything but the company is optional and may be empty: an application is
 // logged the moment you see a posting, and filled in from there (D-032).
 // `appliedAt` is deliberately absent — it follows from `status`, and is set
-// by the query layer (`lib/applications/status.ts`).
+// by the query layer (`lib/applications/status.ts`). So are the agent's
+// fields (`jobDescription`, `agentSummary`, `fitScore`): they arrive with
+// the application from the agent, and the UI only shows them.
 // ---------------------------------------------------------------------------
 
 /** Empty (not yet known) or a real http(s) link — it is rendered as an `href`. */
@@ -231,7 +249,15 @@ export const patchApplicationSchema = z
     roleTitle: z.string().trim().optional(),
     postingUrl: optionalUrl.optional(),
     notes: z.string().optional(),
-    status: z.enum(APPLICATION_STATUSES).optional(),
+    /** Manual statuses only. `ready` vouches for approvals and a snapshot
+     *  that a hand-set status would skip, so the flow statuses are refused
+     *  here, not just hidden in the UI (D-041). */
+    status: z
+      .enum(MANUAL_STATUSES, {
+        error:
+          'must be draft, applied, interviewing, offered or rejected — proposing, needs_review and ready are set by the review flow',
+      })
+      .optional(),
     /** `null` unlinks the resume. */
     resumeId: uuid.nullable().optional(),
     /** `null` unlinks the cover letter, which survives in the library. */
@@ -242,6 +268,70 @@ export const patchApplicationSchema = z
 
 export const patchApplicationFileSchema = z.object({
   isArchived: z.boolean(),
+});
+
+/** One section of the review flow. Final approval is its own endpoint,
+ *  because it compiles and snapshots where this only stamps (D-044). */
+export const approveSectionSchema = z.object({
+  section: z.enum(['resume', 'coverLetter'], { error: 'must be resume or coverLetter' }),
+});
+
+/** One answer, its mode, or a redraft request. Whether the answer fits the
+ *  question's kind is the query layer's check, which knows the kind
+ *  (`answerProblem`, D-047). */
+export const patchApplicationQuestionSchema = z
+  .object({
+    /** A string, or a multi question's picks; null clears it. */
+    answer: z
+      .union([z.string(), z.array(z.string())], { error: 'must be a string or a list of strings' })
+      .nullable()
+      .optional(),
+    answerMode: z.enum(ANSWER_MODES, { error: 'must be value or instruction' }).optional(),
+    /** Null, or only whitespace, cancels the request. */
+    redraftNote: z.string().nullable().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: 'no fields to update' });
+
+/** The ids Chris saw, never "all of them" (D-047). */
+export const approveQuestionsSchema = z.object({
+  questionIds: z.array(uuid, { error: 'must be a list of question ids' }).min(1, 'is empty'),
+});
+
+/** Ticks or unticks "remember this answer" (D-048). */
+export const rememberAnswerSchema = z.object({
+  remember: z.boolean({ error: 'must be true or false' }),
+});
+
+// ---------------------------------------------------------------------------
+// Bullet suggestions (D-045)
+//
+// The text rules are one schema, shared by `suggest_bullet` and the PATCH
+// Chris's edits go through, so the agent and the page cannot disagree about
+// what a suggestion may say.
+// ---------------------------------------------------------------------------
+
+/** One line of plain text, as the bullet should read; the rules are in
+ *  `lib/applications/suggestions.ts`, which the review page checks too. */
+export const bulletSuggestionText = z
+  .string()
+  .transform(normalizeSuggestionText)
+  .superRefine((text, ctx) => {
+    const problem = suggestionTextProblem(text);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  });
+
+/** Why the agent suggests it, shown beside the card. */
+export const bulletSuggestionRationale = z
+  .string()
+  .trim()
+  .min(1, 'is required')
+  .max(300, 'must be at most 300 characters');
+
+export const patchBulletSuggestionSchema = z.object({ proposedText: bulletSuggestionText });
+
+/** Apply to bullet (Add bullet, on an addition), Save as new, Reject. */
+export const resolveBulletSuggestionSchema = z.object({
+  action: z.enum(['apply', 'copy', 'reject'], { error: 'must be apply, copy or reject' }),
 });
 
 // ---------------------------------------------------------------------------

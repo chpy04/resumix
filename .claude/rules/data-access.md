@@ -31,8 +31,9 @@ entirely unused, and was deleted.
 
 ## Every query takes a `userId`
 
-Ownership lives on the seven root tables (`template`, `experience`,
-`project`, `technical_skill_row`, `resume`, `cover_letter`, `application`). Everything else —
+Ownership lives on the nine root tables (`template`, `experience`,
+`project`, `technical_skill_row`, `resume`, `cover_letter`, `application`, `api_token`,
+`saved_answer`). Everything else —
 bullets, skills, bridge rows, PDF snapshots, application files — has **no**
 `user_id` and inherits its owner through a join to its parent (D-018). One source of truth per fact: a
 `user_id` on a bullet could contradict its experience's.
@@ -42,6 +43,10 @@ it, directly or through that join. A missing filter is silent — the query
 still returns rows, just somebody else's. `lib/queries/isolation.test.ts`
 holds one case per way of addressing a row by id; add to it when you add a
 query.
+
+The two exceptions are the functions that _produce_ the id rather than take
+one: `lib/queries/users.ts`, and `authenticateApiToken`, which turns an API
+token into its owner (D-039).
 
 Bridge rows are the subtle path: they carry no owner at all, so
 `replaceSelections` re-checks every content id in the request body against

@@ -2,7 +2,7 @@
 #
 # Development never builds this. `npm run dev` runs Next on the host against
 # the `db` and `latex` containers in `docker-compose.yml`; this image exists
-# solely for `docker-compose.prod.yml` (see docs/DEPLOYMENT.md).
+# solely for `prod/docker-compose.yml` (see docs/DEPLOYMENT.md).
 #
 # Why an image at all, when prod runs on the same laptop as dev: so the prod
 # instance owns its own `.next`. Two Next processes sharing one build
@@ -31,9 +31,9 @@ RUN npm run build
 
 # ---------------------------------------------------------------------------
 # Migration/seed image. Full source + full node_modules, so `scripts/*.ts`
-# run exactly as they do on a developer's machine. `docker-compose.prod.yml`
-# runs this under a compose profile, so it is never started by `up` — only
-# by `docker compose run --rm migrate` from scripts/deploy-prod.sh.
+# run exactly as they do on a developer's machine. `prod/docker-compose.yml`
+# runs it once per `up`, migrations then the seed, before it starts the app,
+# and `prod/mint-token` runs `token:create` in it.
 #
 # Separate from the runtime stage below because the runtime stage is Next's
 # `standalone` output, whose `.next/package.json` is `{"type":"commonjs"}`;

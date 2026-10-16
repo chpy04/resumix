@@ -12,10 +12,19 @@
  * reload.
  */
 
-import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
+import {
+  drizzle,
+  type PostgresJsDatabase,
+  type PostgresJsQueryResultHKT,
+} from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 
 import * as schema from './schema.ts';
+
+/** `db` itself, or a transaction opened on it: what a write takes when it may
+ *  have to join a caller's transaction rather than run on its own. */
+export type Executor = PgDatabase<PostgresJsQueryResultHKT, typeof schema>;
 
 declare global {
   var __resumixSql: Sql | undefined;
