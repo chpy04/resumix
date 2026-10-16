@@ -1,0 +1,159 @@
+# Production. Run plain `docker compose` from this folder: `.env` beside this
+# file supplies every variable below, so there is no `-f`, no `--env-file`
+# and no wrapper (D-053).
+#
+# `docker compose up -d --build` is the whole deploy. The dependency chain
+# below is the deploy order, so compose runs it on every `up`:
+#
+#   db (healthy) → backup (exits 0) → migrate (exits 0) → app
+#
+# `docker compose run --rm --build migrate` runs the first three alone, for
+# a migration as a step of its own (docs/DEPLOYMENT.md, Migrating by hand).
+#
+# Everything here is disjoint from the root `docker-compose.yml`: different
+# project name, volume, ports and images, so nothing a developer runs touches
+# it (D-031). Every required variable uses `:?`, so a missing secret stops
+# compose before anything starts, instead of starting an unprotected instance.
+
+# The project name owns the volume (`resumix-prod_pgdata`), so it is what
+# carries the data from one deploy to the next. Never change it.
+name: resumix-prod
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resumix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in prod/.env}
+      POSTGRES_DB: resumix
+    ports:
+      # Published only so you can `pg_dump`/`psql` into prod from the host.
+      # Nothing in the app reaches it this way — the app container uses the
+      # compose network (`db:5432`).
+      - '127.0.0.1:39432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U resumix -d resumix']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: a pg_dump into ./backups before every migration, keeping the
+  # newest 20. Migrations only go forward; the dump is the way back. It runs
+  # on the very first `up` too, where it dumps an empty schema, because a
+  # step that skips itself is a step nobody can tell has stopped working.
+  backup:
+    image: postgres:17-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - ./backups:/backups
+    # Written under a temporary name and renamed, so a failed dump is never
+    # counted as a backup or allowed to push a good one out of the 20. Each
+    # file goes to whoever owns ./backups (the clone's owner, through its
+    # committed .gitkeep), not to the container's root, so it can be read,
+    # restored and copied off the VM without sudo.
+    command:
+      - sh
+      - -euc
+      - |
+        f="/backups/$$(date -u +%Y%m%d-%H%M%S).sql"
+        pg_dump -h db -U resumix resumix > "$$f.partial" || { rm -f "$$f.partial"; exit 1; }
+        mv "$$f.partial" "$$f"
+        chown "$$(stat -c %u:%g /backups)" "$$f"
+        chmod 600 "$$f"
+        ls -1t /backups/*.sql | tail -n +21 | xargs -r rm -f
+        echo "backed up to prod/backups/$$(basename "$$f")"
+
+  # One-shot: migrations, then the seed. The seed is a no-op once any user
+  # exists, so it does something only on the first deploy, when it creates
+  # OWNER_EMAIL with the reference resume. Never pass it --force here: that
+  # truncates every content table.
+  #
+  # Built from the `migrate` stage, which has the full source and
+  # node_modules, so `scripts/*.ts` run exactly as they do in development.
+  # Not in a profile, so `build` and `up --build` always rebuild it with the
+  # app. A profiled migrate service was skipped by a plain `build`, and then
+  # migrated with the previous deploy's image (D-053).
+  migrate:
+    image: resumix-migrate:prod
+    build:
+      context: ..
+      target: migrate
+    depends_on:
+      backup:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://resumix:${POSTGRES_PASSWORD:?}@db:5432/resumix
+      # The owner of a token `./mint-token` creates, as for password login.
+      OWNER_EMAIL: ${OWNER_EMAIL:?}
+      SEED_USER_EMAIL: ${OWNER_EMAIL:?}
+      SEED_USER_NAME: ${SEED_USER_NAME:-}
+    command: ['sh', '-c', 'npm run db:migrate && npm run db:seed']
+
+  latex:
+    image: resumix-latex:prod
+    build: ../services/latex
+    restart: unless-stopped
+    environment:
+      # Required here, unlike dev. Even bound to loopback this is a process
+      # that runs pdflatex on whatever it is handed; see services/latex/README.md.
+      LATEX_SERVICE_TOKEN: ${LATEX_SERVICE_TOKEN:?set LATEX_SERVICE_TOKEN in prod/.env}
+    ports:
+      - '127.0.0.1:39080:8080'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: resumix-app:prod
+    build:
+      context: ..
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      # Started only once the schema is level with it. Compose stops a
+      # changed app before it runs the one-shots, so a deploy is a few
+      # seconds down, and a failed backup or migration leaves the app
+      # stopped until an `up` succeeds: new code never meets an old schema.
+      migrate:
+        condition: service_completed_successfully
+      latex:
+        condition: service_healthy
+    environment:
+      # Built from the compose network, not read from .env, so there is no
+      # way to hand the production app a development database by editing
+      # one line of an env file.
+      DATABASE_URL: postgres://resumix:${POSTGRES_PASSWORD:?}@db:5432/resumix
+      LATEX_SERVICE_URL: http://latex:8080
+      LATEX_SERVICE_TOKEN: ${LATEX_SERVICE_TOKEN:?}
+      RESUMIX_AUTH_MODE: password
+      APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in prod/.env}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in prod/.env}
+      OWNER_EMAIL: ${OWNER_EMAIL:?set OWNER_EMAIL in prod/.env}
+      # Optional — each degrades a feature rather than failing the deploy,
+      # so these use `:-` and not `:?`.
+      PDF_NAME_PREFIX: ${PDF_NAME_PREFIX:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+    ports:
+      # Loopback only. HTTPS in front of the VM forwards here (D-051).
+      - '127.0.0.1:39000:3000'
+
+volumes:
+  # Namespaced by the `name:` above, so this is `resumix-prod_pgdata` and can
+  # never be confused with development's `resumix_pgdata`.
+  pgdata:

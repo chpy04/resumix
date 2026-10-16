@@ -33,14 +33,19 @@
       "Edit(~/.resumix/**)",
       "Write(~/.resumix/**)",
 
-      "Bash(npm run deploy:prod)",
-      "Bash(npm run deploy:prod:*)",
-      "Bash(scripts/deploy-prod.sh:*)",
-      "Bash(./scripts/deploy-prod.sh:*)",
-      "Bash(bash scripts/deploy-prod.sh:*)",
-      "Bash(sh scripts/deploy-prod.sh:*)",
       "Bash(docker compose -f docker-compose.prod.yml:*)",
       "Bash(docker compose --env-file:*)",
+
+      "Read(./prod/.env)",
+      "Edit(./prod/.env)",
+      "Write(./prod/.env)",
+      "Read(./prod/backups/**)",
+      "Bash(prod/mint-token:*)",
+      "Bash(./prod/mint-token:*)",
+      "Bash(./mint-token:*)",
+      "Bash(bash prod/mint-token:*)",
+      "Bash(docker compose -f prod/docker-compose.yml:*)",
+      "Bash(docker compose --project-directory prod:*)",
 
       "Read(./agent/.env)",
       "Read(./agent/.browser-profile/**)",
@@ -53,7 +58,11 @@
       "Bash(agent/claude.sh:*)",
       "Bash(./agent/claude.sh:*)",
       "Bash(bash agent/claude.sh:*)",
-      "Bash(sh agent/claude.sh:*)"
+      "Bash(sh agent/claude.sh:*)",
+      "Bash(agent/connect.sh:*)",
+      "Bash(./agent/connect.sh:*)",
+      "Bash(bash agent/connect.sh:*)",
+      "Bash(sh agent/connect.sh:*)"
     ]
   }
 }

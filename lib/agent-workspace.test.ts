@@ -7,10 +7,20 @@
 // It cannot see `claude mcp add`, which writes to ~/.claude.json, outside the
 // repo.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -227,4 +237,153 @@ test('career-ops is a pinned submodule, not vendored files', () => {
     git('ls-files', '-s', 'agent/career-ops'),
     /^160000 [0-9a-f]{40} 0\tagent\/career-ops\n$/,
   );
+});
+
+// agent/connect.sh, which writes the token prod/mint-token printed into
+// agent/.env (D-053), run from a throwaway copy of agent/. The environment is
+// built from nothing, so CLAUDECODE reaches it only where a test sets it, and
+// the template is this test's own, so no real agent/.env is ever read.
+const CONNECT = 'agent/connect.sh';
+const URL = 'https://resumix.example.com/api/mcp';
+const TOKEN = `rmx_${'A'.repeat(42)}w`;
+const TEMPLATE = [
+  "# The applying Claude's environment.",
+  'RESUMIX_MCP_URL=',
+  '',
+  'RESUMIX_MCP_TOKEN=',
+  "# Absolute path to career-ops' personal files.",
+  'CAREER_OPS_DATA_DIR=',
+  '',
+].join('\n');
+
+const scratch = mkdtempSync(join(tmpdir(), 'resumix-agent-workspace-'));
+after(() => rmSync(scratch, { recursive: true, force: true }));
+
+let copies = 0;
+/** A fresh agent/ holding the script and a template, and agent/.env when given. */
+function agentCopy(env?: string): string {
+  const dir = join(scratch, `agent-${++copies}`);
+  mkdirSync(dir, { recursive: true });
+  copyFileSync(join(ROOT, CONNECT), join(dir, 'connect.sh'));
+  writeFileSync(join(dir, '.env.example'), TEMPLATE);
+  if (env !== undefined) writeFileSync(join(dir, '.env'), env);
+  return dir;
+}
+
+/**
+ * Built from nothing on purpose; the app's ProcessEnv type requires a
+ * NODE_ENV the scripts have no use for.
+ */
+function bareEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: Record<string, string> = { PATH: process.env.PATH ?? '/usr/bin:/bin', ...extra };
+  return env as NodeJS.ProcessEnv;
+}
+
+function connect(dir: string, args: string[], extra: Record<string, string> = {}) {
+  return spawnSync('bash', [join(dir, 'connect.sh'), ...args], {
+    cwd: scratch,
+    env: bareEnv(extra),
+    encoding: 'utf8',
+  });
+}
+
+function envFile(dir: string): string {
+  return readFileSync(join(dir, '.env'), 'utf8');
+}
+
+/** What claude.sh would export, by sourcing the file the way it does. */
+function sourced(dir: string): string {
+  return execFileSync(
+    'bash',
+    [
+      '-c',
+      'set -a; . ./.env; printf "%s\\n" "$RESUMIX_MCP_URL" "$RESUMIX_MCP_TOKEN" "$CAREER_OPS_DATA_DIR"',
+    ],
+    { cwd: dir, env: bareEnv(), encoding: 'utf8' },
+  );
+}
+
+test('connect.sh is tracked as executable', () => {
+  assert.match(
+    git('ls-files', '-s', CONNECT),
+    /^100755 /,
+    `${CONNECT} is not tracked with mode 100755`,
+  );
+});
+
+test('connect.sh starts agent/.env from the template, mode 600, and prints no value', () => {
+  const dir = agentCopy();
+  const result = connect(dir, [URL, TOKEN]);
+  assert.equal(result.status, 0, result.stderr);
+
+  assert.equal(sourced(dir), `${URL}\n${TOKEN}\n${join(dir, 'career-ops-data')}\n`);
+  // The template's comments and spacing survive.
+  assert.ok(envFile(dir).startsWith("# The applying Claude's environment.\nRESUMIX_MCP_URL="));
+  assert.equal(statSync(join(dir, '.env')).mode & 0o777, 0o600);
+  for (const output of [result.stdout, result.stderr]) {
+    assert.ok(!output.includes(TOKEN), 'printed the token');
+    assert.ok(!output.includes(URL), 'printed the URL');
+  }
+});
+
+test('connect.sh replaces only the two values, and a data directory only while empty', () => {
+  const env = [
+    'RESUMIX_MCP_URL=https://old.example.com/api/mcp',
+    'OTHER=kept',
+    'CAREER_OPS_DATA_DIR=/Users/chris/career-ops',
+    'RESUMIX_MCP_TOKEN=rmx_old',
+    'RESUMIX_MCP_URL=https://older.example.com/api/mcp',
+    '',
+  ].join('\n');
+  const dir = agentCopy(env);
+  const result = connect(dir, [URL, TOKEN]);
+  assert.equal(result.status, 0, result.stderr);
+
+  // Every line setting a key is replaced, since the last would win.
+  assert.equal(
+    envFile(dir),
+    [
+      `RESUMIX_MCP_URL=${URL}`,
+      'OTHER=kept',
+      'CAREER_OPS_DATA_DIR=/Users/chris/career-ops',
+      `RESUMIX_MCP_TOKEN=${TOKEN}`,
+      `RESUMIX_MCP_URL=${URL}`,
+      '',
+    ].join('\n'),
+  );
+});
+
+test('connect.sh appends a key the file lacks', () => {
+  const dir = agentCopy('OTHER=kept\n');
+  const result = connect(dir, [URL, TOKEN]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(sourced(dir), `${URL}\n${TOKEN}\n${join(dir, 'career-ops-data')}\n`);
+  assert.ok(envFile(dir).startsWith('OTHER=kept\n'));
+});
+
+test('connect.sh refuses anything but an https MCP URL and an rmx_ token, writing nothing', () => {
+  for (const args of [
+    [],
+    [URL],
+    [URL, TOKEN, 'extra'],
+    ['http://resumix.example.com/api/mcp', TOKEN],
+    ['https://resumix.example.com', TOKEN],
+    ['https://resumix.example.com/api/mcp/', TOKEN],
+    ['https://resumix.example.com;id/api/mcp', TOKEN],
+    [URL, 'rmx_short'],
+    [URL, `${TOKEN}$(id)`],
+  ]) {
+    const dir = agentCopy('OTHER=kept\n');
+    const result = connect(dir, args);
+    assert.equal(result.status, 1, `accepted ${JSON.stringify(args)}`);
+    assert.equal(envFile(dir), 'OTHER=kept\n');
+  }
+});
+
+test('connect.sh refuses to run under Claude Code', () => {
+  const dir = agentCopy();
+  const result = connect(dir, [URL, TOKEN], { CLAUDECODE: '1' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /CLAUDECODE is set/);
+  assert.equal(existsSync(join(dir, '.env')), false);
 });

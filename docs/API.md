@@ -205,8 +205,9 @@ never again, and the token's id, label and owner to stderr. The owner is
 `--email`, else `OWNER_EMAIL`, else the only user; with several users and
 neither, both scripts refuse. Both act on whatever database `DATABASE_URL`
 names, which is the dev one, through `.env`, unless you point them elsewhere.
-Production's are minted on the VM, inside the migrate image
-(`docs/DEPLOYMENT.md`).
+Production's are minted on the VM with `prod/mint-token`, which runs
+`token:create` inside the migrate image and prints the `agent/connect.sh`
+command that hands the token to the applying agent (`docs/DEPLOYMENT.md`).
 
 ## MCP (`/api/mcp`)
 

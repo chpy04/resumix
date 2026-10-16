@@ -40,7 +40,7 @@ hand back the exact bytes a resume was last saved with.
 | Styling       | Tailwind CSS v4                                                                                                                                                       | fast, no design system needed                                          |
 | DB access     | Drizzle ORM + `postgres.js`, server-side only                                                                                                                         | typed SQL, plain SQL migrations, portable off Supabase                 |
 | DB (dev)      | `postgres:17` container in `docker-compose.yml`                                                                                                                       | matches spec's "separate postgres container"                           |
-| DB (prod)     | a second `postgres:17` container, its own volume and port, in `docker-compose.prod.yml`                                                                               | production is its own instance on a VM, not the gate's DB (D-051)      |
+| DB (prod)     | a second `postgres:17` container, its own volume and port, in `prod/docker-compose.yml`                                                                               | production is its own instance on a VM, not the gate's DB (D-051)      |
 | LaTeX         | sidecar container: TeX Live + Express `/compile`                                                                                                                      | real `pdflatex`; V1 template compiles unchanged                        |
 | PDF storage   | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                                                                                                          | one code path dev/prod; swap to Supabase Storage later                 |
 | Multi-tenancy | `user_id` on the nine root tables; children inherit through their parent; every query takes a `userId`                                                                | one source of truth per fact (D-018)                                   |
@@ -83,6 +83,8 @@ components/              React components
 drizzle/                 numbered .sql migrations
 scripts/seed.ts          seeds one user + the V1 resume content (the smoke test)
 services/latex/          Dockerfile + Express compile service
+prod/                    production, run with plain `docker compose` from here (D-053):
+                         the stack, its gitignored .env and backups/, and mint-token
 docs/                    this directory — read STATE.md first
 agent/                   workspace of the Claude that applies to jobs (D-038): its own
                          CLAUDE.md, the only Resumix MCP config, career-ops as a pinned

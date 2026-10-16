@@ -8,10 +8,12 @@ dist/
 *.tsbuildinfo
 .env
 .env*.local
-# The real one lives at ~/.resumix/prod.env, outside the repo (D-031). This
-# is belt-and-braces for a copy that lands here by accident; the committed
-# template is `prod.env.example`.
-prod.env
+# Production's own state, on the VM (D-053). prod/.env needs no line: the
+# `.env` rule above matches at any depth. The backups folder is kept by its
+# .gitkeep, so it exists, owned by whoever cloned, before Docker can create
+# it as root.
+prod/backups/*
+!prod/backups/.gitkeep
 .DS_Store
 coverage/
 playwright-report/

@@ -16,8 +16,11 @@
       "Bash(npm run build:*)",
       "Bash(npm run dev)",
       "Bash(npm run dev:*)",
-      "Bash(npm run deploy:prod)",
-      "Bash(npm run deploy:prod:*)",
+
+      "Bash(connect.sh:*)",
+      "Bash(./connect.sh:*)",
+      "Bash(bash connect.sh:*)",
+      "Bash(sh connect.sh:*)",
 
       "Bash(git commit:*)",
       "Bash(git push:*)"
