@@ -200,12 +200,12 @@ rule message names the file in `.claude/rules/` that explains it (D-017).
 
 These are properties of the system as it stands, not a to-do list.
 
-- **Production is one cloud VM, deployed by hand.** `docker compose` from
-  `~/.resumix/src` on the VM, entirely separate from development, behind an
-  HTTPS front end that is not part of this repo (D-051,
-  `docs/DEPLOYMENT.md`). `npm run deploy:prod` deploys only the earlier
-  laptop instance (D-031) and does not run on Linux. The Vercel + Fly.io +
-  Supabase path is documented as an appendix and has never been executed.
+- **Production is one cloud VM, deployed by hand.** Plain `docker compose`
+  from `prod/` in a clone on the VM, entirely separate from development,
+  behind an HTTPS front end that is not part of this repo (D-051, D-053,
+  `docs/DEPLOYMENT.md`). `up` backs up, migrates and swaps in that order on
+  its own. The Vercel + Fly.io + Supabase path is documented as an appendix
+  and has never been executed.
 - **No redundancy.** One VM and one disk, with the backups on it.
 - **No multi-template UI.** The schema supports many templates per user; the
   editor assumes the resume's own.

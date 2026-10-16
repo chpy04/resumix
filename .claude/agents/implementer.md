@@ -12,7 +12,7 @@ later rounds it also gives you a numbered list of findings to fix.
 
 - Work only under the worktree path. `cd` there first and check with
   `git rev-parse --show-toplevel`. Never touch `/Users/chrispyle/resumix`
-  itself, and never touch `~/.resumix/`.
+  itself, and never touch `~/.resumix/`, `prod/.env` or `prod/backups/`.
 - **Never** `git push`, run `gh`, change a `status:*` label, or open a PR. The
   orchestrator does all of that.
 - **Never** run `npm install`. `node_modules` is a symlink to the main

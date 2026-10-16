@@ -17,7 +17,7 @@ set -euo pipefail
 # Every Resumix call this session makes goes to production, and the Claude
 # that builds Resumix never touches production (CLAUDE.md, "Production is not
 # yours"). Claude Code exports CLAUDECODE=1 into every command it runs, so
-# this is that rule in executable form, as in scripts/deploy-prod.sh.
+# this is that rule in executable form, as in connect.sh and prod/mint-token.
 # ---------------------------------------------------------------------------
 if [[ -n "${CLAUDECODE:-}" ]]; then
   cat >&2 <<'EOF'
@@ -36,7 +36,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[[ -f .env ]] || die "agent/.env is missing. Copy agent/.env.example to agent/.env and fill it in."
+[[ -f .env ]] || die "agent/.env is missing. Run the agent/connect.sh command prod/mint-token printed."
 
 [[ -f career-ops/AGENTS.md ]] ||
   die "agent/career-ops is not checked out. Run: git submodule update --init"

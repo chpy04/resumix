@@ -21,6 +21,8 @@ this file wins.
   repo's `.claude/`. They belong to the Claude that builds Resumix.
 - Never read `.env`, and never print what the scripts here read from the
   environment. Its values reach you only as the MCP connection.
+- Never run `./connect.sh`. It writes the production token into `.env`,
+  and only Chris runs it.
 - **Never submit an application form.** Chris does, after review and at
   apply (D-049).
 
