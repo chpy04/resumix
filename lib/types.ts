@@ -128,6 +128,10 @@ export interface ResumeDetail {
   template: Template;
   selections: Selections;
   library: Library;
+  /** The agent's pending bullet suggestions on this resume itself, outside
+   *  any application, oldest first (D-054). An application's own are read
+   *  with the application. */
+  suggestions: BulletSuggestion[];
 }
 
 export interface RenderResult {

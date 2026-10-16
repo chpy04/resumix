@@ -600,11 +600,12 @@ export const savedAnswer = pgTable(
 // ---------------------------------------------------------------------------
 // Bullet suggestions
 //
-// What the agent would change about the bullets, held beside the application
-// until Chris applies or rejects it in review; the agent never writes to the
-// library itself (D-045). Owned through `application_id`, like
-// `application_file`. `bulletId` and `parentId` point into one of two tables
-// each, by `bulletKind`, so neither has a foreign key.
+// What the agent would change about the bullets, held beside an application
+// until Chris applies or rejects it in review, or beside one of his resumes
+// until he does so in its editor; the agent never writes to the library
+// itself (D-045, D-054). Owned through exactly one of `application_id` and
+// `resume_id`. `bulletId` and `parentId` point into one of two tables each,
+// by `bulletKind`, so neither has a foreign key.
 // ---------------------------------------------------------------------------
 
 export const bulletSuggestionKind = pgEnum('bullet_suggestion_kind', ['edit', 'add']);
@@ -620,9 +621,12 @@ export const bulletSuggestion = pgTable(
   'bullet_suggestion',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    applicationId: uuid('application_id')
-      .notNull()
-      .references(() => application.id, { onDelete: 'cascade' }),
+    /** The application it was made for, in the pipeline (D-045)... */
+    applicationId: uuid('application_id').references(() => application.id, {
+      onDelete: 'cascade',
+    }),
+    /** ...or the resume, outside any application (D-054). Exactly one. */
+    resumeId: uuid('resume_id').references(() => resume.id, { onDelete: 'cascade' }),
     kind: bulletSuggestionKind('kind').notNull(),
     bulletKind: bulletKind('bullet_kind').notNull(),
     /** An edit's bullet: an `experience_bullet` or `project_bullet`. */
@@ -642,6 +646,16 @@ export const bulletSuggestion = pgTable(
     uniqueIndex('ux_bullet_suggestion_pending_edit')
       .on(t.applicationId, t.bulletId)
       .where(sql`${t.status} = 'pending'`),
+    index('ix_bullet_suggestion_resume_id')
+      .on(t.resumeId, t.createdAt)
+      .where(sql`${t.resumeId} is not null`),
+    uniqueIndex('ux_bullet_suggestion_pending_resume_edit')
+      .on(t.resumeId, t.bulletId)
+      .where(sql`${t.status} = 'pending' and ${t.resumeId} is not null`),
+    check(
+      'ck_bullet_suggestion_owner',
+      sql`(${t.applicationId} is null) <> (${t.resumeId} is null)`,
+    ),
     check(
       'ck_bullet_suggestion_target',
       sql`(${t.kind} = 'edit' and ${t.bulletId} is not null and ${t.parentId} is null and ${t.position} is null) or (${t.kind} = 'add' and ${t.bulletId} is null and ${t.parentId} is not null and ${t.position} is not null and ${t.position} >= 0)`,

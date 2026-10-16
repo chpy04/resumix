@@ -42,6 +42,22 @@ If `resumix` is missing from `/mcp` or fails to connect, **stop and tell
 Chris.** Never work around it. It means `.env` is incomplete or the session
 was not started through `./claude.sh`, and both are his to fix.
 
+## Changing Chris's resume
+
+When Chris asks you to change his resume, rather than to apply to a job,
+"his resume" is Default unless he names another
+(`mcp__resumix__list_resumes`). Read it with `mcp__resumix__get_resume`, and
+the text behind its ids with `mcp__resumix__get_library`.
+
+- **Order and selection are yours to change.**
+  `mcp__resumix__edit_resume_selection` saves them at once, with no review.
+- **A bullet's words never are.** Propose them with
+  `mcp__resumix__suggest_resume_bullet`; Chris rewords, applies or rejects
+  each in that resume's editor. When you are done, tell him its
+  `editor_path`.
+- A resume an application is tailored on is changed through that
+  application, never these tools; they refuse it.
+
 ## Where things live
 
 - `career-ops/` is a git submodule pinned to a release tag. Read it and use

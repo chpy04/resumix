@@ -1,6 +1,6 @@
 import { compileTex, latexUnavailableResult, LatexServiceError } from '@/lib/latex';
 import { parseJsonBody, type RouteContext, withApiErrors } from '@/lib/http';
-import { previewSuggestions } from '@/lib/queries/bullet-suggestions';
+import { pendingResumeSuggestions, previewSuggestions } from '@/lib/queries/bullet-suggestions';
 import { renderResumeById } from '@/lib/queries/render';
 import { renderBodySchema } from '@/lib/validation';
 import type { RenderResult } from '@/lib/types';
@@ -9,7 +9,8 @@ import { requireUserId } from '@/lib/session';
 /**
  * Preview only — never persists. `templateOverride` lets the Template tab
  * preview unsaved LaTeX, and `suggestionsFor` lays that application's
- * pending bullet suggestions over it, for the review page (D-045). A LaTeX
+ * pending bullet suggestions over it, for the review page (D-045), or
+ * `resumeSuggestions` the resume's own, for its editor (D-054). A LaTeX
  * compile failure is a normal `200` with `ok: false`, never a 500
  * (docs/API.md).
  */
@@ -21,7 +22,9 @@ export async function POST(request: Request, { params }: RouteContext): Promise<
 
     const suggestions = body.suggestionsFor
       ? await previewSuggestions(userId, body.suggestionsFor, id)
-      : undefined;
+      : body.resumeSuggestions
+        ? await pendingResumeSuggestions(userId, id)
+        : undefined;
     const { tex, warnings } = await renderResumeById(
       userId,
       id,
