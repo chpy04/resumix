@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
@@ -13,8 +21,10 @@ import {
   downloadResumePdf,
   getResumeDetail,
   renderResume,
+  resolveBulletSuggestion,
   saveResumePdf,
   saveResumeToApplication,
+  updateBulletSuggestion,
   updateExperience,
   updateExperienceBullet,
   updateProject,
@@ -25,17 +35,60 @@ import {
   updateSkillRow,
   updateTemplate,
 } from '@/lib/api-client';
+import { normalizeSuggestionText, suggestionTextProblem } from '@/lib/applications/suggestions';
+import { agentPickIds, sameSelections, SLICES } from '@/lib/editor/agent-pick';
+import type { SaveStatus } from '@/lib/editor/autosave';
 import {
   affectedSlice,
   selectionsReducer,
   type SelectionsAction,
 } from '@/lib/editor/selections-reducer';
-import { EMPTY_SELECTIONS, type Library, type Selections, type Template } from '@/lib/types';
+import { suggestionsByParent } from '@/lib/editor/suggestions';
+import {
+  EMPTY_SELECTIONS,
+  type BulletSuggestion,
+  type BulletSuggestionAction,
+  type Library,
+  type Selections,
+  type Template,
+} from '@/lib/types';
 import ContentPane, { type ContentPaneCallbacks } from './ContentPane';
 import EditorHeader, { type EditorTab } from './EditorHeader';
 import PreviewPane from './PreviewPane';
+import type { SuggestionHandlers } from './SuggestionCard';
 import TemplateTab from './TemplateTab';
 import { useAutosaveRegistry } from './useAutosaveRegistry';
+
+/** What the review page's resume step adds to the editor (D-044). */
+export interface ResumeReviewMode {
+  /** The agent's pick (C7): its rows carry a badge, and "Reset to agent
+   *  pick" returns to it. Null hides the reset. */
+  proposedSelection: Selections | null;
+  /** Called each time a selection write lands, since it may have cleared
+   *  this application's approval. */
+  onSelectionsSaved: () => void;
+  /** The step's own buttons, beside the reset. They get the save status so
+   *  an approval can wait for the edit it is meant to cover. */
+  actions: (saveStatus: SaveStatus) => ReactNode;
+  /** The same status, for the page's later steps, which approve this
+   *  resume without showing the editor. */
+  onSaveStatusChange: (status: SaveStatus) => void;
+  /** False while another step is showing. Hiding the editor sends any edit
+   *  still in its debounce, so the status a later step sees is the truth. */
+  visible: boolean;
+  /** The application under review: the preview lays its pending bullet
+   *  suggestions over the resume (D-045). */
+  applicationId: string;
+  /** Its pending bullet suggestions, shown inline in the bullet lists. */
+  suggestions: BulletSuggestion[];
+  /** Why none can be resolved now (outside Needs review), or null. */
+  suggestionsLocked: string | null;
+  /** Called once a suggestion is resolved: the application must be re-read,
+   *  since what is pending gates approval. */
+  onSuggestionsChanged: () => void;
+}
+
+const NO_SUGGESTIONS: BulletSuggestion[] = [];
 
 interface ResumeEditorProps {
   resumeId: string;
@@ -43,6 +96,9 @@ interface ResumeEditorProps {
    *  (`/resume/:id?application=:id`). Saving then writes the PDF to that
    *  application and returns to it, rather than downloading a snapshot. */
   applicationId?: string;
+  /** Present inside the review page: the editor fills its step rather than
+   *  the screen, has no back link or save action, and gains a footer. */
+  review?: ResumeReviewMode;
 }
 
 type SliceValue = string[] | Record<string, string[]>;
@@ -56,6 +112,9 @@ type LoadState =
       latestPdf: { filename: string; createdAt: string } | null;
       template: Template;
       library: Library;
+      /** The resume's own pending suggestions (D-054); review mode shows
+       *  the application's instead. */
+      suggestions: BulletSuggestion[];
     };
 
 /** Merges a single field change into a per-entity draft so a burst of edits
@@ -69,7 +128,7 @@ function useFieldDrafts() {
   }, []);
 }
 
-export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorProps) {
+export default function ResumeEditor({ resumeId, applicationId, review }: ResumeEditorProps) {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [tab, setTab] = useState<EditorTab>('content');
@@ -79,7 +138,13 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
   // fresh object literal every render, so `getController` in a
   // dependency array is unverifiable to the exhaustive-deps rule even though
   // `getController` itself is stable. The local binding is checkable.
-  const { getController, retryAll: retryAllSaves, status: saveStatus } = useAutosaveRegistry();
+  const {
+    getController,
+    retryAll: retryAllSaves,
+    flushAll: flushAllSaves,
+    flushAndSettle: settleSaves,
+    status: saveStatus,
+  } = useAutosaveRegistry();
 
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -92,26 +157,41 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
   const projectFieldDraft = useFieldDrafts();
   const skillRowFieldDraft = useFieldDrafts();
 
-  const loadResume = useCallback(async () => {
-    setState({ status: 'loading' });
-    try {
-      const detail = await getResumeDetail(resumeId);
-      selectionsRef.current = detail.selections;
-      dispatchSelections({ type: 'replace', selections: detail.selections });
-      setState({
-        status: 'ready',
-        resumeName: detail.resume.name,
-        latestPdf: detail.resume.latestPdf,
-        template: detail.template,
-        library: detail.library,
-      });
-    } catch (error) {
-      setState({
-        status: 'error',
-        message: error instanceof ApiError ? error.message : 'Could not load this resume.',
-      });
-    }
-  }, [resumeId]);
+  // Only the latest load may land. StrictMode runs the load effect twice
+  // under `next dev`, and Retry starts another; an older answer arriving last
+  // would `replace` the selections with ones read before an edit already
+  // saved since, re-ticking what the server has unticked.
+  const latestLoad = useRef(0);
+
+  /** `quiet` keeps the editor on screen while it re-reads, as after a
+   *  resolved suggestion changed the library or the selection. */
+  const loadResume = useCallback(
+    async (quiet = false) => {
+      const load = ++latestLoad.current;
+      if (!quiet) setState({ status: 'loading' });
+      try {
+        const detail = await getResumeDetail(resumeId);
+        if (load !== latestLoad.current) return;
+        selectionsRef.current = detail.selections;
+        dispatchSelections({ type: 'replace', selections: detail.selections });
+        setState({
+          status: 'ready',
+          resumeName: detail.resume.name,
+          latestPdf: detail.resume.latestPdf,
+          template: detail.template,
+          library: detail.library,
+          suggestions: detail.suggestions,
+        });
+      } catch (error) {
+        if (load !== latestLoad.current) return;
+        setState({
+          status: 'error',
+          message: error instanceof ApiError ? error.message : 'Could not load this resume.',
+        });
+      }
+    },
+    [resumeId],
+  );
 
   useEffect(() => {
     void loadResume();
@@ -121,6 +201,25 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
   // Selections (per-resume): every mutation goes through this one function
   // so `selectionsRef` and the reducer's own state can never drift apart.
   // ---------------------------------------------------------------------
+  const onSelectionsSaved = review?.onSelectionsSaved;
+  const proposedSelection = review?.proposedSelection ?? null;
+
+  /** One queue per slice, so a burst of edits to one slice coalesces and
+   *  edits to different slices never overwrite each other. */
+  const saveSlice = useCallback(
+    (slice: keyof Selections, value: SliceValue) => {
+      getController<SliceValue>(
+        `selections:${slice}`,
+        async (latest) => {
+          await updateSelections(resumeId, { [slice]: latest } as Partial<Selections>);
+          onSelectionsSaved?.();
+        },
+        0,
+      ).schedule(value);
+    },
+    [getController, resumeId, onSelectionsSaved],
+  );
+
   const dispatchAndSaveSelection = useCallback(
     (action: SelectionsAction) => {
       const next = selectionsReducer(selectionsRef.current, action);
@@ -128,19 +227,108 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
       dispatchSelections(action);
 
       const slice = affectedSlice(action);
-      if (!slice) return;
-      const controller = getController<SliceValue>(
-        `selections:${slice}`,
-        (value) =>
-          updateSelections(resumeId, { [slice]: value } as Partial<Selections>).then(
-            () => undefined,
-          ),
-        0,
-      );
-      controller.schedule(next[slice]);
+      if (slice) saveSlice(slice, next[slice]);
     },
-    [getController, resumeId],
+    [saveSlice],
   );
+
+  /** Back to what the agent proposed. All six slices go through their usual
+   *  queues, so a write already in flight for one cannot land after it. */
+  function resetToAgentPick(): void {
+    if (!proposedSelection) return;
+    selectionsRef.current = proposedSelection;
+    dispatchSelections({ type: 'replace', selections: proposedSelection });
+    for (const slice of SLICES) saveSlice(slice, proposedSelection[slice]);
+  }
+
+  const agentPicks = useMemo(() => agentPickIds(proposedSelection), [proposedSelection]);
+
+  // -- Bullet suggestions ---------------------------------------------------
+  // In review, the application's (D-045); anywhere else, the resume's own,
+  // made by the agent outside any application (D-054). Chris's edits to the
+  // proposed texts, and the ones he has resolved here, which drop out at once
+  // rather than when the application or the resume is re-read.
+  const [suggestionDrafts, setSuggestionDrafts] = useState<Record<string, string>>({});
+  const [resolvedHere, setResolvedHere] = useState<ReadonlySet<string>>(new Set());
+  const ownSuggestions = state.status === 'ready' ? state.suggestions : NO_SUGGESTIONS;
+  const shownSuggestions = review ? review.suggestions : ownSuggestions;
+  const pendingSuggestions = useMemo(
+    () => shownSuggestions.filter((s) => s.status === 'pending' && !resolvedHere.has(s.id)),
+    [shownSuggestions, resolvedHere],
+  );
+  const library = state.status === 'ready' ? state.library : null;
+  const filedSuggestions = useMemo(
+    () => ({
+      experiences: suggestionsByParent(
+        library?.experiences ?? [],
+        pendingSuggestions.filter((s) => s.bulletKind === 'experience'),
+      ),
+      projects: suggestionsByParent(
+        library?.projects ?? [],
+        pendingSuggestions.filter((s) => s.bulletKind === 'project'),
+      ),
+    }),
+    [library, pendingSuggestions],
+  );
+  const suggestionText = useCallback(
+    (s: BulletSuggestion) => suggestionDrafts[s.id] ?? s.proposedText,
+    [suggestionDrafts],
+  );
+
+  const onSuggestionsChanged = review?.onSuggestionsChanged;
+  const suggestionsLocked = review?.suggestionsLocked ?? null;
+  const suggestionHandlers: SuggestionHandlers = {
+    textOf: suggestionText,
+    onTextChange: (suggestion, text) => {
+      // An application out of review: the server refuses the edit, so
+      // nothing is scheduled; the card's field is read-only then too.
+      if (suggestionsLocked) return;
+      setSuggestionDrafts((prev) => ({ ...prev, [suggestion.id]: text }));
+      const normalized = normalizeSuggestionText(text);
+      // The card says what is wrong; a save the server must refuse
+      // would only turn the badge red.
+      if (suggestionTextProblem(normalized)) return;
+      getController<string>(
+        `suggestion:${suggestion.id}`,
+        (value) => updateBulletSuggestion(suggestion.id, value).then(() => undefined),
+        500,
+      ).schedule(normalized);
+    },
+    onResolve: async (suggestion: BulletSuggestion, action: BulletSuggestionAction) => {
+      // Every edit on screen lands first, this card's text and any
+      // bullet's included: one still in its debounce would land after
+      // the resolve and undo it, or resolve the agent's wording.
+      if ((await settleSaves()) === 'error') {
+        return "A change didn't save; retry it before resolving this.";
+      }
+      await resolveBulletSuggestion(suggestion.id, action);
+      setResolvedHere((prev) => new Set([...prev, suggestion.id]));
+      // Apply, Save as new and Add bullet changed the library or the
+      // selection; re-read both without the loading screen. That also
+      // re-reads the resume's own suggestions.
+      if (action !== 'reject') await loadResume(true);
+      onSuggestionsChanged?.();
+      return null;
+    },
+    locked: suggestionsLocked,
+    disabledReason:
+      suggestionsLocked ??
+      (saveStatus === 'saving'
+        ? 'Waiting for your changes to save'
+        : saveStatus === 'error'
+          ? "A change didn't save; retry it first"
+          : null),
+  };
+
+  const onSaveStatusChange = review?.onSaveStatusChange;
+  useEffect(() => {
+    onSaveStatusChange?.(saveStatus);
+  }, [saveStatus, onSaveStatusChange]);
+
+  const visible = review?.visible;
+  useEffect(() => {
+    if (visible === false) flushAllSaves();
+  }, [visible, flushAllSaves]);
 
   const contentCallbacks: ContentPaneCallbacks = {
     onToggleTop: (slice, id) => dispatchAndSaveSelection({ type: 'toggleTop', slice, id }),
@@ -568,22 +756,30 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
   }
 
   // -- Live preview ---------------------------------------------------------
-  // The pane re-renders whenever any of these three change; it never reads
-  // the key, only compares it. Selections and library are a change *signal*
-  // only — `POST /render` re-reads the resume's persisted state itself, and
-  // the one piece of client state it needs is the template draft, which
-  // rides along as `templateOverride` so unsaved LaTeX previews too.
+  // The pane re-renders whenever any of these change; it never reads the
+  // key, only compares it. Selections, library and the pending suggestions
+  // are a change *signal* only — `POST /render` re-reads the resume's
+  // persisted state, and the pending suggestions (in review the
+  // application's, elsewhere the resume's own), itself. The one piece of
+  // client state it needs is the template draft, which rides along as
+  // `templateOverride` so unsaved LaTeX previews too.
   const templateContent = state.status === 'ready' ? state.template.content : '';
   const previewKey = useMemo(
     () =>
       state.status === 'ready'
-        ? JSON.stringify([selections, state.library, templateContent])
+        ? JSON.stringify([
+            selections,
+            state.library,
+            templateContent,
+            pendingSuggestions.map((s) => [s.id, suggestionText(s)]),
+          ])
         : 'loading',
-    [state, selections, templateContent],
+    [state, selections, templateContent, pendingSuggestions, suggestionText],
   );
+  const suggestionsFor = review ? review.applicationId : 'resume';
   const renderPreview = useCallback(
-    () => renderResume(resumeId, templateContent),
-    [resumeId, templateContent],
+    () => renderResume(resumeId, templateContent, suggestionsFor),
+    [resumeId, templateContent, suggestionsFor],
   );
 
   // -- Resizable divider (cheap: raw mouse events, percentage split) --------
@@ -608,9 +804,12 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
     };
   }, []);
 
+  // In review the editor fills its step, under the page's own header.
+  const frame = review ? 'flex min-h-0 flex-1' : 'flex h-screen';
+
   if (state.status === 'loading') {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-ink-dim">
+      <div className={`${frame} items-center justify-center text-sm text-ink-dim`}>
         Loading resume…
       </div>
     );
@@ -618,7 +817,7 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
 
   if (state.status === 'error') {
     return (
-      <div className="flex h-screen items-center justify-center p-6">
+      <div className={`${frame} items-center justify-center p-6`}>
         <div className="max-w-sm rounded-lg border border-danger-line/50 bg-danger-surface/30 p-6 text-sm text-danger-ink">
           <p className="font-medium">Couldn&apos;t load this resume.</p>
           <p className="mt-1 text-danger/80">{state.message}</p>
@@ -634,8 +833,10 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
     );
   }
 
+  const atAgentPick = proposedSelection !== null && sameSelections(selections, proposedSelection);
+
   return (
-    <div className="flex h-screen flex-col bg-canvas">
+    <div className={`${frame} flex-col bg-canvas`}>
       <EditorHeader
         resumeName={state.resumeName}
         onResumeNameChange={onResumeNameChange}
@@ -647,6 +848,7 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
         downloading={downloading}
         downloadError={downloadError}
         applicationId={applicationId}
+        embedded={review !== undefined}
       />
 
       <div ref={containerRef} className="flex min-h-0 flex-1">
@@ -656,6 +858,9 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
               library={state.library}
               selections={selections}
               callbacks={contentCallbacks}
+              agentPicks={agentPicks}
+              suggestions={filedSuggestions}
+              suggestionHandlers={suggestionHandlers}
             />
           ) : (
             <TemplateTab
@@ -681,6 +886,31 @@ export default function ResumeEditor({ resumeId, applicationId }: ResumeEditorPr
           <PreviewPane renderKey={previewKey} render={renderPreview} />
         </div>
       </div>
+
+      {review ? (
+        // `pr-48` keeps the actions out from under the fixed "Give feedback"
+        // button (FeedbackWidget), which sits over this corner of every page.
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line bg-surface py-3 pr-48 pl-4">
+          <p className="text-xs text-ink-dim">
+            Same editor as /resume/:id. Ticking changes this application&apos;s resume; editing text
+            changes every resume.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {proposedSelection ? (
+              <button
+                type="button"
+                onClick={resetToAgentPick}
+                disabled={atAgentPick}
+                title="Puts back exactly what the agent proposed, order included"
+                className="rounded-md border border-line px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {atAgentPick ? "Already the agent's pick" : 'Reset to agent pick'}
+              </button>
+            ) : null}
+            {review.actions(saveStatus)}
+          </div>
+        </footer>
+      ) : null}
     </div>
   );
 }

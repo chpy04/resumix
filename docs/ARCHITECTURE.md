@@ -8,11 +8,11 @@ globally within that user's account, never shared between accounts. A
 **Resume** is a named selection + ordering of that content, bound to a **Template**
 (raw LaTeX with substitution tokens). An **Application** records one job
 applied to, and holds the live resume it was tailored from, the PDF snapshot
-it was sent with (D-032), and its own **Cover Letter** — a single column of
-raw LaTeX, stored per letter precisely because nothing about a cover letter
-is shared (D-035). Rendering substitutes selected content into
-the template and POSTs the resulting `.tex` to a sidecar TeX Live container, which
-returns a PDF. Saved PDFs are snapshotted into Postgres so the home page can always
+it was sent with (D-032), and its own **Cover Letter** — raw LaTeX, plus
+optional plain-text prose escaped into it, stored per letter precisely
+because nothing about a cover letter is shared (D-035, D-046). Rendering
+substitutes selected content into the template and POSTs the resulting `.tex`
+to a sidecar TeX Live container, which returns a PDF. Saved PDFs are snapshotted into Postgres so the home page can always
 hand back the exact bytes a resume was last saved with.
 
 ## Components
@@ -40,10 +40,10 @@ hand back the exact bytes a resume was last saved with.
 | Styling       | Tailwind CSS v4                                                                                                                                                       | fast, no design system needed                                          |
 | DB access     | Drizzle ORM + `postgres.js`, server-side only                                                                                                                         | typed SQL, plain SQL migrations, portable off Supabase                 |
 | DB (dev)      | `postgres:17` container in `docker-compose.yml`                                                                                                                       | matches spec's "separate postgres container"                           |
-| DB (prod)     | a second `postgres:17` container, its own volume and port, in `docker-compose.prod.yml`                                                                               | production is a separate local instance, not a cloud one (D-031)       |
+| DB (prod)     | a second `postgres:17` container, its own volume and port, in `prod/docker-compose.yml`                                                                               | production is its own instance on a VM, not the gate's DB (D-051)      |
 | LaTeX         | sidecar container: TeX Live + Express `/compile`                                                                                                                      | real `pdflatex`; V1 template compiles unchanged                        |
 | PDF storage   | `resume_pdf.bytes` (`bytea`) behind `lib/storage.ts` adapter                                                                                                          | one code path dev/prod; swap to Supabase Storage later                 |
-| Multi-tenancy | `user_id` on the seven root tables; children inherit through their parent; every query takes a `userId`                                                               | one source of truth per fact (D-018)                                   |
+| Multi-tenancy | `user_id` on the nine root tables; children inherit through their parent; every query takes a `userId`                                                                | one source of truth per fact (D-018)                                   |
 | Auth          | three modes behind one `requireUserId()`: `dev` (auto-login as the seeded user), `password` (shared password → HMAC token naming a user), `supabase` (OAuth, stubbed) | local dev needs no credentials; production keeps a real gate (D-019)   |
 | Drag + drop   | `@dnd-kit`                                                                                                                                                            | proven in V1                                                           |
 | PDF preview   | `react-pdf` (pdf.js)                                                                                                                                                  | proven in V1                                                           |
@@ -54,31 +54,41 @@ hand back the exact bytes a resume was last saved with.
 app/                     Next.js App Router
   page.tsx               home: the applications board (Pipeline | Applied)
   applications/[id]/     one application: fields, notes, files, its resume
+    review/              the review flow: resume, letter, questions, final approve
   resumes/page.tsx       the resume library: grid + fuzzy search
   cover-letters/         the cover letter library, same shape
-  cover-letter/[id]/     editor: one LaTeX textarea + live PDF
+  cover-letter/[id]/     editor: body|LaTeX tabs + live PDF
   resume/[id]/page.tsx   editor: content|template tabs + live PDF
                          ?application=<id> -> saves back to that application
   api/...                route handlers (see docs/API.md)
 lib/
-  applications/          status vocabulary, board grouping, attachment rules (pure)
+  applications/          status, board, review, question and suggestion rules, attachments (pure)
   db/schema.ts           Drizzle table definitions
   db/index.ts            connection singleton
   render/                template token substitution -> .tex  (pure, unit-tested)
                          + default-cover-letter.ts, which no token ever touches
+                         + escape.ts, cover-letter.ts: a letter's plain body -> its .tex
+                         + suggestions.ts: pending bullet suggestions laid over a preview
   latex.ts               client for the latex service
   storage.ts             PDF snapshot adapter
   auth.ts                password token mint/verify (Edge-safe)
   auth-mode.ts           which auth scheme is in force (Edge-safe)
   auth-supabase.ts       Supabase OAuth seam — NOT IMPLEMENTED, fails closed
-  session.ts             requireUserId(request) — the one entry point to "who is calling"
+  api-tokens.ts          rmx_ API token format + sha-256 hash (node:crypto, never Edge)
+  session.ts             requireUserId / requireMcpUserId — the two doors to "who is calling"
+  mcp/                   /api/mcp: JSON-RPC dispatcher + transport (pure), tools/ one module each
   queries/users.ts       user lookup + first-login provisioning
   filename.ts            Chris_Pyle_<Company>_{Resume,Cover_Letter}.pdf
 components/              React components
 drizzle/                 numbered .sql migrations
 scripts/seed.ts          seeds one user + the V1 resume content (the smoke test)
 services/latex/          Dockerfile + Express compile service
+prod/                    production, run with plain `docker compose` from here (D-053):
+                         the stack, its gitignored .env and backups/, and mint-token
 docs/                    this directory — read STATE.md first
+agent/                   workspace of the Claude that applies to jobs (D-038): its own
+                         CLAUDE.md, the only Resumix MCP config, career-ops as a pinned
+                         submodule. tsc, eslint, prettier and the build all skip it
 ```
 
 ## The smoke test
@@ -90,12 +100,18 @@ request
   │
   ├─ middleware.ts (Edge)      cheap, DB-free: rejects a request with no valid
   │                            token in password mode. Knows nothing about users.
+  │                            Lets /api/mcp/** straight through.
   │
   └─ route handler
-       └─ requireUserId(request)          lib/session.ts
-            ├─ dev      -> first row in `users`
-            ├─ password -> token's `sub` claim, confirmed to still exist
-            └─ supabase -> verified JWT -> users.supabase_user_id   (stubbed)
+       ├─ requireUserId(request)          lib/session.ts
+       │    ├─ dev      -> first row in `users`
+       │    ├─ password -> token's `sub` claim, confirmed to still exist
+       │    └─ supabase -> verified JWT -> users.supabase_user_id   (stubbed)
+       │
+       ├─ requireMcpUserId(request)       /api/mcp/** only, every mode
+       │    └─ Authorization: Bearer rmx_… -> sha-256 -> live api_token row
+       │                                    -> its user_id, else 401
+       │
        └─ every query takes that id and filters by it
 ```
 

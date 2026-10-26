@@ -5,7 +5,9 @@
  * Two routes need exactly this — "save this resume to the application" and
  * "mark it applied" — and the difference between them is only what they do to
  * the status afterwards, so the render/compile/store half lives here rather
- * than being written twice.
+ * than being written twice. Final approval and `submit_for_review` need the
+ * compile without the store, so the two halves are separate functions:
+ * approval compiles everything before it writes anything (D-044).
  *
  * A LaTeX compile failure is a normal outcome, not an exception: it comes
  * back as `ok: false` carrying the same `{ pages, errors, warnings, log }`
@@ -14,7 +16,8 @@
 import { buildResumeFilename } from './filename.ts';
 import { compileTex, latexUnavailableResult, LatexServiceError } from './latex.ts';
 import { renderResumeById } from './queries/render.ts';
-import { saveResumePdfSnapshot } from './storage.ts';
+import { saveResumePdfSnapshot, type NewPdfSnapshot } from './storage.ts';
+import type { BulletSuggestion } from './types.ts';
 
 export interface SnapshotFailure {
   ok: false;
@@ -26,11 +29,28 @@ export interface SnapshotFailure {
 
 export type SnapshotResult = { ok: true; resumePdfId: string } | SnapshotFailure;
 
-export async function snapshotResumeForApplication(
+/**
+ * A compiled resume, named and ready to store, with nothing stored yet. A
+ * failure says whether the sidecar was unreachable, which only a caller that
+ * words its own message needs; `snapshotResumeForApplication` drops it.
+ */
+export type CompiledResume =
+  | { ok: true; pages: number | null; snapshot: NewPdfSnapshot }
+  | (SnapshotFailure & { unavailable: boolean });
+
+/** `suggestions` are laid over the bullets for `submit_for_review`'s page
+ *  count, which must match Chris's preview (D-045). Final approval never
+ *  passes them, so what it pins is only what is stored. */
+export async function compileResumeForApplication(
   userId: string,
-  input: { resumeId: string; company: string },
-): Promise<SnapshotResult> {
-  const { tex, warnings } = await renderResumeById(userId, input.resumeId);
+  input: { resumeId: string; company: string; suggestions?: readonly BulletSuggestion[] },
+): Promise<CompiledResume> {
+  const { tex, warnings } = await renderResumeById(
+    userId,
+    input.resumeId,
+    undefined,
+    input.suggestions,
+  );
 
   let compiled;
   try {
@@ -39,7 +59,7 @@ export async function snapshotResumeForApplication(
     if (err instanceof LatexServiceError) {
       // `RenderResult.ok` is a plain boolean; this arm is always a failure.
       const unavailable = latexUnavailableResult(err, warnings);
-      return { ...unavailable, ok: false };
+      return { ...unavailable, ok: false, unavailable: true };
     }
     throw err;
   }
@@ -47,6 +67,7 @@ export async function snapshotResumeForApplication(
   if (!compiled.ok || !compiled.pdfBase64) {
     return {
       ok: false,
+      unavailable: false,
       pages: compiled.pages,
       errors: compiled.errors,
       warnings,
@@ -54,13 +75,30 @@ export async function snapshotResumeForApplication(
     };
   }
 
-  // Named for the company applied to, which is what this PDF is *for* — the
-  // resume it was rendered from may be called anything.
-  const snapshot = await saveResumePdfSnapshot(input.resumeId, {
-    filename: buildResumeFilename(input.company),
-    bytes: Buffer.from(compiled.pdfBase64, 'base64'),
-    tex,
-  });
+  return {
+    ok: true,
+    pages: compiled.pages,
+    snapshot: {
+      // Named for the company applied to, which is what this PDF is *for* —
+      // the resume it was rendered from may be called anything.
+      filename: buildResumeFilename(input.company),
+      bytes: Buffer.from(compiled.pdfBase64, 'base64'),
+      tex,
+    },
+  };
+}
 
+export async function snapshotResumeForApplication(
+  userId: string,
+  input: { resumeId: string; company: string },
+): Promise<SnapshotResult> {
+  const compiled = await compileResumeForApplication(userId, input);
+  if (!compiled.ok) {
+    // The routes return this as their body, which docs/API.md fixes.
+    const { unavailable: _, ...failure } = compiled;
+    return failure;
+  }
+
+  const snapshot = await saveResumePdfSnapshot(input.resumeId, compiled.snapshot);
   return { ok: true, resumePdfId: snapshot.id };
 }

@@ -53,6 +53,14 @@ These tests mutate the seeded content. Reseed before running `npm run smoke`.
 Not a unit test: the project's acceptance bar. See
 `.claude/rules/render-latex.md`.
 
+## `scripts/mcp-smoke.ts` — `npm run mcp:smoke`
+
+Drives `/api/mcp` over real HTTP, so it needs a running server: `npm run dev`
+by hand. The gate runs it from `e2e/mcp.spec.ts`, against Playwright's own
+server, rather than starting a second one. It mints its own token for the
+seeded user and revokes it when it ends, because `verify` reseeds and a token
+minted beforehand would be gone.
+
 ## Adding a test
 
 New behaviour needs a test at the cheapest tier that can prove it. Pure

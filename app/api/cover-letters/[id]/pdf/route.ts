@@ -1,6 +1,7 @@
-import { buildCoverLetterFilename, sanitizeForHeader } from '@/lib/filename';
+import { compileCoverLetterPdf } from '@/lib/cover-letter-pdf';
+import { sanitizeForHeader } from '@/lib/filename';
 import { errorResponse, type RouteContext, withApiErrors } from '@/lib/http';
-import { compileTex, LatexServiceError } from '@/lib/latex';
+import { LatexServiceError } from '@/lib/latex';
 import { getCoverLetterRow } from '@/lib/queries/cover-letters';
 import { NotFoundError } from '@/lib/queries/errors';
 import { requireUserId } from '@/lib/session';
@@ -30,23 +31,22 @@ export async function GET(request: Request, { params }: RouteContext): Promise<R
 
     let compiled;
     try {
-      compiled = await compileTex(row.content);
+      compiled = await compileCoverLetterPdf(row);
     } catch (err) {
       if (err instanceof LatexServiceError) return errorResponse(err.message, 502);
       throw err;
     }
 
-    if (!compiled.ok || !compiled.pdfBase64) {
+    if (!compiled.ok) {
       return errorResponse(compiled.errors[0] ?? `cover letter ${id} does not compile`, 400);
     }
 
-    const bytes = Buffer.from(compiled.pdfBase64, 'base64');
-    return new Response(new Uint8Array(bytes), {
+    return new Response(new Uint8Array(compiled.bytes), {
       status: 200,
       headers: {
         'content-type': 'application/pdf',
-        'content-disposition': `attachment; filename="${sanitizeForHeader(buildCoverLetterFilename(row.name))}"`,
-        'content-length': String(bytes.byteLength),
+        'content-disposition': `attachment; filename="${sanitizeForHeader(compiled.filename)}"`,
+        'content-length': String(compiled.bytes.byteLength),
       },
     });
   });

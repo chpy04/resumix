@@ -36,36 +36,63 @@ template later never retroactively changes an already-saved resume.
 
 A **cover letter** is the counter-example to all of that, and the asymmetry
 is the point (D-035). It has no reuse — one letter, one company — so it
-stores its whole LaTeX document in one column: no template, no selections, no
-tokens, and no PDF snapshot, because nothing but editing that letter can
-change it. Creating one copies the default verbatim; downloading one compiles
-the stored text on demand.
+stores its own text: its LaTeX in `content` and, when it has one, its prose
+in a plain-text `body`, escaped into the one `%%BODY%%` line of that LaTeX
+(D-046). No template, no selections, no tokens, and no PDF snapshot, because
+nothing but editing that letter can change it. Creating one copies the
+default verbatim; downloading one compiles the stored text on demand.
 
 Content is substituted **verbatim and unescaped**: bullets legitimately
 contain `\textbf{}`, `\href{}{}`, `\$` and `\&`, because the user is authoring
-LaTeX (D-008). Content is never deleted, only archived (D-011).
+LaTeX (D-008). The one thing escaped is a cover letter's `body`, which was
+never LaTeX (D-046). Content is never deleted, only archived (D-011).
 
 ## The pieces
 
 - **Web app** — Next.js 15 / React 19 / TypeScript / Tailwind v4, App Router.
   The home page is the applications board: a **Pipeline** tab holding the
-  statuses that still want something (draft, interviewing, offered) as a
-  drag-and-drop kanban, and an **Applied** tab holding everything that has
-  left it — applied or rejected — as a searchable table. Picking a card up
-  reveals two drop zones under the columns, `applied` and `rejected`, which
-  are the only way those statuses appear on the board (D-034). `/applications/[id]` is one application — fields, freeform notes,
-  attachments, the linked resume and the button that marks it applied.
+  statuses that still want something (draft, proposing, needs review, ready,
+  interviewing, offered) as a drag-and-drop kanban, and an **Applied** tab
+  holding everything that has left it — applied or rejected — as a
+  searchable table. Proposing, Needs review and Ready are the agent review
+  flow's columns: a card can be dragged out of them but never into them,
+  because only the flow sets those statuses, and Needs review is sorted by
+  the agent's fit score (D-041). Picking a card up reveals two drop zones
+  under the columns, `applied` and `rejected`, which are the only way those
+  statuses appear on the board (D-034). `/applications/[id]` is one
+  application — fields, freeform notes, attachments, the linked resume, the
+  button that marks it applied and, when the agent supplied them, its
+  summary and the job description, read-only.
+  `/applications/[id]/review` is where an application the agent submitted
+  is reviewed, and Needs review and Ready cards open it: a stepper over the
+  resume editor in review mode (the agent's picks badged, with Reset to
+  agent pick, and its bullet suggestions inline: an edit on its bullet in
+  yellow, an addition in green, both already in the preview, each applied
+  or rejected by Chris before the resume can be approved, D-045), the cover
+  letter's plain text beside its PDF when there is one, the form's questions
+  when the agent recorded any, and a final
+  Approve. Questions are approved one by one, profile answers in bulk; an
+  open-ended answer can be sent back to the agent for a redraft, and an EEO
+  question is answered only by Chris (D-047). An answer ticked "remember this
+  answer" is saved for the agent to reuse on later forms, where it arrives
+  already approved and shows as one green line (D-048). Each section and each question
+  is approved on its own, and editing it afterwards unapproves it and sends a
+  Ready application back to Needs review; library and template edits do not. Final approval pins the resume snapshot, stores
+  the letter's PDF as an attachment, makes the application Ready and copies
+  `/resumix-apply <id>` (D-044).
   `/resumes` is the resume library (fuzzy search, per-card download of the
   saved snapshot), `/cover-letters` is its counterpart for letters, and
-  `/cover-letter/[id]` is a two-pane LaTeX editor over the one `content`
-  column — the same textarea and the same live preview the resume editor
-  uses, with nothing on the left but the document. `/resume/[id]` is the
+  `/cover-letter/[id]` is a two-pane editor with the same live preview the
+  resume editor uses: a letter with a `%%BODY%%` line has Body (plain text)
+  and LaTeX tabs on the left, and one written entirely in LaTeX has only
+  the LaTeX textarea. `/resume/[id]` is the
   two-pane editor: content
   selection with `@dnd-kit` reordering and per-slice autosave on the left, a
   live PDF preview and a LaTeX template tab on the right.
   `/resume/[id]?application=<id>` is the same editor in **application mode**,
-  where back returns to the application and saving writes the PDF to it.
-- **Database** — Postgres, 18 tables, Drizzle for typed queries and
+  where back returns to the application and saving writes the PDF to it,
+  except on a Ready application, whose PDF is the one approved (D-044).
+- **Database** — Postgres, 23 tables, Drizzle for typed queries and
   hand-written SQL migrations in `drizzle/`. `scripts/migrate.ts` is
   idempotent. The client is lazy: `lib/db/index.ts` exports Proxies that open
   the pool on first query, because `next build` evaluates every route module
@@ -95,12 +122,33 @@ LaTeX (D-008). Content is never deleted, only archived (D-011).
   with a 503. A **Create a plan first** switch, off by default, adds the
   `plan-first` label, so the agent drafts its plan on the Excalidraw board
   and waits for approval instead of building straight to a PR (D-036).
+- **Agent endpoint** — `POST /api/mcp`, the Model Context Protocol over
+  streamable HTTP, hand-rolled and stateless: one JSON-RPC message per
+  request, no sessions, no SSE, no SDK (D-040). `lib/mcp/` is a pure
+  dispatcher plus a registry of zod-typed tools, one module each in
+  `lib/mcp/tools/`, listed in `docs/API.md`'s tool reference. A failing tool
+  answers with text telling the agent what to do next, never a protocol
+  error. It takes only an API token (below). `submit_for_review` moves an
+  application from Proposing to Needs review, and refuses while its resume
+  or its letter runs past one page. Ready applications are applied to from
+  `agent/` with `/resumix-apply`: the agent fetches the approved packet
+  (`get_apply_packet`), downloads the approved PDFs from `/api/mcp/files/…`
+  with the same token, fills the form in a visible browser and stops before
+  Submit. Chris submits; `mark_applied` then moves the application to
+  Applied, and a field nobody saw (`report_question`) sends it back to
+  Needs review (D-050). Outside any application, the agent changes one of
+  Chris's own resumes, Default unless he names another: `edit_resume_selection`
+  saves a selection at once, and `suggest_resume_bullet` leaves bullet text
+  as a suggestion on that resume, shown in its editor on the review page's
+  card and preview overlay, where he rewords, applies or rejects it (D-054).
+  A resume an application uses is refused. `npm run mcp:smoke` drives it
+  over real HTTP, and the gate runs that from the e2e suite.
 
 ## Users and isolation
 
-Every query is scoped to a user. `user_id` sits on the seven root tables
+Every query is scoped to a user. `user_id` sits on the nine root tables
 (`template`, `experience`, `project`, `technical_skill_row`, `resume`,
-`cover_letter`, `application`); every other table inherits its owner through a join to its
+`cover_letter`, `application`, `api_token`, `saved_answer`); every other table inherits its owner through a join to its
 parent (D-018). Every
 query function takes a `userId` and filters on it, and another user's id reads
 as "not found", never "forbidden". Isolation is enforced in the query layer,
@@ -120,6 +168,11 @@ Authentication is three modes behind one `requireUserId()`, selected by
 - **`supabase`** — a written seam that is **not implemented**.
   `lib/auth-supabase.ts` fails closed. Everything downstream of "who is this?"
   already works against a `users` row.
+
+`/api/mcp/**` is outside all three: it takes only an `rmx_` API token in
+`Authorization: Bearer`, in every mode including `dev`, minted and revoked
+from the command line (`npm run token:create`, `token:revoke`) and stored as
+a sha-256 hash (D-039).
 
 ## Verification
 
@@ -152,13 +205,13 @@ rule message names the file in `.claude/rules/` that explains it (D-017).
 
 These are properties of the system as it stands, not a to-do list.
 
-- **Production is a second local instance, not a cloud one.** It runs from
-  `~/.resumix/src` via `npm run deploy:prod` on ports 39000/39432/39080,
-  entirely separate from development (D-031, `docs/DEPLOYMENT.md`). The
-  Vercel + Fly.io + Supabase path is documented as an appendix and has never
-  been executed.
-- **No multi-machine story.** Production is reachable on loopback only, so
-  the app exists on exactly one laptop and is down whenever it is asleep.
+- **Production is one cloud VM, deployed by hand.** Plain `docker compose`
+  from `prod/` in a clone on the VM, entirely separate from development,
+  behind an HTTPS front end that is not part of this repo (D-051, D-053,
+  `docs/DEPLOYMENT.md`). `up` backs up, migrates and swaps in that order on
+  its own. The Vercel + Fly.io + Supabase path is documented as an appendix
+  and has never been executed.
+- **No redundancy.** One VM and one disk, with the backups on it.
 - **No multi-template UI.** The schema supports many templates per user; the
   editor assumes the resume's own.
 - **Nothing shows which user is signed in.** Invisible with one seeded user.
@@ -167,13 +220,15 @@ These are properties of the system as it stands, not a to-do list.
 
 ## Ports
 
-Two disjoint blocks, so the two instances can run at once and neither can be
-reached by accident from the other's tooling.
+Two disjoint blocks, so development and a production instance can run on one
+machine at once and neither can be reached by accident from the other's
+tooling. On the VM, production's block is all there is.
 
 |             | web             | postgres                                 | latex     |
 | ----------- | --------------- | ---------------------------------------- | --------- |
 | development | 3000 (e2e 3100) | **5433** — 5432 is usually already taken | 8080      |
 | production  | **39000**       | **39432**                                | **39080** |
 
-Production's block is deliberately odd and bound to `127.0.0.1`. Nothing in
-development points at it; nothing may (CLAUDE.md, "Production is not yours").
+Production's block is deliberately odd and bound to `127.0.0.1`; on the VM,
+only the HTTPS front end reaches 39000. Nothing in development points at
+production; nothing may (`docs/DEPLOYMENT.md`, "Agents do not deploy").

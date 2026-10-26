@@ -11,6 +11,17 @@ export interface User {
   name: string | null;
 }
 
+/** An API token's metadata (D-039). Deliberately has no field for the secret
+ *  or its hash: the secret exists only in `createApiToken`'s return value. */
+export interface ApiToken {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  /** Null while the token still works. */
+  revokedAt: string | null;
+}
+
 /** `GET /api/session` — who the browser is talking as, and how it got there. */
 export interface SessionInfo {
   user: User;
@@ -117,6 +128,10 @@ export interface ResumeDetail {
   template: Template;
   selections: Selections;
   library: Library;
+  /** The agent's pending bullet suggestions on this resume itself, outside
+   *  any application, oldest first (D-054). An application's own are read
+   *  with the application. */
+  suggestions: BulletSuggestion[];
 }
 
 export interface RenderResult {
@@ -152,8 +167,12 @@ export interface CoverLetterSummary {
 }
 
 export interface CoverLetter extends CoverLetterSummary {
-  /** The whole LaTeX document, raw and unescaped (D-008). */
+  /** The whole LaTeX document, raw and unescaped (D-008), or the shell
+   *  around its one `%%BODY%%` line. */
   content: string;
+  /** The letter's prose as plain text, escaped into the `%%BODY%%` line when
+   *  it renders; null for a letter written entirely in LaTeX (D-046). */
+  body: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +182,17 @@ export interface CoverLetter extends CoverLetterSummary {
 // and D-032 for why there is no company, event, task or contact type here.
 // ---------------------------------------------------------------------------
 
-export type ApplicationStatus = 'draft' | 'applied' | 'interviewing' | 'offered' | 'rejected';
+/** `proposing`, `needs_review` and `ready` are set only by the review flow
+ *  (D-041); the rest are the ones a person sets by hand. */
+export type ApplicationStatus =
+  | 'draft'
+  | 'proposing'
+  | 'needs_review'
+  | 'ready'
+  | 'applied'
+  | 'interviewing'
+  | 'offered'
+  | 'rejected';
 
 /** An attachment's metadata. The bytes are only ever streamed by
  *  `GET /api/application-files/:id`, never carried in a JSON payload. */
@@ -182,7 +211,8 @@ export interface ApplicationSummary {
   roleTitle: string;
   postingUrl: string;
   status: ApplicationStatus;
-  /** Null exactly while the application is still a draft. */
+  /** Null until the application first reaches `applied` or a later stage.
+   *  Never cleared, even if the status moves back. */
   appliedAt: string | null;
   /** The live resume this is being tailored from; null if none is linked. */
   resumeId: string | null;
@@ -193,16 +223,132 @@ export interface ApplicationSummary {
    *  the resume there is no frozen counterpart — the letter is a private
    *  copy nothing else can edit, so the link is the record (D-035). */
   coverLetterId: string | null;
+  /** The agent's 0.0–5.0 estimate of fit; null on anything logged by hand. */
+  fitScore: number | null;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-/** `GET /api/applications/:id` — the summary plus the two things the list
- *  view has no use for. */
+/**
+ * A change to the bullets the agent proposed for one application, which only
+ * Chris's click in review applies (D-045). The agent never writes to the
+ * library: an edit names a bullet and the text it would read, an addition
+ * names a parent and a slot.
+ */
+export interface BulletSuggestion {
+  id: string;
+  kind: 'edit' | 'add';
+  /** Which pair of tables `bulletId` and `parentId` point into. */
+  bulletKind: 'experience' | 'project';
+  /** The bullet an edit changes; null on an addition. */
+  bulletId: string | null;
+  /** The experience or project an addition goes under; null on an edit. */
+  parentId: string | null;
+  /** An addition's slot among the parent's bullets this resume shows: 0 is
+   *  first, and anything past the last is last. Null on an edit. */
+  position: number | null;
+  /** Plain text, one line. Escaped on its way into LaTeX, never stored as it. */
+  proposedText: string;
+  rationale: string;
+  /** `applied` (Apply to bullet, or Add bullet), `copied` (Save as new). */
+  status: 'pending' | 'applied' | 'copied' | 'rejected';
+  createdAt: string;
+}
+
+// Application questions (D-047): what an application's form asks, and the
+// answer Chris approves for each. The vocabularies and their rules are in
+// `lib/applications/questions.ts`.
+
+export type QuestionKind = 'text' | 'choice' | 'multi' | 'bool' | 'file' | 'letter';
+
+/** Who proposed the answer. `saved` is a saved answer Chris made earlier. */
+export type QuestionSource = 'profile' | 'agent' | 'saved';
+
+/** `instruction` is a choice described in words ("Boston if listed,
+ *  otherwise Remote"), for the applying agent to act on (R8). */
+export type AnswerMode = 'value' | 'instruction';
+
+/** Where the field is on the form, as discovery read it. */
+export interface FieldRef {
+  /** 0-based form page. */
+  page: number;
+  /** The field's visible label, trimmed, with its whitespace collapsed. */
+  label: string;
+  /** A selector hint for the applying agent; null when there was none. */
+  selector: string | null;
+}
+
+/** A multi question's value is the options picked; every other answer, an
+ *  instruction included, is one string. A file answer is an attachment id. */
+export type AnswerValue = string | string[];
+
+export interface ApplicationQuestion {
+  id: string;
+  prompt: string;
+  kind: QuestionKind;
+  /** The options a choice or multi question offers; null for every other kind. */
+  options: string[] | null;
+  fieldRef: FieldRef;
+  required: boolean;
+  /** An EEO or demographic question. Only Chris answers these (C10). */
+  isEeo: boolean;
+  /** Null when nothing was proposed. */
+  source: QuestionSource | null;
+  answerMode: AnswerMode;
+  proposedAnswer: AnswerValue | null;
+  /** What gets typed into the form. Null until there is one. */
+  answer: AnswerValue | null;
+  /** Set while Chris has asked the agent for a new draft. */
+  redraftNote: string | null;
+  /** The saved answer this one is remembered as (D-048): null when there is
+   *  none, or when the one it was linked to has since been archived. */
+  savedAnswerId: string | null;
+  /** Cleared by any change to the answer (C3). */
+  approvedAt: string | null;
+}
+
+/** What Chris does with a suggestion: `apply` (Apply to bullet, or Add
+ *  bullet on an addition), `copy` (Save as new) or `reject`. */
+export type BulletSuggestionAction = 'apply' | 'copy' | 'reject';
+
+/** An answer Chris ticked "remember" on, for the agent to reuse on a later
+ *  form (D-048). Never a file: attachments belong to one application. */
+export interface SavedAnswer {
+  id: string;
+  /** The question's wording when it was first saved. */
+  prompt: string;
+  kind: QuestionKind;
+  answerMode: AnswerMode;
+  answer: AnswerValue;
+}
+
+/** `GET /api/applications/:id` — the summary plus what the list view has no
+ *  use for. */
 export interface ApplicationDetail extends ApplicationSummary {
   notes: string;
+  /** The posting's text, as the agent captured it. Null when none was. */
+  jobDescription: string | null;
+  /** The agent's evaluation, as plain text with line breaks. */
+  agentSummary: string | null;
+  /** The agent's original pick (C7): the review's "agent pick" badges and
+   *  "Reset to agent pick". Null when the agent never proposed one. */
+  proposedSelection: Selections | null;
+  /** Set when Chris approves that section in review; cleared when it changes
+   *  afterwards (C3, C11). */
+  resumeApprovedAt: string | null;
+  coverLetterApprovedAt: string | null;
+  /** Set by the final approval that makes it `ready`; cleared with it. */
+  approvedAt: string | null;
+  /** What final approval names the two PDFs, as the server's prefix makes
+   *  them; null for a document that is not linked. */
+  pdfFilenames: { resume: string | null; coverLetter: string | null };
   files: ApplicationFile[];
+  /** Every suggestion the agent made for this application, resolved ones
+   *  included, oldest first. */
+  bulletSuggestions: BulletSuggestion[];
+  /** The form's questions, in the order they were added (D-047). */
+  questions: ApplicationQuestion[];
 }
 
 /** What both `POST /api/applications/:id/pdf` (save the resume to the

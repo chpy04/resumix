@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "resumix": {
+      "type": "http",
+      "url": "${RESUMIX_MCP_URL}",
+      "headers": { "Authorization": "Bearer ${RESUMIX_MCP_TOKEN}" }
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@0.0.83", "--user-data-dir", "./.browser-profile"]
+    }
+  }
+}

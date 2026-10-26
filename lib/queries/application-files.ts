@@ -14,6 +14,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { application, applicationFile } from '../db/schema.ts';
 import type { ApplicationFile } from '../types.ts';
+import { lockApplication, unapproveFileAnswers } from './application-questions.ts';
 import { NotFoundError } from './errors.ts';
 
 /** Columns that are safe to select for metadata: everything but the bytes. */
@@ -46,14 +47,16 @@ function toWire(row: MetaRow): ApplicationFile {
   };
 }
 
-async function assertOwnedFile(userId: string, fileId: string): Promise<void> {
+/** The file's application, once it is known to be the caller's. */
+async function assertOwnedFile(userId: string, fileId: string): Promise<string> {
   const [row] = await db
-    .select({ id: applicationFile.id })
+    .select({ applicationId: applicationFile.applicationId })
     .from(applicationFile)
     .innerJoin(application, eq(applicationFile.applicationId, application.id))
     .where(and(eq(applicationFile.id, fileId), eq(application.userId, userId)))
     .limit(1);
   if (!row) throw new NotFoundError(`application file ${fileId} not found`);
+  return row.applicationId;
 }
 
 export async function listApplicationFiles(
@@ -96,13 +99,16 @@ export async function addApplicationFile(
   return toWire(row);
 }
 
-/** The only path that reads the bytes back out. */
+/** The only path that reads the bytes back out. `applicationId` is for the
+ *  agent's files route, which serves a file only from a Ready application's
+ *  packet (D-050). */
 export async function getApplicationFileBlob(
   userId: string,
   fileId: string,
-): Promise<{ filename: string; contentType: string; bytes: Buffer } | null> {
+): Promise<{ applicationId: string; filename: string; contentType: string; bytes: Buffer } | null> {
   const [row] = await db
     .select({
+      applicationId: applicationFile.applicationId,
       filename: applicationFile.filename,
       contentType: applicationFile.contentType,
       bytes: applicationFile.bytes,
@@ -114,19 +120,29 @@ export async function getApplicationFileBlob(
   return row ?? null;
 }
 
-/** Archive, never delete (D-011) — an attachment is hidden, not destroyed. */
+/**
+ * Archive, never delete (D-011) — an attachment is hidden, not destroyed.
+ *
+ * Archiving one that answers a question unapproves that question, since
+ * apply can no longer upload it (D-047). Under the application's lock, like
+ * every answer write.
+ */
 export async function updateApplicationFile(
   userId: string,
   fileId: string,
   patch: { isArchived: boolean },
 ): Promise<ApplicationFile> {
-  await assertOwnedFile(userId, fileId);
+  const applicationId = await assertOwnedFile(userId, fileId);
 
-  const [row] = await db
-    .update(applicationFile)
-    .set(patch)
-    .where(eq(applicationFile.id, fileId))
-    .returning(metaColumns);
-  if (!row) throw new NotFoundError(`application file ${fileId} not found`);
-  return toWire(row);
+  return db.transaction(async (tx) => {
+    await lockApplication(tx, userId, applicationId);
+    const [row] = await tx
+      .update(applicationFile)
+      .set(patch)
+      .where(eq(applicationFile.id, fileId))
+      .returning(metaColumns);
+    if (!row) throw new NotFoundError(`application file ${fileId} not found`);
+    if (patch.isArchived) await unapproveFileAnswers(tx, userId, applicationId, fileId);
+    return toWire(row);
+  });
 }

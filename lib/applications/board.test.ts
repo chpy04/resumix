@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { closedApplications, groupByStatus, sortByRecency, statusForDrop } from './board.ts';
+import {
+  acceptsDrop,
+  applicationHref,
+  closedApplications,
+  groupByStatus,
+  sortByFit,
+  sortByRecency,
+  statusForDrop,
+} from './board.ts';
+import { APPLICATION_STATUSES, FLOW_STATUSES } from './status.ts';
 import type { ApplicationStatus, ApplicationSummary } from '../types.ts';
 
 function application(
@@ -18,6 +27,7 @@ function application(
     resumeId: null,
     sentPdf: null,
     coverLetterId: null,
+    fitScore: null,
     isArchived: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -25,11 +35,53 @@ function application(
   };
 }
 
-test('the board columns are the statuses that still want something', () => {
+test('the board columns are the statuses that still want something, in pipeline order', () => {
   const columns = groupByStatus([application('a', 'offered')]);
   assert.deepEqual(
     columns.map((column) => column.status),
-    ['draft', 'interviewing', 'offered'],
+    ['draft', 'proposing', 'needs_review', 'ready', 'interviewing', 'offered'],
+  );
+});
+
+test('Needs review is sorted by fit, best first, with unscored cards last', () => {
+  const columns = groupByStatus([
+    application('unscored', 'needs_review', { createdAt: '2026-09-01T00:00:00.000Z' }),
+    application('ok', 'needs_review', { fitScore: 3.9 }),
+    application('best', 'needs_review', { fitScore: 4.3 }),
+  ]);
+  const needsReview = columns.find((column) => column.status === 'needs_review');
+  assert.deepEqual(
+    needsReview?.applications.map((a) => a.id),
+    ['best', 'ok', 'unscored'],
+  );
+});
+
+test('sortByFit breaks a tie on recency, then on id (D-030)', () => {
+  const sorted = sortByFit([
+    application('older', 'needs_review', {
+      fitScore: 4,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }),
+    application('a', 'needs_review', { fitScore: 4, createdAt: '2026-05-01T00:00:00.000Z' }),
+    application('b', 'needs_review', { fitScore: 4, createdAt: '2026-05-01T00:00:00.000Z' }),
+    application('none-old', 'needs_review', { createdAt: '2026-01-01T00:00:00.000Z' }),
+    application('none-new', 'needs_review', { createdAt: '2026-06-01T00:00:00.000Z' }),
+  ]);
+  assert.deepEqual(
+    sorted.map((a) => a.id),
+    ['b', 'a', 'older', 'none-new', 'none-old'],
+  );
+});
+
+test('the other columns ignore fit and stay sorted by recency', () => {
+  const columns = groupByStatus([
+    application('old-good', 'ready', { fitScore: 5, createdAt: '2026-01-01T00:00:00.000Z' }),
+    application('new-poor', 'ready', { fitScore: 1, createdAt: '2026-05-01T00:00:00.000Z' }),
+  ]);
+  const ready = columns.find((column) => column.status === 'ready');
+  assert.deepEqual(
+    ready?.applications.map((a) => a.id),
+    ['new-poor', 'old-good'],
   );
 });
 
@@ -68,6 +120,39 @@ test('statusForDrop ignores a drop back where the card started', () => {
 test('statusForDrop ignores anything that is not a status', () => {
   assert.equal(statusForDrop('draft', 'board'), null);
   assert.equal(statusForDrop('draft', ''), null);
+});
+
+test('statusForDrop never moves a card into a flow column, from anywhere', () => {
+  // Only the review flow sets these (C3); a drop on one changes nothing.
+  for (const from of APPLICATION_STATUSES) {
+    for (const target of FLOW_STATUSES) {
+      assert.equal(statusForDrop(from, target), null, `${from} -> ${target}`);
+    }
+  }
+});
+
+test('statusForDrop lets a card leave a flow column for a manual one', () => {
+  assert.equal(statusForDrop('ready', 'applied'), 'applied');
+  assert.equal(statusForDrop('ready', 'rejected'), 'rejected');
+  assert.equal(statusForDrop('needs_review', 'rejected'), 'rejected');
+  assert.equal(statusForDrop('proposing', 'draft'), 'draft');
+});
+
+test('acceptsDrop is false for exactly the flow columns', () => {
+  assert.deepEqual(
+    APPLICATION_STATUSES.filter((status) => !acceptsDrop(status)),
+    ['proposing', 'needs_review', 'ready'],
+  );
+});
+
+test('Needs review and Ready cards open the review page; the rest open the application', () => {
+  for (const status of APPLICATION_STATUSES) {
+    const expected =
+      status === 'needs_review' || status === 'ready'
+        ? `/applications/a1/review`
+        : `/applications/a1`;
+    assert.equal(applicationHref(application('a1', status)), expected, status);
+  }
 });
 
 test('groupByStatus keeps empty columns — an empty Interviewing is information', () => {

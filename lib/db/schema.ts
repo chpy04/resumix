@@ -6,9 +6,12 @@
 import { eq, isNotNull, relations, sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   customType,
   index,
   integer,
+  jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -18,6 +21,7 @@ import {
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import type { FieldRef, Selections } from '../types.ts';
 
 /** Every row gets these; maintained by the shared `set_updated_at()` trigger. */
 const timestamps = {
@@ -317,7 +321,8 @@ export const resumePdf = pgTable(
 // ---------------------------------------------------------------------------
 // Cover letters
 //
-// The document *is* the row: `content` holds the whole LaTeX file, verbatim.
+// The document *is* the row: `content` holds the whole LaTeX file, verbatim,
+// and `body`, when set, the prose that goes at its `%%BODY%%` line (D-046).
 // There is no template, no bridge table and no PDF snapshot, because a cover
 // letter has none of the sharing a resume has — it is written for one company
 // and nothing else can edit it (D-035).
@@ -328,8 +333,12 @@ export const coverLetter = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
-    /** A complete LaTeX document, raw and unescaped (D-008). */
+    /** A complete LaTeX document, raw and unescaped (D-008): the whole
+     *  letter, or the shell around its one `%%BODY%%` line. */
     content: text('content').notNull(),
+    /** The letter's prose, plain text, escaped into the `%%BODY%%` line when
+     *  it renders. Null for a letter written entirely in LaTeX (D-046). */
+    body: text('body'),
     isDefault: boolean('is_default').notNull().default(false),
     isArchived: boolean('is_archived').notNull().default(false),
     ...owner,
@@ -342,6 +351,33 @@ export const coverLetter = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// API tokens
+//
+// The credential `/api/mcp/**` accepts, in every auth mode (D-039). An eighth
+// root table. Only the hash is stored, and a token is revoked rather than
+// deleted, so the row outlives the secret as a record of who had access.
+// ---------------------------------------------------------------------------
+
+export const apiToken = pgTable(
+  'api_token',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    label: text('label').notNull(),
+    /** Hex sha-256 of the `rmx_…` secret (`lib/api-tokens.ts`). */
+    tokenHash: text('token_hash').notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    /** Set once and never cleared. */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('ux_api_token_token_hash').on(t.tokenHash),
+    index('ix_api_token_user_id').on(t.userId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Applications
 //
 // One row per application, plus its attachments — no company table, no event
@@ -350,8 +386,13 @@ export const coverLetter = pgTable(
 // every other non-root table (D-018).
 // ---------------------------------------------------------------------------
 
+/** Enum order is the order an application moves through. The three flow
+ *  statuses are set only by the review flow, never by hand (D-041). */
 export const applicationStatus = pgEnum('application_status', [
   'draft',
+  'proposing',
+  'needs_review',
+  'ready',
   'applied',
   'interviewing',
   'offered',
@@ -367,7 +408,8 @@ export const application = pgTable(
     postingUrl: text('posting_url').notNull().default(''),
     notes: text('notes').notNull().default(''),
     status: applicationStatus('status').notNull().default('draft'),
-    /** Null exactly while the application is still a draft. */
+    /** Null until the application first reaches `applied` or a later stage;
+     *  never stamped by a flow status, never cleared (D-041). */
     appliedAt: timestamp('applied_at', { withTimezone: true }),
     /** The live resume being tailored — keeps changing after it is sent. */
     resumeId: uuid('resume_id').references(() => resume.id, { onDelete: 'set null' }),
@@ -378,6 +420,25 @@ export const application = pgTable(
     coverLetterId: uuid('cover_letter_id').references(() => coverLetter.id, {
       onDelete: 'set null',
     }),
+    /** The letter's PDF final approval stored, as `resumePdfId` pins the
+     *  resume's; written by final approval and nothing else (D-050). */
+    coverLetterPdfId: uuid('cover_letter_pdf_id').references(
+      (): AnyPgColumn => applicationFile.id,
+      { onDelete: 'restrict' },
+    ),
+    // What the agent supplies. Null, not '', when it never supplied one.
+    jobDescription: text('job_description'),
+    /** The agent's evaluation of the posting, as plain text. */
+    agentSummary: text('agent_summary'),
+    /** 0.0–5.0, one decimal place (C13). `mode: 'number'` is the one place
+     *  postgres.js's numeric string becomes a number. */
+    fitScore: numeric('fit_score', { precision: 2, scale: 1, mode: 'number' }),
+    /** The agent's original pick, so the review can reset to it (C7). */
+    proposedSelection: jsonb('proposed_selection').$type<Selections>(),
+    // Approval stamps, null until a human approves that part (C11).
+    resumeApprovedAt: timestamp('resume_approved_at', { withTimezone: true }),
+    coverLetterApprovedAt: timestamp('cover_letter_approved_at', { withTimezone: true }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
     isArchived: boolean('is_archived').notNull().default(false),
     ...owner,
     ...timestamps,
@@ -387,6 +448,8 @@ export const application = pgTable(
     index('ix_application_resume_id').on(t.resumeId),
     index('ix_application_resume_pdf_id').on(t.resumePdfId),
     index('ix_application_cover_letter_id').on(t.coverLetterId),
+    index('ix_application_cover_letter_pdf_id').on(t.coverLetterPdfId),
+    check('ck_application_fit_score', sql`${t.fitScore} between 0 and 5`),
   ],
 );
 
@@ -405,6 +468,203 @@ export const applicationFile = pgTable(
     ...timestamps,
   },
   (t) => [index('ix_application_file_application_id').on(t.applicationId, t.createdAt.desc())],
+);
+
+// ---------------------------------------------------------------------------
+// Application questions (D-047)
+//
+// What an application's form asks, and the answer Chris approves for each.
+// Owned through `application_id`, like `application_file`. The CHECKs are
+// the rules a write must never get past, C10's among them; the answer
+// encoding they rely on is in `lib/applications/questions.ts`.
+// ---------------------------------------------------------------------------
+
+export const applicationQuestionKind = pgEnum('application_question_kind', [
+  'text',
+  'choice',
+  'multi',
+  'bool',
+  'file',
+  'letter',
+]);
+
+export const applicationQuestionSource = pgEnum('application_question_source', [
+  'profile',
+  'agent',
+  'saved',
+]);
+
+/** Not prefixed with the table: saved answers reuse it. */
+export const answerMode = pgEnum('answer_mode', ['value', 'instruction']);
+
+export const applicationQuestion = pgTable(
+  'application_question',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    applicationId: uuid('application_id')
+      .notNull()
+      .references(() => application.id, { onDelete: 'cascade' }),
+    /** Dense, in the order the questions were added. */
+    sortOrder: integer('sort_order').notNull(),
+    prompt: text('prompt').notNull(),
+    kind: applicationQuestionKind('kind').notNull(),
+    /** Choice and multi only. */
+    options: jsonb('options').$type<string[]>(),
+    fieldRef: jsonb('field_ref').$type<FieldRef>().notNull(),
+    required: boolean('required').notNull(),
+    isEeo: boolean('is_eeo').notNull().default(false),
+    /** Who proposed the answer; null when nothing was. */
+    source: applicationQuestionSource('source'),
+    answerMode: answerMode('answer_mode').notNull().default('value'),
+    proposedAnswer: text('proposed_answer'),
+    answer: text('answer'),
+    /** Non-null while Chris has asked the agent for a new draft. */
+    redraftNote: text('redraft_note'),
+    /** The saved answer this one was filled from or is remembered as. The
+     *  question holds its own copy of the answer, so `set null` loses
+     *  nothing. */
+    savedAnswerId: uuid('saved_answer_id').references((): AnyPgColumn => savedAnswer.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index('ix_application_question_saved_answer_id').on(t.savedAnswerId),
+    uniqueIndex('ux_application_question_field').on(
+      t.applicationId,
+      sql`(${t.fieldRef} ->> 'page')`,
+      sql`lower(regexp_replace(btrim(${t.fieldRef} ->> 'label'), '\s+', ' ', 'g'))`,
+    ),
+    check(
+      'ck_application_question_options',
+      sql`(${t.options} is not null) = (${t.kind} in ('choice', 'multi'))`,
+    ),
+    check(
+      'ck_application_question_instruction',
+      sql`${t.answerMode} = 'value' or ${t.kind} in ('choice', 'multi')`,
+    ),
+    check(
+      'ck_application_question_proposal',
+      sql`(${t.source} is null) = (${t.proposedAnswer} is null)`,
+    ),
+    check(
+      'ck_application_question_eeo',
+      sql`not ${t.isEeo} or ${t.source} is null or ${t.source} = 'saved'`,
+    ),
+    check(
+      'ck_application_question_approved_answer',
+      sql`${t.approvedAt} is null or ${t.answer} is not null`,
+    ),
+    check(
+      'ck_application_question_redraft',
+      sql`${t.redraftNote} is null or ${t.approvedAt} is null`,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Saved answers (D-048)
+//
+// Chris's answers to the questions forms keep asking, for the agent to link
+// to the next form that asks. A ninth root table. Archived, never deleted;
+// `kind` is stored so an answer's encoding can be read, `options` is not,
+// because the question it is linked to supplies them.
+// ---------------------------------------------------------------------------
+
+export const savedAnswer = pgTable(
+  'saved_answer',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The question's wording when it was first saved. */
+    prompt: text('prompt').notNull(),
+    kind: applicationQuestionKind('kind').notNull(),
+    answerMode: answerMode('answer_mode').notNull().default('value'),
+    /** Encoded as an `application_question` answer of the same kind. */
+    answer: text('answer').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...owner,
+    ...timestamps,
+  },
+  (t) => [
+    index('ix_saved_answer_user_id').on(t.userId),
+    check('ck_saved_answer_kind', sql`${t.kind} <> 'file'`),
+    check(
+      'ck_saved_answer_mode',
+      sql`${t.answerMode} = 'value' or ${t.kind} in ('choice', 'multi')`,
+    ),
+    check('ck_saved_answer_answer', sql`btrim(${t.answer}) <> ''`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Bullet suggestions
+//
+// What the agent would change about the bullets, held beside an application
+// until Chris applies or rejects it in review, or beside one of his resumes
+// until he does so in its editor; the agent never writes to the library
+// itself (D-045, D-054). Owned through exactly one of `application_id` and
+// `resume_id`. `bulletId` and `parentId` point into one of two tables each,
+// by `bulletKind`, so neither has a foreign key.
+// ---------------------------------------------------------------------------
+
+export const bulletSuggestionKind = pgEnum('bullet_suggestion_kind', ['edit', 'add']);
+export const bulletKind = pgEnum('bullet_kind', ['experience', 'project']);
+export const bulletSuggestionStatus = pgEnum('bullet_suggestion_status', [
+  'pending',
+  'applied',
+  'copied',
+  'rejected',
+]);
+
+export const bulletSuggestion = pgTable(
+  'bullet_suggestion',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The application it was made for, in the pipeline (D-045)... */
+    applicationId: uuid('application_id').references(() => application.id, {
+      onDelete: 'cascade',
+    }),
+    /** ...or the resume, outside any application (D-054). Exactly one. */
+    resumeId: uuid('resume_id').references(() => resume.id, { onDelete: 'cascade' }),
+    kind: bulletSuggestionKind('kind').notNull(),
+    bulletKind: bulletKind('bullet_kind').notNull(),
+    /** An edit's bullet: an `experience_bullet` or `project_bullet`. */
+    bulletId: uuid('bullet_id'),
+    /** An addition's parent: an `experience` or `project`. */
+    parentId: uuid('parent_id'),
+    /** An addition's slot among the parent's bullets this resume shows. */
+    position: integer('position'),
+    /** Plain text, one line; escaped only on its way into LaTeX. */
+    proposedText: text('proposed_text').notNull(),
+    rationale: text('rationale').notNull(),
+    status: bulletSuggestionStatus('status').notNull().default('pending'),
+    ...timestamps,
+  },
+  (t) => [
+    index('ix_bullet_suggestion_application_id').on(t.applicationId, t.createdAt),
+    uniqueIndex('ux_bullet_suggestion_pending_edit')
+      .on(t.applicationId, t.bulletId)
+      .where(sql`${t.status} = 'pending'`),
+    index('ix_bullet_suggestion_resume_id')
+      .on(t.resumeId, t.createdAt)
+      .where(sql`${t.resumeId} is not null`),
+    uniqueIndex('ux_bullet_suggestion_pending_resume_edit')
+      .on(t.resumeId, t.bulletId)
+      .where(sql`${t.status} = 'pending' and ${t.resumeId} is not null`),
+    check(
+      'ck_bullet_suggestion_owner',
+      sql`(${t.applicationId} is null) <> (${t.resumeId} is null)`,
+    ),
+    check(
+      'ck_bullet_suggestion_target',
+      sql`(${t.kind} = 'edit' and ${t.bulletId} is not null and ${t.parentId} is null and ${t.position} is null) or (${t.kind} = 'add' and ${t.bulletId} is null and ${t.parentId} is not null and ${t.position} is not null and ${t.position} >= 0)`,
+    ),
+    check(
+      'ck_bullet_suggestion_text',
+      sql`btrim(${t.proposedText}) <> '' and btrim(${t.rationale}) <> ''`,
+    ),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -471,11 +731,27 @@ export const applicationRelations = relations(application, ({ one, many }) => ({
     references: [coverLetter.id],
   }),
   files: many(applicationFile),
+  bulletSuggestions: many(bulletSuggestion),
+  questions: many(applicationQuestion),
 }));
 
 export const applicationFileRelations = relations(applicationFile, ({ one }) => ({
   application: one(application, {
     fields: [applicationFile.applicationId],
+    references: [application.id],
+  }),
+}));
+
+export const applicationQuestionRelations = relations(applicationQuestion, ({ one }) => ({
+  application: one(application, {
+    fields: [applicationQuestion.applicationId],
+    references: [application.id],
+  }),
+}));
+
+export const bulletSuggestionRelations = relations(bulletSuggestion, ({ one }) => ({
+  application: one(application, {
+    fields: [bulletSuggestion.applicationId],
     references: [application.id],
   }),
 }));

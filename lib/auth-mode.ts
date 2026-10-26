@@ -16,6 +16,8 @@
  * Defaults to `dev` outside production and `password` in production, so
  * deploying can never silently disable the login screen. Override with
  * `RESUMIX_AUTH_MODE`.
+ *
+ * `/api/mcp/**` is outside all three: see `isMcpPath`.
  */
 
 export type AuthMode = 'dev' | 'password' | 'supabase';
@@ -39,4 +41,17 @@ export function getAuthMode(): AuthMode {
  *  unless `RESUMIX_AUTH_MODE=dev` was set there deliberately. */
 export function isDevAuth(): boolean {
   return getAuthMode() === 'dev';
+}
+
+/**
+ * True for `/api/mcp` and everything under it, the one surface where the mode
+ * above does not decide the scheme. Those routes take an `rmx_` API token in
+ * every mode, dev included (D-039), and checking one needs the database, so
+ * middleware lets them through and the handler's `requireMcpUserId` does it.
+ *
+ * Not a bare prefix test: `/api/mcpx` is some other route and gets the
+ * ordinary check.
+ */
+export function isMcpPath(pathname: string): boolean {
+  return pathname === '/api/mcp' || pathname.startsWith('/api/mcp/');
 }

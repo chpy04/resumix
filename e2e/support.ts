@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, type Download, type Page } from '@playwright/test';
+import postgres from 'postgres';
 // pdfjs-dist ships pure-JS text extraction that needs no canvas/DOM, so it
 // works fine directly under Node inside a Playwright test (not the browser
 // context). This is how "does the PDF actually contain X" is asserted —
@@ -66,6 +67,10 @@ export async function waitForSaved(page: Page): Promise<void> {
 // seeded content's stable names) and for verifying server-side truth
 // (rendered PDF bytes) that would otherwise require screenshot diffing.
 // Every mutation a test cares about proving still goes through the real UI.
+// `setApplicationPipelineState`, `insertApplicationQuestions` and
+// `insertSavedAnswer` are the helpers that write to the database instead,
+// for setup no HTTP path allows; `getSavedAnswerRow` reads it, for what the
+// API never shows.
 // ---------------------------------------------------------------------------
 
 /** The stored token, or null in `dev` auth mode where there isn't one. */
@@ -131,6 +136,8 @@ export interface ResumeDetailLike {
     }[];
     skillRows: { id: string; name: string; skills: { id: string; name: string }[] }[];
   };
+  /** The resume's own pending suggestions (D-054). */
+  suggestions: { id: string; status: string; proposedText: string }[];
 }
 
 export function getResumeDetail(page: Page, resumeId: string): Promise<ResumeDetailLike> {
@@ -187,6 +194,339 @@ export async function createApplicationViaApi(
   return created.id;
 }
 
+/** `GET /api/applications/:id`, for asserting what the server holds. */
+export interface ApplicationDetailLike {
+  id: string;
+  status: string;
+  resumeId: string | null;
+  coverLetterId: string | null;
+  sentPdf: { filename: string } | null;
+  proposedSelection: ResumeDetailLike['selections'] | null;
+  resumeApprovedAt: string | null;
+  coverLetterApprovedAt: string | null;
+  approvedAt: string | null;
+  files: { filename: string; contentType: string; isArchived: boolean }[];
+  questions: {
+    id: string;
+    answerMode: string;
+    answer: string | string[] | null;
+    redraftNote: string | null;
+    savedAnswerId: string | null;
+    approvedAt: string | null;
+  }[];
+  bulletSuggestions: { id: string; status: string; proposedText: string }[];
+}
+
+export function getApplicationDetail(
+  page: Page,
+  applicationId: string,
+): Promise<ApplicationDetailLike> {
+  return apiRequest<ApplicationDetailLike>(page, `/api/applications/${applicationId}`);
+}
+
+/** "Add a cover letter" through the real API: copies the default letter and
+ *  links it. Returns the new letter's id. */
+export async function addCoverLetterViaApi(page: Page, applicationId: string): Promise<string> {
+  const updated = await apiRequest<{ coverLetterId: string | null }>(
+    page,
+    `/api/applications/${applicationId}/cover-letter`,
+    { method: 'POST' },
+  );
+  if (!updated.coverLetterId) throw new Error(`no cover letter was linked to ${applicationId}`);
+  return updated.coverLetterId;
+}
+
+/**
+ * Puts an application into one of the review flow's statuses, with the
+ * agent's fields beside it, by writing the row directly.
+ *
+ * The one setup step that cannot go through HTTP: the API refuses flow
+ * statuses on purpose (D-041), and those fields arrive only from the agent.
+ * Same database `playwright.config.ts` hands the dev server. Fields left out
+ * are left as they are.
+ */
+export async function setApplicationPipelineState(
+  applicationId: string,
+  state: {
+    status: 'proposing' | 'needs_review' | 'ready';
+    fitScore?: number;
+    jobDescription?: string;
+    agentSummary?: string;
+    /** The agent's pick (C7), which the review page badges and resets to. */
+    proposedSelection?: ResumeDetailLike['selections'];
+  },
+): Promise<void> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  const columns: Record<string, string | number> = { status: state.status };
+  if (state.fitScore !== undefined) columns.fit_score = state.fitScore;
+  if (state.jobDescription !== undefined) columns.job_description = state.jobDescription;
+  if (state.agentSummary !== undefined) columns.agent_summary = state.agentSummary;
+
+  try {
+    const result = await sql`update application set ${sql(columns)} where id = ${applicationId}`;
+    if (result.count !== 1) throw new Error(`no application ${applicationId} to update`);
+    if (state.proposedSelection !== undefined) {
+      await sql`update application set proposed_selection = ${sql.json(state.proposedSelection)} where id = ${applicationId}`;
+    }
+  } finally {
+    await sql.end();
+  }
+}
+
+/** One question as the agent's `add_questions` would leave it. */
+export interface QuestionSetup {
+  label: string;
+  kind: 'text' | 'choice' | 'multi' | 'bool' | 'file' | 'letter';
+  options?: string[];
+  required?: boolean;
+  isEeo?: boolean;
+  source?: 'profile' | 'agent' | 'saved';
+  answerMode?: 'value' | 'instruction';
+  /** Also the answer, as `add_questions` records it. */
+  proposedAnswer?: string | string[];
+  /** A saved answer it was filled from (`insertSavedAnswer`), with `source:
+   *  'saved'`, as `add_questions` links one (D-048). */
+  savedAnswerId?: string;
+  /** Approved already, as a linked question arrives. */
+  approvedAt?: Date;
+}
+
+/**
+ * Gives an application its form's questions, on page 0, in this order, by
+ * writing the rows directly: the agent is the only one who records them,
+ * over MCP (D-047). Returns their ids, in the same order.
+ */
+export async function insertApplicationQuestions(
+  applicationId: string,
+  rows: QuestionSetup[],
+): Promise<string[]> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  // How lib/applications/questions.ts stores an answer: a multi question's
+  // picks as a JSON array, everything else as itself.
+  const encode = (value: string | string[] | undefined) =>
+    value === undefined ? null : Array.isArray(value) ? JSON.stringify(value) : value;
+
+  try {
+    const ids: string[] = [];
+    for (const [index, row] of rows.entries()) {
+      const answer = encode(row.proposedAnswer);
+      const [inserted] = await sql<{ id: string }[]>`
+        insert into application_question (
+          application_id, sort_order, prompt, kind, options, field_ref, required,
+          is_eeo, source, answer_mode, proposed_answer, answer, saved_answer_id, approved_at
+        ) values (
+          ${applicationId}, ${index}, ${row.label}, ${row.kind},
+          ${row.options ? sql.json(row.options) : null},
+          ${sql.json({ page: 0, label: row.label, selector: null })},
+          ${row.required ?? false}, ${row.isEeo ?? false},
+          ${answer === null ? null : (row.source ?? 'agent')},
+          ${row.answerMode ?? 'value'}, ${answer}, ${answer},
+          ${row.savedAnswerId ?? null}, ${row.approvedAt ?? null}
+        )
+        returning id`;
+      if (!inserted) throw new Error(`could not add question "${row.label}"`);
+      ids.push(inserted.id);
+    }
+    return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * One of Chris's saved answers (D-048), owned by whoever owns this
+ * application, written directly: only ticking "remember" makes one, and a
+ * test of what arrives already linked needs one first. Returns its id.
+ */
+export async function insertSavedAnswer(
+  applicationId: string,
+  saved: {
+    prompt: string;
+    kind: QuestionSetup['kind'];
+    answer: string;
+    answerMode?: 'value' | 'instruction';
+  },
+): Promise<string> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const [inserted] = await sql<{ id: string }[]>`
+      insert into saved_answer (user_id, prompt, kind, answer_mode, answer)
+      select user_id, ${saved.prompt}, ${saved.kind}, ${saved.answerMode ?? 'value'}, ${saved.answer}
+      from application where id = ${applicationId}
+      returning id`;
+    if (!inserted) throw new Error(`no application ${applicationId} to own a saved answer`);
+    return inserted.id;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** A saved answer as stored, archived or not: the API has no read of one. */
+export async function getSavedAnswerRow(
+  id: string,
+): Promise<{ answer: string; answerMode: string; isArchived: boolean }> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const [row] = await sql<{ answer: string; answer_mode: string; is_archived: boolean }[]>`
+      select answer, answer_mode, is_archived from saved_answer where id = ${id}`;
+    if (!row) throw new Error(`no saved answer ${id}`);
+    return { answer: row.answer, answerMode: row.answer_mode, isArchived: row.is_archived };
+  } finally {
+    await sql.end();
+  }
+}
+
+/** An experience with these bullets, through the real API, so a test that
+ *  edits a bullet globally never touches seeded content another spec reads.
+ *  Returns the ids, bullets in the order given. */
+export async function createExperienceViaApi(
+  page: Page,
+  company: string,
+  bullets: string[],
+): Promise<{ experienceId: string; bulletIds: string[] }> {
+  const created = await apiRequest<{ id: string }>(page, '/api/experiences', {
+    method: 'POST',
+    body: { company, title: 'Test Engineer', dateRange: '2024', location: 'Remote' },
+  });
+  const bulletIds: string[] = [];
+  for (const content of bullets) {
+    const bullet = await apiRequest<{ id: string }>(
+      page,
+      `/api/experiences/${created.id}/bullets`,
+      { method: 'POST', body: { content } },
+    );
+    bulletIds.push(bullet.id);
+  }
+  return { experienceId: created.id, bulletIds };
+}
+
+/** Archives an experience a test created, so later specs see the library
+ *  as seeded: content is archived, never deleted (D-011), and an archived
+ *  item is hidden from the editor. */
+export async function archiveExperienceViaApi(page: Page, experienceId: string): Promise<void> {
+  await apiRequest(page, `/api/experiences/${experienceId}`, {
+    method: 'PATCH',
+    body: { isArchived: true },
+  });
+}
+
+/** Takes an application a test created off the board. */
+export async function archiveApplicationViaApi(page: Page, applicationId: string): Promise<void> {
+  await apiRequest(page, `/api/applications/${applicationId}`, {
+    method: 'PATCH',
+    body: { isArchived: true },
+  });
+}
+
+/** Deletes a resume a test created, which the library would otherwise
+ *  show. Refused for one an application was sent with. */
+export async function deleteResumeViaApi(page: Page, resumeId: string): Promise<void> {
+  await apiRequest(page, `/api/resumes/${resumeId}`, { method: 'DELETE' });
+}
+
+/** `PUT /api/resumes/:id/selections`, for setup. */
+export async function setSelectionsViaApi(
+  page: Page,
+  resumeId: string,
+  selections: ResumeDetailLike['selections'],
+): Promise<void> {
+  await apiRequest(page, `/api/resumes/${resumeId}/selections`, {
+    method: 'PUT',
+    body: selections,
+  });
+}
+
+/** One of the agent's bullet suggestions, as `suggest_bullet` records it. */
+export type SuggestionSetup =
+  | { kind: 'edit'; bulletId: string; proposedText: string; rationale: string }
+  | { kind: 'add'; parentId: string; position: number; proposedText: string; rationale: string };
+
+/**
+ * Gives an application the agent's bullet suggestions, on experiences, by
+ * writing the rows directly: only the agent records them, over MCP, and only
+ * while the application is proposing (D-045). Past the tool's checks, so a
+ * test may use text the tool would refuse. Returns their ids, in order.
+ */
+export async function insertBulletSuggestions(
+  applicationId: string,
+  rows: SuggestionSetup[],
+): Promise<string[]> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const ids: string[] = [];
+    // One statement each, so each gets its own `created_at` and the order
+    // they were written is the order they are listed in.
+    for (const row of rows) {
+      const [inserted] = await sql<{ id: string }[]>`
+        insert into bullet_suggestion (
+          application_id, kind, bullet_kind, bullet_id, parent_id, position,
+          proposed_text, rationale
+        ) values (
+          ${applicationId}, ${row.kind}, 'experience',
+          ${row.kind === 'edit' ? row.bulletId : null},
+          ${row.kind === 'add' ? row.parentId : null},
+          ${row.kind === 'add' ? row.position : null},
+          ${row.proposedText}, ${row.rationale}
+        )
+        returning id`;
+      if (!inserted) throw new Error(`could not add suggestion "${row.proposedText}"`);
+      ids.push(inserted.id);
+    }
+    return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** The same for one of Chris's own resumes, outside any application, where
+ *  the agent records them with `suggest_resume_bullet` (D-054). */
+export async function insertResumeSuggestions(
+  resumeId: string,
+  rows: SuggestionSetup[],
+): Promise<string[]> {
+  const sql = postgres(
+    process.env.DATABASE_URL ?? 'postgres://resumix:resumix@localhost:5433/resumix',
+    { max: 1, onnotice: () => {} },
+  );
+  try {
+    const ids: string[] = [];
+    for (const row of rows) {
+      const [inserted] = await sql<{ id: string }[]>`
+        insert into bullet_suggestion (
+          resume_id, kind, bullet_kind, bullet_id, parent_id, position,
+          proposed_text, rationale
+        ) values (
+          ${resumeId}, ${row.kind}, 'experience',
+          ${row.kind === 'edit' ? row.bulletId : null},
+          ${row.kind === 'add' ? row.parentId : null},
+          ${row.kind === 'add' ? row.position : null},
+          ${row.proposedText}, ${row.rationale}
+        )
+        returning id`;
+      if (!inserted) throw new Error(`could not add suggestion "${row.proposedText}"`);
+      ids.push(inserted.id);
+    }
+    return ids;
+  } finally {
+    await sql.end();
+  }
+}
+
 export function findExperienceId(detail: ResumeDetailLike, company: string): string {
   const experience = detail.library.experiences.find((e) => e.company === company);
   if (!experience) throw new Error(`no experience found for company "${company}"`);
@@ -202,16 +542,48 @@ interface RenderResultLike {
 
 /** Calls the real (never-persisting) render endpoint and returns the decoded
  *  PDF text — the most reliable way to assert "X is/isn't on the page"
- *  without pixel-diffing a canvas. */
-export async function renderResumeText(page: Page, resumeId: string): Promise<string> {
+ *  without pixel-diffing a canvas. `suggestionsFor` renders it as the
+ *  review preview does, with that application's pending bullet suggestions
+ *  laid over it, or, as `'resume'`, as the resume's own editor does, with
+ *  its own (D-054). */
+export async function renderResumeText(
+  page: Page,
+  resumeId: string,
+  suggestionsFor?: string,
+): Promise<string> {
+  const body =
+    suggestionsFor === undefined
+      ? {}
+      : suggestionsFor === 'resume'
+        ? { resumeSuggestions: true }
+        : { suggestionsFor };
   const result = await apiRequest<RenderResultLike>(page, `/api/resumes/${resumeId}/render`, {
     method: 'POST',
-    body: {},
+    body,
   });
   if (!result.ok || !result.pdfBase64) {
     throw new Error(`render failed for resume ${resumeId}: ${result.errors.join('; ')}`);
   }
   return extractPdfText(result.pdfBase64);
+}
+
+/** A PDF endpoint's text, fetched from inside the page with its token, for
+ *  a download with no JSON envelope (`GET /api/cover-letters/:id/pdf`). */
+export async function fetchPdfText(page: Page, path: string): Promise<string> {
+  const token = await getAuthToken(page);
+  const result = await page.evaluate(
+    async ({ path, token }) => {
+      const res = await fetch(path, { headers: token ? { 'x-resumix-token': token } : {} });
+      let binary = '';
+      for (const byte of new Uint8Array(await res.arrayBuffer())) {
+        binary += String.fromCharCode(byte);
+      }
+      return { status: res.status, base64: btoa(binary) };
+    },
+    { path, token },
+  );
+  if (result.status !== 200) throw new Error(`GET ${path} -> ${result.status}`);
+  return extractPdfText(result.base64);
 }
 
 /** A browser download's bytes, base64-encoded — the input `extractPdfText`

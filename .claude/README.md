@@ -20,12 +20,16 @@ Checked-in configuration for agents working in this repo.
   and never writes code itself. See `rules/github.md` for the lifecycle.
 - **`settings.json`** — permissions. The `allow` half lists the project's own
   read-only and verification commands, so the merge gate can be run without a
-  prompt per step. The `deny` half is a hard boundary, not a convenience: the
-  production instance (`npm run deploy:prod`, `docker-compose.prod.yml`,
-  `~/.resumix/`) and `.env` files are off-limits. `scripts/deploy-prod.sh`
-  refuses independently when `CLAUDECODE` is set, so neither half is the only
-  thing standing between an agent and real data — see CLAUDE.md, "Production
-  is not yours".
+  prompt per step. The `deny` half is a hard boundary, not a convenience:
+  production's secrets, backups and token script (`prod/.env`,
+  `prod/backups/`, `prod/mint-token`), the laptop instance's `~/.resumix/`,
+  and `.env` files are off-limits, and so are the parts of `agent/` that
+  belong to the Claude that applies to jobs: its launcher `agent/claude.sh`,
+  `agent/connect.sh`, which writes its token, its browser profile, the
+  career-ops submodule, and `agent/career-ops-data/`, which holds Chris's
+  real CV, profile and tracker (D-038). `prod/mint-token` and both `agent/`
+  scripts refuse independently when `CLAUDECODE` is set, so neither half is
+  the only thing standing between an agent and real data (D-053).
 
 The mechanical half of these rules is enforced by `eslint.config.mjs`, whose
 error messages name the rule file that explains them. Prose and lint config

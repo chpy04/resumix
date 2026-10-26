@@ -7,15 +7,21 @@
  * convention: it attaches the stored token and handles 401 -> logout.
  */
 
+import type { ReviewSection } from './applications/review.ts';
+import type { ManualStatus } from './applications/status.ts';
 import { authedFetch } from './auth-client.ts';
 import type { FeedbackKind } from './feedback/issue.ts';
 import type {
+  AnswerMode,
+  AnswerValue,
   ApplicationDetail,
   ApplicationFile,
   ApplicationPdfResult,
-  ApplicationStatus,
+  ApplicationQuestion,
   ApplicationSummary,
   Bullet,
+  BulletSuggestion,
+  BulletSuggestionAction,
   CoverLetter,
   CoverLetterSummary,
   Experience,
@@ -162,15 +168,28 @@ export function saveResumePdf(id: string): Promise<SaveResumePdfResult> {
 /**
  * `POST /api/resumes/:id/render` — the live preview pane's only network
  * call. **Never persists anything** (that's `/pdf`, above). `templateOverride`
- * lets the Template tab preview unsaved LaTeX. Check `.ok`: a LaTeX compile
- * failure is a normal `200 { ok: false, errors, warnings }`, never a thrown
- * `ApiError` — same shape as `saveResumePdf` (`docs/API.md`).
+ * lets the Template tab preview unsaved LaTeX, and `suggestions` lays pending
+ * bullet suggestions over the preview: an application's id for its, in
+ * review (D-045), or `'resume'` for the resume's own (D-054). Check `.ok`:
+ * a LaTeX compile failure is a normal
+ * `200 { ok: false, errors, warnings }`, never a thrown `ApiError` — same
+ * shape as `saveResumePdf` (`docs/API.md`).
  */
-export function renderResume(id: string, templateOverride?: string): Promise<RenderResult> {
+export function renderResume(
+  id: string,
+  templateOverride?: string,
+  suggestions?: string,
+): Promise<RenderResult> {
+  const overlay =
+    suggestions === 'resume'
+      ? { resumeSuggestions: true }
+      : suggestions
+        ? { suggestionsFor: suggestions }
+        : {};
   return requestJson<RenderResult>(`/api/resumes/${id}/render`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify(templateOverride === undefined ? {} : { templateOverride }),
+    body: JSON.stringify({ templateOverride, ...overlay }),
   });
 }
 
@@ -407,7 +426,8 @@ export function getApplication(id: string): Promise<ApplicationDetail> {
 
 /** `PATCH /api/applications/:id` — the autosave target for every field on the
  *  detail page, plus the status picker and archiving. `resumeId: null` and
- *  `coverLetterId: null` unlink those documents without touching them. */
+ *  `coverLetterId: null` unlink those documents without touching them. Only
+ *  manual statuses: the server refuses the review flow's (D-041). */
 export function updateApplication(
   id: string,
   patch: Partial<{
@@ -415,7 +435,7 @@ export function updateApplication(
     roleTitle: string;
     postingUrl: string;
     notes: string;
-    status: ApplicationStatus;
+    status: ManualStatus;
     resumeId: string | null;
     coverLetterId: string | null;
     isArchived: boolean;
@@ -444,6 +464,94 @@ export function saveResumeToApplication(id: string): Promise<ApplicationPdfResul
  */
 export function markApplicationApplied(id: string): Promise<ApplicationPdfResult> {
   return requestJson<ApplicationPdfResult>(`/api/applications/${id}/apply`, { method: 'POST' });
+}
+
+/** `POST /api/applications/:id/approvals` — approves one review section.
+ *  A `400` (thrown as `ApiError`) says why when it cannot be approved. */
+export function approveApplicationSection(
+  id: string,
+  section: ReviewSection,
+): Promise<ApplicationDetail> {
+  return requestJson<ApplicationDetail>(`/api/applications/${id}/approvals`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ section }),
+  });
+}
+
+/** `POST /api/applications/:id/approve` — final approval: compiles both
+ *  documents, pins them, and makes it `ready`. A section left unapproved is
+ *  a thrown `400`; a LaTeX failure is the usual `200 { ok: false, ... }`. */
+export function approveApplication(id: string): Promise<ApplicationPdfResult> {
+  return requestJson<ApplicationPdfResult>(`/api/applications/${id}/approve`, { method: 'POST' });
+}
+
+/** `PATCH /api/bullet-suggestions/:id` — Chris's edit to a pending
+ *  suggestion's text, before he applies it. */
+export function updateBulletSuggestion(
+  id: string,
+  proposedText: string,
+): Promise<BulletSuggestion> {
+  return requestJson<BulletSuggestion>(`/api/bullet-suggestions/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ proposedText }),
+  });
+}
+
+/** `POST /api/bullet-suggestions/:id/resolve` — `apply` (Apply to bullet, or
+ *  Add bullet), `copy` (Save as new) or `reject`. A `400` says why when it
+ *  cannot be, and nothing is written. */
+export function resolveBulletSuggestion(
+  id: string,
+  action: BulletSuggestionAction,
+): Promise<BulletSuggestion> {
+  return requestJson<BulletSuggestion>(`/api/bullet-suggestions/${id}/resolve`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ action }),
+  });
+}
+
+/** `PATCH /api/application-questions/:id` — the questions step's autosave
+ *  target: an answer, its mode, or a redraft note (`null` cancels one).
+ *  Any write unapproves the question and reopens a Ready application. */
+export function updateApplicationQuestion(
+  id: string,
+  patch: Partial<{
+    answer: AnswerValue | null;
+    answerMode: AnswerMode;
+    redraftNote: string | null;
+  }>,
+): Promise<ApplicationQuestion> {
+  return requestJson<ApplicationQuestion>(`/api/application-questions/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+}
+
+/** `PUT /api/application-questions/:id/remember` — ticks or unticks
+ *  "remember this answer". Unticking archives the saved answer. Never
+ *  unapproves anything, unlike the PATCH. */
+export function setQuestionRemembered(id: string, remember: boolean): Promise<ApplicationQuestion> {
+  return requestJson<ApplicationQuestion>(`/api/application-questions/${id}/remember`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ remember }),
+  });
+}
+
+/** `POST /api/applications/:id/questions/approve` — all of `questionIds` or
+ *  none; a `400` (thrown as `ApiError`) lists every one that cannot be. */
+export function approveApplicationQuestions(
+  applicationId: string,
+  questionIds: string[],
+): Promise<ApplicationQuestion[]> {
+  return requestJson<ApplicationQuestion[]>(
+    `/api/applications/${applicationId}/questions/approve`,
+    { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ questionIds }) },
+  );
 }
 
 /** `GET /api/applications/:id/pdf` — the bytes that were actually sent, not
@@ -514,7 +622,7 @@ export function getCoverLetter(id: string): Promise<CoverLetter> {
 
 export function updateCoverLetter(
   id: string,
-  patch: Partial<{ name: string; content: string; isArchived: boolean }>,
+  patch: Partial<{ name: string; content: string; body: string; isArchived: boolean }>,
 ): Promise<CoverLetter> {
   return requestJson<CoverLetter>(`/api/cover-letters/${id}`, {
     method: 'PATCH',
@@ -524,12 +632,16 @@ export function updateCoverLetter(
 }
 
 /** `POST /api/cover-letters/:id/render` — preview only, saves nothing.
- *  `contentOverride` is the editor's unsaved draft. */
-export function renderCoverLetter(id: string, contentOverride?: string): Promise<RenderResult> {
+ *  `content` and `body` are the editor's unsaved drafts; either left out
+ *  is read from the stored letter. */
+export function renderCoverLetter(
+  id: string,
+  draft: { content?: string; body?: string } = {},
+): Promise<RenderResult> {
   return requestJson<RenderResult>(`/api/cover-letters/${id}/render`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify(contentOverride === undefined ? {} : { contentOverride }),
+    body: JSON.stringify({ contentOverride: draft.content, bodyOverride: draft.body }),
   });
 }
 

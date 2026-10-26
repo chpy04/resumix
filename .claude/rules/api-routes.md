@@ -47,7 +47,7 @@ const userId = await requireUserId(request); // lib/session.ts
 
 First line of the handler body, then thread `userId` into the query
 function, which filters on it. `middleware.ts` guards `/api/*` (except
-`/api/auth`) but **cannot** say _which_ user is calling — it runs on the
+`/api/auth` and `/api/mcp/**`) but **cannot** say _which_ user is calling — it runs on the
 Edge runtime and has no database — so it is not what keeps accounts apart.
 Your `WHERE` clause is.
 
@@ -58,7 +58,11 @@ hand. Another user's id must come back as `NotFoundError`, never a 403: a
 and `lib/queries/isolation.test.ts` for the executable version of this rule.
 
 The exceptions are `POST /api/auth` (there is no caller yet — it mints the
-token) and `GET /api/session` (it answers _who_ the caller is).
+token), `GET /api/session` (it answers _who_ the caller is), and every
+handler under `/api/mcp/**`, which begins with
+`const userId = await requireMcpUserId(request)` instead. That door takes
+only an `rmx_` API token, in every auth mode, and middleware does not check
+those routes at all, so the handler's call is the whole gate (D-039).
 
 ## Two things that are not HTTP errors
 

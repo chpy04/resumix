@@ -7,3 +7,4 @@ public/pdf.worker.min.mjs
 test-results/
 playwright-report/
 *.tsbuildinfo
+agent/

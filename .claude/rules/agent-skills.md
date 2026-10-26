@@ -1,0 +1,137 @@
+---
+paths:
+  - 'agent/**'
+---
+
+# The applying Claude's skills
+
+For the Claude that builds Resumix. (If you are the Claude in `agent/` that
+applies to jobs, this file is not for you, and `agent/CLAUDE.md` wins.)
+
+`agent/` is the applying Claude's workspace, against production (D-038).
+You write its files and never run them: no `claude` in `agent/`, no
+`./claude.sh`, no skill (C8). So everything here is checked statically, by
+`lib/agent-skills.test.ts`, whose failure messages point here.
+
+## Skills
+
+- One per directory: `agent/.claude/skills/<name>/SKILL.md`, with `name`
+  equal to `<name>` and a non-empty `description`.
+- **Every frontmatter key fits on one `key: value` line.** The test parses
+  them one line at a time, because a YAML parser would be a dependency.
+- A skill that writes to Resumix is `disable-model-invocation: true`, so it
+  runs only when Chris types it, and no `allowed-tools` pre-approves a
+  Resumix tool: every production write is one he approves (D-038).
+- A pasted posting is the argument, so a skill reads `$ARGUMENTS` whole and
+  declares no named `arguments:`, which would split it on whitespace.
+- **Resumix tools are written `mcp__resumix__<name>`,** the name the model
+  sees, and never bare. A name may appear only once it is in `TOOLS`
+  (`lib/mcp/tools/index.ts`), which is what `tools/list` serves; land the
+  tool first. The test fails on both: on any `mcp__resumix__` name not in
+  `TOOLS`, on a `TOOLS` name written bare, and in a skill on a code span
+  opening with a tool-like name (`get_`, `set_`, `list_`, `create_`,
+  `update_`, `delete_`, `add_`, `suggest_`, `submit_`, `mark_` or `report_`)
+  that `TOOLS` lacks. Reword a non-tool identifier rather than weaken it.
+- A skill chooses and orders library content. It never writes to the
+  library, and nothing in `agent/` may tell the model to: the tools that
+  would are on the NOT EXPOSED list in `.claude/rules/mcp.md`. The only
+  resume text it proposes goes through `mcp__resumix__suggest_bullet`, which
+  Chris applies or rejects in review (D-045).
+- **Playwright tools are written `mcp__playwright__<name>`,** never bare in
+  a skill, and only from `PLAYWRIGHT_TOOLS` in the test: the default tools
+  of the `@playwright/mcp` version `agent/.mcp.json` pins (core automation
+  and tabs; the rest need a `--caps` flag it does not pass). Bumping the
+  version fails the test until that list is checked against the new
+  README.
+
+## Forms
+
+`/resumix-propose` walks an application form to record its questions, and
+the apply pass fills it. Both read a question's `field_ref` the same way
+(D-049):
+
+- `page` counts the form's pages from 0, as `add_questions` does. Sign-in
+  screens and "how do you want to apply" choices are not pages.
+- `label` is the visible label exactly, minus required markers, and scoped
+  to its block in a repeated "Add another" block, as in
+  `Work experience 1: Job title`, so two blocks never share a `field_ref`.
+- `selector` is a Playwright role selector built from the snapshot
+  (`role=textbox[name="…"]`), which a tool's `target` accepts, or null.
+  Never a snapshot ref such as `e23`: refs change with every snapshot.
+
+**No skill submits a form; Chris does.** The propose skill's hard rules
+carry a `**Never submit` rule that bans clicking "Submit", pressing Enter
+(`browser_press_key`), setting `submit` on `browser_type`, and
+`browser_evaluate` and `browser_run_code_unsafe`, either of which can
+submit in code. No skill may contain `submit: true`. The test pins each of
+these against deletion; only the evals' live-form cases can show a skill
+obeys them. `/resumix-apply` and `/resumix-apply-ready` carry the same
+bullet **byte for byte**, and the test compares them, so a change to the
+rule is made once, in all three, in one commit.
+
+## Applying
+
+`/resumix-apply <application_id>` fills a Ready application's form from
+`mcp__resumix__get_apply_packet` and stops before Submit (D-050).
+`/resumix-apply-ready` reads that skill and follows it for each Ready
+application in turn, asking Chris between them; it never restates it.
+
+- The fill step overwrites every field the packet answers and clears every
+  field it leaves unapproved: discovery's placeholders may survive in an
+  ATS's saved draft. A field the packet lacks goes to
+  `mcp__resumix__report_question`, never into the form.
+- `mcp__resumix__mark_applied` is named only after the stop before Submit,
+  and called only on Chris's "submitted". The test pins the order.
+- The approved PDFs come down through `agent/fetch-apply-files.sh`, the
+  second script here, never through `curl` in a skill. It keeps the token
+  out of argv and sends it only to `RESUMIX_MCP_URL`'s origin, and only for
+  `/api/mcp/files/` paths. It writes to `agent/.apply-files/`, gitignored,
+  because Playwright MCP uploads only from under its workspace, `agent/`.
+  Keep it bash 3.2 and BSD tools, tracked as mode 100755; its tests run it
+  against a `node:http` server on 127.0.0.1, never a remote host.
+
+## Connecting
+
+`agent/connect.sh` is Chris's, never the applying Claude's: it writes the
+URL and token `prod/mint-token` prints into `agent/.env` (D-053), and
+`agent/CLAUDE.md` and `agent/.claude/settings.json` keep the applying Claude
+off it. It refuses when `CLAUDECODE` is set, prints neither value, and
+checks both down to characters that mean nothing to the shell, because
+`claude.sh` sources the file. Keep it bash 3.2 and BSD awk, and tracked as
+mode 100755. Its tests, in `lib/agent-workspace.test.ts`, run a copy against
+a template of their own, never the real `agent/.env`.
+
+## The career-ops routing
+
+career-ops hands its CV, cover-letter and tracker steps to Resumix through
+its own house rules, `$CAREER_OPS_DATA_DIR/modes/_custom.md` (D-043). That
+file is gitignored and partly Chris's, so the committed text is one block in
+`agent/career-ops-custom.md`, between a `<!-- resumix-routing:begin` line and
+a `<!-- resumix-routing:end -->` line, and nothing else.
+
+`agent/install-career-ops-custom.sh` writes that block in, replacing only the
+lines between the markers. `./claude.sh` runs it at every launch and
+`/resumix-propose` at every run. Keep it bash 3.2 and BSD awk, and tracked as
+mode 100755. Never point it at the submodule: career-ops reads user files
+from its data root, and `agent/career-ops/` stays untouched.
+
+The block routes every mode, not one skill's run: before any tracker step,
+a job is looked up with `mcp__resumix__list_applications`, and one in
+Resumix gets no career-ops tracker write and never career-ops' `apply` mode
+(D10). career-ops' router may resolve `modes/` against its checkout, so
+`agent/CLAUDE.md`, which every session loads, names the data directory's
+`_custom.md` as the file to read.
+
+## The evals
+
+`agent/evals/propose.md` is how Chris accepts `/resumix-propose`, by hand,
+after a deploy: four `## Case` sections, each a fenced posting and a
+`- [ ]` checklist, plus a `## Discovery checklist` of `- [ ]` items for any
+run that finds a form. Cases 1–3 are pasted postings with no form behind
+them; Case 4 is a live multi-page form. Change it in the same commit as the
+skill.
+
+`agent/evals/apply.md` is the same for `/resumix-apply` and
+`/resumix-apply-ready`: two `## Case` sections on a live form Chris means
+to apply to, answered "submitted" and "not sent", each with a `- [ ]`
+checklist. Change it in the same commit as either skill.

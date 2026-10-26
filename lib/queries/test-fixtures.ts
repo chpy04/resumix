@@ -17,21 +17,29 @@
  * fully-provisioned account to test *against*.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
-import { db, sql } from '../db/index.ts';
+import { and, asc, desc, eq } from 'drizzle-orm';
+import { db, sql, type Executor } from '../db/index.ts';
 import {
+  apiToken,
   application,
+  applicationFile,
+  applicationQuestion,
+  bulletSuggestion,
   coverLetter,
   experience,
   experienceBullet,
   project,
   projectBullet,
   resume,
+  resumePdf,
+  savedAnswer,
   technicalSkill,
   technicalSkillRow,
   users,
 } from '../db/schema.ts';
+import { approveApplication } from '../application-approval.ts';
 import type { User } from '../types.ts';
+import { createCoverLetter } from './cover-letters.ts';
 import { provisionUser } from './users.ts';
 
 export const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -161,13 +169,65 @@ export async function deleteResumeRow(id: string): Promise<void> {
  *  visible on the board, so tests clean up after themselves like resumes do
  *  rather than filling a shared dev database with fixtures. Delete these
  *  *before* any resume they were sent with: the snapshot reference is
- *  `on delete restrict` on purpose. */
-export async function insertTestApplication(userId: string, tag: string) {
+ *  `on delete restrict` on purpose.
+ *
+ *  `overrides` writes straight to the row, which is the only way to put an
+ *  application into a flow status or give it the agent's fields: the API
+ *  refuses both (D-041). */
+export async function insertTestApplication(
+  userId: string,
+  tag: string,
+  overrides: Partial<typeof application.$inferInsert> = {},
+) {
   const [row] = await db
     .insert(application)
-    .values({ userId, company: `T-App Test Co ${tag}`, roleTitle: 'Test Engineer' })
+    .values({ userId, company: `T-App Test Co ${tag}`, roleTitle: 'Test Engineer', ...overrides })
     .returning();
   if (!row) throw new Error('failed to insert test application');
+  return row;
+}
+
+/** A suggestion written straight to the table, past every check the tool
+ *  makes: how a test sets one up in review, where the tool refuses to make
+ *  one, or points one at something the tool would never accept. Defaults to
+ *  a pending edit. Deleted with its application (`on delete cascade`). */
+export async function insertBulletSuggestion(
+  applicationId: string,
+  values: Partial<typeof bulletSuggestion.$inferInsert>,
+) {
+  const [row] = await db
+    .insert(bulletSuggestion)
+    .values({
+      applicationId,
+      kind: 'edit',
+      bulletKind: 'experience',
+      proposedText: 'A suggested bullet',
+      rationale: 'The posting asks for it',
+      ...values,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test bullet suggestion');
+  return row;
+}
+
+/** The same for one of the user's own resumes, outside any application
+ *  (D-054). Deleted with its resume (`on delete cascade`). */
+export async function insertResumeSuggestion(
+  resumeId: string,
+  values: Partial<typeof bulletSuggestion.$inferInsert>,
+) {
+  const [row] = await db
+    .insert(bulletSuggestion)
+    .values({
+      resumeId,
+      kind: 'edit',
+      bulletKind: 'experience',
+      proposedText: 'A suggested bullet',
+      rationale: 'Chris asked for it',
+      ...values,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test resume suggestion');
   return row;
 }
 
@@ -175,11 +235,310 @@ export async function deleteApplicationRow(id: string): Promise<void> {
   await db.delete(application).where(eq(application.id, id));
 }
 
+/**
+ * A question written straight to the row: an optional text question on page
+ * 0 with a label unique to this call, unless `overrides` says otherwise. The
+ * only way to reach a state the query layer refuses to write, which is what
+ * the CHECK tests need. Deleting the application cascades to it.
+ */
+export async function insertTestQuestion(
+  applicationId: string,
+  overrides: Partial<typeof applicationQuestion.$inferInsert> = {},
+) {
+  const [row] = await db
+    .insert(applicationQuestion)
+    .values({
+      applicationId,
+      sortOrder: 0,
+      prompt: 'Why us?',
+      kind: 'text',
+      fieldRef: { page: 0, label: `Why us? ${testTag()}`, selector: null },
+      required: false,
+      ...overrides,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test question');
+  return row;
+}
+
+/** The raw row, answer encoding and all. */
+export async function getQuestionRow(id: string) {
+  const [row] = await db
+    .select()
+    .from(applicationQuestion)
+    .where(eq(applicationQuestion.id, id))
+    .limit(1);
+  if (!row) throw new Error(`no application_question row ${id}`);
+  return row;
+}
+
+/**
+ * A saved answer written straight to the row: a text answer unless
+ * `overrides` says otherwise. The only way to reach a state the query layer
+ * refuses to write, which the CHECK tests need, and the way to give a test
+ * one to link without going through a question. Left behind, like content
+ * rows: saved answers are archived, never deleted (D-048).
+ */
+export async function insertSavedAnswer(
+  userId: string,
+  overrides: Partial<typeof savedAnswer.$inferInsert> = {},
+) {
+  const [row] = await db
+    .insert(savedAnswer)
+    .values({
+      userId,
+      prompt: 'How did you hear about us?',
+      kind: 'text',
+      answer: 'A friend.',
+      ...overrides,
+    })
+    .returning();
+  if (!row) throw new Error('failed to insert test saved answer');
+  return row;
+}
+
+/** The raw row, archived or not, answer encoding and all. */
+export async function getSavedAnswerRow(id: string) {
+  const [row] = await db.select().from(savedAnswer).where(eq(savedAnswer.id, id)).limit(1);
+  if (!row) throw new Error(`no saved_answer row ${id}`);
+  return row;
+}
+
+/** Every saved answer a user has, archived ones included, oldest first. */
+export async function listSavedAnswerRows(userId: string) {
+  return db
+    .select()
+    .from(savedAnswer)
+    .where(eq(savedAnswer.userId, userId))
+    .orderBy(asc(savedAnswer.createdAt), asc(savedAnswer.id));
+}
+
 /** Cover letters are archived rather than deleted in the app, but like
  *  resumes they show up in a library the developer has to look at, so
  *  fixtures clean up after themselves. Never pass the provisioned Default. */
 export async function deleteCoverLetterRow(id: string): Promise<void> {
   await db.delete(coverLetter).where(eq(coverLetter.id, id));
+}
+
+/** The raw `api_token` row, hash and all — what the wire type deliberately
+ *  hides, and so the only way to prove what was actually stored. */
+export async function getApiTokenRow(id: string) {
+  const [row] = await db.select().from(apiToken).where(eq(apiToken.id, id)).limit(1);
+  if (!row) throw new Error(`no api_token row ${id}`);
+  return row;
+}
+
+/** What `stubLatex` answers for one `.tex`: a page count, a LaTeX error
+ *  (`STUB_LATEX_ERROR`, or the errors given), or a sidecar that cannot be
+ *  reached. */
+export type StubbedCompile = number | 'error' | { errors: string[] } | 'down';
+
+/** The error the stub reports for `'error'`, so a test can look for it. */
+export const STUB_LATEX_ERROR = '! Undefined control sequence. l.7 \\nosuchmacro';
+
+/**
+ * Points `compileTex` at a fake sidecar, the way `lib/feedback/github.test.ts`
+ * stubs GitHub: CI's test job has no sidecar, and the page count is usually
+ * the thing under test. `pagesFor` decides each answer from the `.tex` it
+ * was sent, so a test can tell a resume from a letter. Every `.tex` is
+ * recorded. Call `restore()` in a `finally`.
+ */
+export function stubLatex(pagesFor: (tex: string) => StubbedCompile): {
+  sent: string[];
+  restore: () => void;
+} {
+  const sent: string[] = [];
+  const original = { fetch: globalThis.fetch, url: process.env.LATEX_SERVICE_URL };
+  process.env.LATEX_SERVICE_URL = 'http://latex.test';
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    // Anything else is a call this stub was never meant to answer.
+    if (String(input) !== 'http://latex.test/compile') {
+      throw new Error(`stubLatex: unexpected fetch of ${String(input)}`);
+    }
+    const { tex } = JSON.parse(String(init.body)) as { tex: string };
+    sent.push(tex);
+    const answer = pagesFor(tex);
+    // What a real `fetch` throws when nothing is listening.
+    if (answer === 'down') throw new TypeError('fetch failed');
+    if (answer === 'error' || typeof answer === 'object') {
+      return Response.json({
+        ok: false,
+        pages: null,
+        errors: answer === 'error' ? [STUB_LATEX_ERROR] : answer.errors,
+        log: '',
+        durationMs: 1,
+      });
+    }
+    // "%PDF-1.5": the bytes are never parsed, only stored and compared.
+    return Response.json({
+      ok: true,
+      pdfBase64: 'JVBERi0xLjUK',
+      pages: answer,
+      errors: [],
+      log: '',
+      durationMs: 1,
+    });
+  }) as typeof fetch;
+
+  return {
+    sent,
+    restore: () => {
+      globalThis.fetch = original.fetch;
+      if (original.url === undefined) delete process.env.LATEX_SERVICE_URL;
+      else process.env.LATEX_SERVICE_URL = original.url;
+    },
+  };
+}
+
+/**
+ * An application made Ready the real way, so its pinned PDF and its letter's
+ * PDF are exactly what final approval stores (C4): in Needs review with its
+ * sections approved, then `approveApplication`, with the sidecar stubbed for
+ * that call only. It has a letter copied from Default unless `withLetter`
+ * is false. `beforeApproval` adds questions and attachments while it is
+ * still in review. `cleanup()` deletes what this made, in the order the
+ * snapshot's `restrict` reference needs.
+ */
+export async function insertReadyApplication(
+  userId: string,
+  tag: string,
+  options: {
+    withLetter?: boolean;
+    beforeApproval?: (applicationId: string) => Promise<void>;
+  } = {},
+) {
+  const resume = await insertTestResume(userId, tag);
+  const company = `T-Ready Co ${tag}`;
+  const letter = options.withLetter === false ? null : await createCoverLetter(userId, company);
+  const app = await insertTestApplication(userId, tag, {
+    company,
+    status: 'needs_review',
+    resumeId: resume.id,
+    coverLetterId: letter?.id ?? null,
+    resumeApprovedAt: new Date(),
+    coverLetterApprovedAt: letter ? new Date() : null,
+  });
+  await options.beforeApproval?.(app.id);
+
+  const latex = stubLatex(() => 1);
+  try {
+    const approved = await approveApplication(userId, app.id);
+    if (!approved.ok) throw new Error(`approval failed: ${approved.errors.join('; ')}`);
+  } finally {
+    latex.restore();
+  }
+
+  return {
+    app,
+    resume,
+    letter,
+    company,
+    async cleanup() {
+      await deleteApplicationRow(app.id);
+      await deleteResumeRow(resume.id);
+      if (letter) await deleteCoverLetterRow(letter.id);
+    },
+  };
+}
+
+/**
+ * Runs `work` inside a transaction that stays open, holding whatever locks
+ * it took, until `commit()`: how a test puts a concurrent writer exactly
+ * where it wants one. `waitForWaiter()` resolves once another connection is
+ * blocked on one of those locks, so what the test does next happens while
+ * it waits, not before or after.
+ */
+async function holdTransaction(work: (tx: Executor) => Promise<void>) {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let locked!: (pid: number) => void;
+  const pid = new Promise<number>((resolve) => {
+    locked = resolve;
+  });
+
+  const done = db.transaction(async (tx) => {
+    await work(tx);
+    const [row] = await tx.execute<{ pid: number }>('select pg_backend_pid() as pid');
+    if (!row) throw new Error('no backend pid');
+    locked(row.pid);
+    await released;
+  });
+  const holder = await Promise.race([
+    pid,
+    done.then(() => {
+      throw new Error('the held transaction ended before it took the lock');
+    }),
+  ]);
+
+  return {
+    async waitForWaiter(): Promise<void> {
+      for (let attempt = 0; attempt < 400; attempt++) {
+        const [row] = await sql<{ waiting: number }[]>`
+          select count(*)::int as waiting from pg_stat_activity
+          where ${holder}::int = any(pg_blocking_pids(pid))`;
+        if ((row?.waiting ?? 0) > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`nothing waited on backend ${holder}'s lock`);
+    },
+    async commit(): Promise<void> {
+      release();
+      await done;
+    },
+  };
+}
+
+/** Writes `patch` to an application and holds the row's lock (`holdTransaction`). */
+export function holdApplicationWrite(id: string, patch: Partial<typeof application.$inferInsert>) {
+  return holdTransaction(async (tx) => {
+    await tx.update(application).set(patch).where(eq(application.id, id));
+  });
+}
+
+/** An answer write as `updateApplicationQuestion` makes one: the
+ *  application locked first, then the question unapproved, held open. */
+export function holdAnswerWrite(applicationId: string, questionId: string) {
+  return holdTransaction(async (tx) => {
+    await tx.select().from(application).where(eq(application.id, applicationId)).for('update');
+    await tx
+      .update(applicationQuestion)
+      .set({ approvedAt: null })
+      .where(eq(applicationQuestion.id, questionId));
+  });
+}
+
+/** Every `resume_pdf` row a resume has, newest first, bytes excluded. */
+export async function listResumePdfIds(resumeId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: resumePdf.id })
+    .from(resumePdf)
+    .where(eq(resumePdf.resumeId, resumeId))
+    .orderBy(desc(resumePdf.createdAt), desc(resumePdf.id));
+  return rows.map((row) => row.id);
+}
+
+/** The `.tex` a resume's newest snapshot was compiled from: what it stored,
+ *  as against what a preview showed. */
+export async function getLatestResumePdfTex(resumeId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ tex: resumePdf.tex })
+    .from(resumePdf)
+    .where(eq(resumePdf.resumeId, resumeId))
+    .orderBy(desc(resumePdf.createdAt), desc(resumePdf.id))
+    .limit(1);
+  return row?.tex ?? null;
+}
+
+/** Every file on an application, archived ones included, bytes included. */
+export async function listApplicationFileRows(applicationId: string) {
+  return db
+    .select()
+    .from(applicationFile)
+    .where(eq(applicationFile.applicationId, applicationId))
+    .orderBy(asc(applicationFile.createdAt), asc(applicationFile.id));
 }
 
 /**
